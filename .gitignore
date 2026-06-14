@@ -1,0 +1,43 @@
+# devenv（portable 编译环境，可由 scripts/create_devenv.py + extract_psdk.py 重建）
+devenv/prefix/
+devenv/dls/
+devenv/install.log
+devenv/tmp/
+
+# 构建产物
+build/
+build.ninja
+*.obj
+*.pdb
+*.exp
+*.ilk
+*.map
+
+# Ghidra 项目数据（可从 th07/th07.exe + scripts 重新分析重建）
+ghidra_work/
+
+# 原版二进制与游戏资源（版权 + 大文件，用户自有，不入库）
+th07/*.exe
+th07/*.dat
+th07/*.cfg
+th07/*.dll
+th07/*.ini
+th07/vpatch*
+th07/thcrap/
+th07/story_e/
+th07/マニュアル/
+th07/*.txt
+
+# th06 参考映射（仅本地参考）
+config/mapping_th06ref.csv
+
+# 临时 / 缓存
+*.log
+diff/
+__pycache__/
+*.pyc
+resources/original.ico
+log.txt
+
+# 本地 Claude 配置
+.claude/

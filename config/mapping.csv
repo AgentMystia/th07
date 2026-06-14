@@ -1,0 +1,3 @@
+th07::Rng::GetRandomU16,0x431870,0x58,__fastcall,,u16,Rng*
+th07::Rng::GetRandomU32,0x4318d0,0x20,__fastcall,,u32,Rng*
+th07::Rng::GetRandomF32ZeroToOne,0x431900,0x1c,__fastcall,,f32,Rng*
