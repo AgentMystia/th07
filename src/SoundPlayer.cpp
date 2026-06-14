@@ -15,6 +15,7 @@
 namespace th07
 {
 i32 FloatSecondsToFrames(f32 s) { return (i32)(s * 60.0f); }
+static i32 BgmNameToWavFmtIndex(char *name);
 
 
 #define BACKGROUND_MUSIC_BUFFER_SIZE 0x8000
