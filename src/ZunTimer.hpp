@@ -8,10 +8,6 @@ namespace th07
 {
 struct ZunTimer
 {
-    i32 previous;
-    f32 subFrame;
-    i32 current;
-
     ZunTimer()
     {
         this->Initialize();
@@ -42,7 +38,13 @@ struct ZunTimer
         return this->current <= time;
     }
 
-    void Initialize();
+    void Initialize()
+    {
+        this->current = 0;
+        this->previous = -1;
+        this->subFrame = 0.0f;
+    }
+
     void Increment(i32 value);
     void Decrement(i32 value);
     i32 NextTick();
@@ -86,6 +88,10 @@ struct ZunTimer
     {
         return this->current != this->previous;
     }
+
+    i32 previous;
+    f32 subFrame;
+    i32 current;
 };
 ZUN_ASSERT_SIZE(ZunTimer, 0xc);
 }; // namespace th07

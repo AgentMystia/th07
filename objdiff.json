@@ -43,6 +43,14 @@
             "reverse_fn_order": false
         },
         {
+            "name": "BulletData",
+
+            "target_path": "build/objdiff/orig/BulletData.obj",
+            "base_path": "build/objdiff/reimpl/BulletData.obj",
+
+            "reverse_fn_order": false
+        },
+        {
             "name": "BulletManager",
 
             "target_path": "build/objdiff/orig/BulletManager.obj",
@@ -163,10 +171,10 @@
             "reverse_fn_order": false
         },
         {
-            "name": "IPbg3Parser",
+            "name": "IPbg4Parser",
 
-            "target_path": "build/objdiff/orig/IPbg3Parser.obj",
-            "base_path": "build/objdiff/reimpl/IPbg3Parser.obj",
+            "target_path": "build/objdiff/orig/IPbg4Parser.obj",
+            "base_path": "build/objdiff/reimpl/IPbg4Parser.obj",
 
             "reverse_fn_order": false
         },
@@ -211,18 +219,18 @@
             "reverse_fn_order": false
         },
         {
-            "name": "Pbg3Archive",
+            "name": "Pbg4Archive",
 
-            "target_path": "build/objdiff/orig/Pbg3Archive.obj",
-            "base_path": "build/objdiff/reimpl/Pbg3Archive.obj",
+            "target_path": "build/objdiff/orig/Pbg4Archive.obj",
+            "base_path": "build/objdiff/reimpl/Pbg4Archive.obj",
 
             "reverse_fn_order": false
         },
         {
-            "name": "Pbg3Parser",
+            "name": "Pbg4Parser",
 
-            "target_path": "build/objdiff/orig/Pbg3Parser.obj",
-            "base_path": "build/objdiff/reimpl/Pbg3Parser.obj",
+            "target_path": "build/objdiff/orig/Pbg4Parser.obj",
+            "base_path": "build/objdiff/reimpl/Pbg4Parser.obj",
 
             "reverse_fn_order": false
         },

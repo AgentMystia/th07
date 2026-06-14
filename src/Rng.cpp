@@ -20,6 +20,6 @@ u32 Rng::GetRandomU32(void)
 
 f32 Rng::GetRandomF32ZeroToOne(void)
 {
-    return (f32)(GetRandomU32() / (f32)0xFFFFFFFF);
+    return (i64)GetRandomU32() / 4294967296.0f;
 }
 }; // namespace th07

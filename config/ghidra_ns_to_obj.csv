@@ -1,6 +1,7 @@
 AnmManager,th07::AnmVm,th07::AnmManager
 AsciiManager,th07::AsciiManager,th07::StageMenu
 BombData,th07::BombData
+BulletData,th07::BulletData
 BulletManager,th07::BulletManager
 Chain,th07::Chain,th07::ChainElem
 CMyFont,th07::CMyFont

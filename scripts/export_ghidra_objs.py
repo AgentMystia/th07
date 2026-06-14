@@ -22,7 +22,7 @@ def main():
     parser.add_argument(
         "--import-csv", action="store_true", help="Use the mapping.csv file"
     )
-    parser.add_argument("--program", help="Program to export", default="th06_102h.exe")
+    parser.add_argument("--program", help="Program to export", default="th07.exe")
     args = parser.parse_args()
 
     os.makedirs(str(SCRIPT_PATH.parent / "build" / "objdiff" / "orig"), exist_ok=True)

@@ -33,7 +33,7 @@ def build(build_type, verbose=False, jobs=1, target=None):
     # wine if running on linux/macos. scripts/th06run.bat will setup PATH and other
     # environment variables for the MSVC toolchain to work before calling ninja.
     run_windows_program(
-        [str(SCRIPTS_DIR / "th06run.bat"), "ninja"] + ninja_args,
+        [str(SCRIPTS_DIR / "th07run.bat"), "ninja"] + ninja_args,
         cwd=str(SCRIPTS_DIR.parent),
     )
 
