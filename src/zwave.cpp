@@ -455,17 +455,11 @@ CStreamingSound::CStreamingSound(LPDIRECTSOUNDBUFFER pDSBuffer, DWORD dwDSBuffer
                                  DWORD dwNotifySize)
     : CSound(&pDSBuffer, dwDSBufferSize, 1, pWaveFile)
 {
-    m_dwLastPlayPos = 0;
-    m_dwPlayProgress = 0;
-    m_pad54 = 0;
-    m_pSoundManager = NULL;
     m_dwLastPlayPos2 = 0;
     m_dwPlayProgress2 = 0;
+    m_dwNotifySize = dwNotifySize;
     m_dwNextWriteOffset = 0;
     m_bFillNextNotificationWithSilence = FALSE;
-    m_dwNotifySize = dwNotifySize;
-    m_hNotifyEvent = NULL;
-    m_pad74 = 0;
 }
 
 // Empty destructor; the base class does the cleanup.  Corresponds to th07.exe
