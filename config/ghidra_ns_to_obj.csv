@@ -13,7 +13,7 @@ Ending,th07::Ending
 EnemyEclInstr,th07::EnemyEclInstr
 EnemyManager,th07::EnemyManager,th07::Enemy
 FileAbstraction,th07::FileAbstraction
-FileSystem,th07::FileSystem
+FileSystem,th07::FileSystem,th07::RawWriteFile
 GameErrorContext,th07::GameErrorContext
 GameManager,th07::GameManager
 GameWindow,th07::GameWindow

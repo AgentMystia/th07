@@ -60,3 +60,5 @@ th07::AnmVm::AnmVm,0x401170,0x31,__fastcall,,void,AnmVm*
 th07::AnmVm::Initialize,0x4010f0,0x7b,__fastcall,,void,AnmVm*
 th07::AnmVm::ResetInterpTimers,0x4011b0,0xfa,__fastcall,,void,AnmVm*
 D3DXMatrixIdentity,0x401000,0xad,__fastcall,,D3DXMATRIX*,D3DXMATRIX*
+th07::FileSystem::OpenPath,0x431330,0x1b1,__fastcall,,u8*,char*,i32
+th07::RawWriteFile,0x431540,0xab,__fastcall,,i32,LPCSTR,LPCVOID,DWORD
