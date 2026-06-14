@@ -79,3 +79,31 @@ th07::MidiOutput::SetFadeOut,0x00436c90,0x4e,__thiscall,,u32,MidiOutput*,u32 ms
 th07::MidiOutput::OnTimerElapsed,0x00436ce0,0x26a,__thiscall virtual,,void,MidiOutput *this
 th07::MidiOutput::ProcessMsg,0x00436f50,0x74b,__thiscall,,void,MidiOutput*,MidiTrack *track
 th07::MidiOutput::FadeOutSetVolume,0x004377f0,0xba,__thiscall,,void,MidiOutput*,i32 volume
+th07::CSoundManager::Initialize,0x0045c740,0x8d,__thiscall,,HRESULT,HWND hWnd,DWORD dwCoopLevel,DWORD dwPrimaryChannels,DWORD dwPrimaryFreq,DWORD dwPrimaryBitRate
+th07::CSoundManager::SetPrimaryBufferFormat,0x0045c7d0,0x108,__thiscall,,HRESULT,DWORD dwPrimaryChannels,DWORD dwPrimaryFreq,DWORD dwPrimaryBitRate
+th07::CSoundManager::CreateStreaming,0x0045c8e0,0x34b,__thiscall,,HRESULT,CStreamingSound **ppStreamingSound,LPSTR strWaveFileName,DWORD dwCreationFlags,GUID guid3DAlgorithm,DWORD dwNotifyCount,DWORD dwNotifySize,DWORD dwUnknown,HANDLE hNotifyEvent,WaveFormat *pwfx
+th07::CSoundManager::CreateStreamingFromMemory,0x0045cc30,0x31a,__thiscall,,HRESULT,CStreamingSound **ppStreamingSound,BYTE *pbData,ULONG ulDataSize,DWORD dwCreationFlags,GUID guid3DAlgorithm,DWORD dwNotifyCount,DWORD dwNotifySize,DWORD dwUnknown,HANDLE hNotifyEvent,WaveFormat *pwfx
+th07::CSound::CSound,0x0045cf50,0xdc,__thiscall,,void,LPDIRECTSOUNDBUFFER *apDSBuffer,DWORD dwDSBufferSize,DWORD dwNumBuffers,CWaveFile *pWaveFile
+th07::CSound::`scalar deleting destructor',0x0045d030,0x2d,__thiscall,,void,DWORD flags
+th07::CSound::~CSound,0x0045d2c0,0xf0,__thiscall,,void,
+th07::CSound::FillBufferWithSound,0x0045d3c0,0x1e3,__thiscall,,HRESULT,LPDIRECTSOUNDBUFFER pDSB,BOOL bRepeatWavIfBufferLarger
+th07::CSound::RestoreBuffer,0x0045d5b0,0xa2,__thiscall,,HRESULT,LPDIRECTSOUNDBUFFER pDSB,BOOL *pbWasRestored
+th07::CSound::GetFreeBuffer,0x0045d660,0xb5,__thiscall,,LPDIRECTSOUNDBUFFER,
+th07::CSound::GetBuffer,0x0045d720,0x34,__thiscall,,LPDIRECTSOUNDBUFFER,DWORD dwIndex
+th07::CSound::Play,0x0045d760,0xf9,__thiscall,,HRESULT,DWORD dwPriority,DWORD dwFlags
+th07::CSound::Stop,0x0045d860,0xaa,__thiscall,,HRESULT,
+th07::CSound::Reset,0x0045d9b0,0x6d,__thiscall,,HRESULT,
+th07::CStreamingSound::CStreamingSound,0x0045da20,0x5f,__thiscall,,void,LPDIRECTSOUNDBUFFER pDSBuffer,DWORD dwDSBufferSize,CWaveFile *pWaveFile,DWORD dwNotifySize
+th07::CStreamingSound::`scalar deleting destructor',0x0045da80,0x2d,__thiscall,,void,DWORD flags
+th07::CStreamingSound::~CStreamingSound,0x0045dab0,0x1b,__thiscall,,void,
+th07::CStreamingSound::UpdateFadeOut,0x0045dad0,0x8e,__thiscall,,HRESULT,
+th07::CStreamingSound::HandleWaveStreamNotification,0x0045db60,0x3e8,__thiscall,,HRESULT,BOOL bLoopedPlay
+th07::CStreamingSound::Reset,0x0045df50,0xc2,__thiscall,,HRESULT,
+th07::CWaveFile::CWaveFile,0x0045e020,0x37,__thiscall,,void,
+th07::CWaveFile::~CWaveFile,0x0045e060,0x12,__thiscall,,void,
+th07::CWaveFile::Open,0x0045e080,0xa2,__thiscall,,HRESULT,LPCSTR strFileName,WaveFormat *pwfx,DWORD dwFlags
+th07::CWaveFile::OpenFromMemory,0x0045e190,0x5b,__thiscall,,HRESULT,BYTE *pbData,ULONG ulDataSize,WaveFormat *pwfx,DWORD dwFlags,DWORD unused
+th07::CWaveFile::GetSize,0x0045e1f0,0x10,__fastcall,,DWORD,
+th07::CWaveFile::ResetFile,0x0045e210,0x147,__thiscall,,HRESULT,BOOL bLoop
+th07::CWaveFile::Read,0x0045e360,0x147,__thiscall,,HRESULT,BYTE *pBuffer,DWORD dwSizeToRead,DWORD *pdwSizeRead
+th07::CWaveFile::Close,0x0045e4b0,0x32,__thiscall,,HRESULT,

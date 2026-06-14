@@ -20,6 +20,7 @@
 
 #include "diffbuild.hpp"
 #include "inttypes.hpp"
+#include "dxutil.hpp"
 
 #include <dsound.h>
 #include <windows.h>
@@ -102,14 +103,14 @@ class CSoundManager
 //   +0x30 m_dwIsPlaying
 class CSound
 {
-  protected:
+  public:
     LPDIRECTSOUNDBUFFER *m_apDSBuffer;
     DWORD m_dwDSBufferSize;
 
   public:
     CWaveFile *m_pWaveFile;
 
-  protected:
+  public:
     DWORD m_dwNumBuffers;
 
   public:
@@ -131,7 +132,7 @@ class CSound
     // into this region (the copy starts at offset +0x34 inside this object).
     DWORD m_reserved34[6];
 
-  protected:
+  public:
     HRESULT RestoreBuffer(LPDIRECTSOUNDBUFFER pDSB, BOOL *pbWasRestored);
 
   public:
@@ -163,7 +164,7 @@ class CSound
 //   +0x74 reserved
 class CStreamingSound : public CSound
 {
-  protected:
+  public:
     DWORD m_dwLastPlayPos;
     DWORD m_dwPlayProgress;
     DWORD m_pad54;
