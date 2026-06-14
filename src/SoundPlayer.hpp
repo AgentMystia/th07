@@ -120,11 +120,11 @@ struct SoundPlayer
     {
         return *(LPDIRECTSOUND *)(&raw[0x000]);
     }
-    LPDIRECTSOUNDBUFFER *&soundBuffers(i32 idx)
+    LPDIRECTSOUNDBUFFER &soundBuffers(i32 idx)
     {
         return ((LPDIRECTSOUNDBUFFER *)&raw[0x008])[idx];
     }
-    LPDIRECTSOUNDBUFFER *&duplicateSoundBuffers(i32 idx)
+    LPDIRECTSOUNDBUFFER &duplicateSoundBuffers(i32 idx)
     {
         return ((LPDIRECTSOUNDBUFFER *)&raw[0x208])[idx];
     }

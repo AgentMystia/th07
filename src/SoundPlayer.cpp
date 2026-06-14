@@ -14,6 +14,9 @@
 
 namespace th07
 {
+i32 FloatSecondsToFrames(f32 s) { return (i32)(s * 60.0f); }
+
+
 #define BACKGROUND_MUSIC_BUFFER_SIZE 0x8000
 #define BACKGROUND_MUSIC_WAV_NUM_CHANNELS 2
 #define BACKGROUND_MUSIC_WAV_BITS_PER_SAMPLE 16
@@ -528,7 +531,7 @@ ZunResult SoundPlayer::LoadBgmFmtFile(char *path)
     void *fileData;
     fileData = FileSystem::OpenPath(path, 0);
     this->bgmFmtTable() = fileData;
-    return (this->bgmFmtTable() != NULL) - 1;
+    return (ZunResult)((this->bgmFmtTable() != NULL) - 1);
 }
 
 // BgmNameToWavFmtIndex: linear scan of bgmFmtTable[].name matching the input
