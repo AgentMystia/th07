@@ -108,13 +108,14 @@ i32 __fastcall RawWriteFile(LPCSTR fileName, LPCVOID buffer, DWORD size)
 {
     HANDLE hFile;
     DWORD bytesWritten;
+    i32 result;
 
     hFile = CreateFileA(fileName, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS,
                         FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE)
     {
         utils::DebugPrint("error : %s write error\r\n", fileName);
-        return -1;
+        result = -1;
     }
     else
     {
@@ -123,14 +124,15 @@ i32 __fastcall RawWriteFile(LPCSTR fileName, LPCVOID buffer, DWORD size)
         {
             CloseHandle(hFile);
             utils::DebugPrint("%s write ...\r\n", fileName);
-            return 0;
+            result = 0;
         }
         else
         {
             CloseHandle(hFile);
             utils::DebugPrint("error : %s write error\r\n", fileName);
-            return -2;
+            result = -2;
         }
     }
+    return result;
 }
 }; // namespace th07
