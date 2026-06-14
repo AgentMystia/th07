@@ -18,9 +18,9 @@ enum ChainCallbackResult
     CHAIN_CALLBACK_RESULT_RESTART_FROM_FIRST_JOB = (unsigned int)6,
 };
 
-typedef ChainCallbackResult (*ChainCallback)(void *);
-typedef ZunResult (*ChainAddedCallback)(void *);
-typedef ZunResult (*ChainDeletedCallback)(void *);
+typedef ChainCallbackResult (__fastcall *ChainCallback)(void *);
+typedef ZunResult (__fastcall *ChainAddedCallback)(void *);
+typedef ZunResult (__fastcall *ChainDeletedCallback)(void *);
 
 class ChainElem
 {
