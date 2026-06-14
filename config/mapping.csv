@@ -62,3 +62,20 @@ th07::AnmVm::ResetInterpTimers,0x4011b0,0xfa,__fastcall,,void,AnmVm*
 D3DXMatrixIdentity,0x401000,0xad,__fastcall,,D3DXMATRIX*,D3DXMATRIX*
 th07::FileSystem::OpenPath,0x431330,0x1b1,__fastcall,,u8*,char*,i32
 th07::RawWriteFile,0x431540,0xab,__fastcall,,i32,LPCSTR,LPCVOID,DWORD
+th07::MidiOutput::Ntohs,0x004363e0,0x1d,__fastcall static,,u16,u16 val
+th07::MidiOutput::SkipVariableLength,0x00436400,0x4d,__fastcall static,,u32,u8 **curTrackDataCursor
+th07::MidiOutput::MidiOutput,0x00436450,0x15e,__thiscall,,void,MidiOutput *this
+th07::MidiOutput::~MidiOutput,0x004365b0,0x92,__thiscall,,void,MidiOutput *this
+th07::MidiOutput::ReadFileData,0x00436650,0x6f,__thiscall,,ZunResult,MidiOutput*,u32 idx;char *path
+th07::MidiOutput::ReleaseFileData,0x004366c0,0x3b,__thiscall,,void,MidiOutput*,u32 idx
+th07::MidiOutput::ClearTracks,0x00436700,0x82,__thiscall,,void,MidiOutput *this
+th07::MidiOutput::ParseFile,0x00436790,0x222,__thiscall,,ZunResult,MidiOutput*,i32 fileIdx
+th07::MidiOutput::LoadFile,0x004369c0,0x39,__fastcall,,ZunResult,char *midiPath
+th07::MidiOutput::LoadTracks,0x00436a00,0xca,__thiscall,,void,MidiOutput *this
+th07::MidiOutput::Play,0x00436ad0,0x50,__thiscall,,ZunResult,MidiOutput *this
+th07::MidiOutput::StopPlayback,0x00436b30,0x85,__thiscall,,ZunResult,MidiOutput *this
+th07::MidiOutput::UnprepareHeader,0x00436bc0,0xc6,__thiscall,,ZunResult,MidiOutput*,LPMIDIHDR pmh
+th07::MidiOutput::SetFadeOut,0x00436c90,0x4e,__thiscall,,u32,MidiOutput*,u32 ms
+th07::MidiOutput::OnTimerElapsed,0x00436ce0,0x26a,__thiscall virtual,,void,MidiOutput *this
+th07::MidiOutput::ProcessMsg,0x00436f50,0x74b,__thiscall,,void,MidiOutput*,MidiTrack *track
+th07::MidiOutput::FadeOutSetVolume,0x004377f0,0xba,__thiscall,,void,MidiOutput*,i32 volume
