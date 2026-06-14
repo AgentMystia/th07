@@ -1,0 +1,2194 @@
+{
+  "functionCount": 9,
+  "analyses": [
+    {
+      "functionAddr": "0x42f3c5",
+      "inferredName": "GameManager::RegisterChain",
+      "callingConvention": "__cdecl (no args; uses hardcoded globals and &g_GameManager)",
+      "hasReturn": "i32 (0 on success, -1 on failure)",
+      "semantics": "GameManager::RegisterChain registers the GameManager singleton (g_GameManager @ 0x626270) into the global Chain system so its OnUpdate/OnDraw/Added/Deleted callbacks get called every frame. It populates two embedded Chain node structures inside the GameManager struct (at offsets +0x9644 for the update chain and +0x9664 for the draw chain) with the four method pointers and a back-pointer to &g_GameManager, clears the chain-active flag at +0x95e8, then calls the chain-list insertion functions FUN_0042fbd0 (update, priority=2) and FUN_0042fca0 (draw, priority=2) with the global Chain controller object at 0x626218 as the this pointer. If the update registration fails it returns -1 immediately without registering the draw chain; on full success it returns 0. This matches the th06 RegisterChain idiom: two nodes (update+draw) per manager, priority value 2, callbacks stored as plain function pointers.",
+      "fields": [
+        {
+          "offset": "+0x95e8",
+          "type": "i32/bool",
+          "semantics": "Chain-active / chain-state flag. Zeroed at start of RegisterChain (DAT_0062f858 = 0). Also written by DeletedCallback (FUN_0042f2e4 at 0x42f3ba) and read by FUN_0044b0e0 at 0x44b0fe. Acts as a registered/still-in-chain indicator.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x9644",
+          "type": "ChainNode struct (size 0x20, embedded)",
+          "semantics": "Embedded Chain node for the UPDATE chain (DAT_0062f8b4). Layout written here: +0x0 priority (short=2), +0x4 OnUpdate (FUN_0042d8d5), +0x8 AddedCallback (FUN_0042e83e), +0xc DeletedCallback (FUN_0042f2e4), +0x10 prev-ptr, +0x14 next-ptr, +0x18 unused, +0x1c thisPtr=&g_GameManager. Inserted via FUN_0042fbd0. See sub-fields below.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x9644)+0x0",
+          "type": "i16",
+          "semantics": "Chain node priority value. Set to 2 (pushed as immediate 0x2 before calling FUN_0042fbd0). Determines order in the linked list of update callbacks.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x9644)+0x4",
+          "type": "ptr (code)",
+          "semantics": "OnUpdate callback = FUN_0042d8d5 (GameManager::OnUpdate, body 0x42d8d5-0x42e1d3). Called each frame by the Chain system.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x9644)+0x8",
+          "type": "ptr (code)",
+          "semantics": "AddedCallback = FUN_0042e83e (GameManager::AddedCallback, body 0x42e83e-0x42f2e3). Invoked when the node is added to the chain.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x9644)+0xc",
+          "type": "ptr (code)",
+          "semantics": "DeletedCallback = FUN_0042f2e4 (GameManager::DeletedCallback, body 0x42f2e4-0x42f3c4). Invoked when the node is removed from the chain.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x9644)+0x10",
+          "type": "ptr",
+          "semantics": "Chain-list prev pointer (initialized/filled by FUN_0042fbd0 insertion logic at runtime).",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x9644)+0x14",
+          "type": "ptr",
+          "semantics": "Chain-list next pointer (filled by FUN_0042fbd0 insertion logic at runtime).",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x9644)+0x1c",
+          "type": "ptr",
+          "semantics": "thisPtr / param_1 stored in the chain node = &g_GameManager (0x626270). Passed to the callbacks as ECX under __fastcall. Written via MOV [0x62f8d0],EAX where EAX=&g_GameManager.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x9664",
+          "type": "ChainNode struct (size 0x20, embedded)",
+          "semantics": "Embedded Chain node for the DRAW chain (DAT_0062f8d4). Layout: +0x0 priority (short=2), +0x4 OnDraw (FUN_0042e1d4), +0x8 AddedCallback (NULL), +0xc DeletedCallback (NULL), +0x10 prev, +0x14 next, +0x1c thisPtr=&g_GameManager. Inserted via FUN_0042fca0. See sub-fields below.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x9664)+0x0",
+          "type": "i16",
+          "semantics": "Chain node priority for draw chain. Set to 2 (immediate 0x2 pushed before FUN_0042fca0).",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x9664)+0x4",
+          "type": "ptr (code)",
+          "semantics": "OnDraw callback = FUN_0042e1d4 (GameManager::OnDraw, body 0x42e1d4-0x42e1f7). Called each frame for rendering.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x9664)+0x8",
+          "type": "ptr (code)",
+          "semantics": "AddedCallback for draw node. Set to NULL (AND dword 0). Draw chain has no added callback.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x9664)+0xc",
+          "type": "ptr (code)",
+          "semantics": "DeletedCallback for draw node. Set to NULL (AND dword 0). Draw chain has no deleted callback.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x9664)+0x1c",
+          "type": "ptr",
+          "semantics": "thisPtr for draw node = &g_GameManager (0x626270). Written via MOV [0x62f8f0],EAX.",
+          "accessMode": "write"
+        }
+      ],
+      "calledFunctions": [
+        {
+          "addr": "0x0042fbd0",
+          "purpose": "Chain::InsertNode(this=0x626218 ChainController, node=&g_GameManager+0x9644, priority=2). Inserts a node into the UPDATE chain list. Maintains sorted linked list on priority, invokes the node's +0x4 (AddedCallback) after insertion. Returns the AddedCallback result (0 if no callback). This is a __thiscall with ECX=0x626218."
+        },
+        {
+          "addr": "0x0042fca0",
+          "purpose": "Chain::InsertNode variant for the DRAW chain (this=0x626218, node=&g_GameManager+0x9664, priority=2). Same linked-list-insertion algorithm as FUN_0042fbd0 but starts traversal from this+0x20 (the draw-chain head) instead of this+0x0 (update-chain head). __thiscall."
+        }
+      ],
+      "keyLogicNotes": "BODY RANGE: 0x42f3c5 - 0x42f45c (0x97 bytes, 36 instructions). CONTROL FLOW: (1) Store &g_GameManager in a stack local [EBP-4]=0x626270 (used for both nodes' thisPtr fields). (2) Fill update node at +0x9644: OnUpdate/Added/Deleted = 0x42d8d5/0x42e83e/0x42f2e4, thisPtr=&g_GameManager. (3) Zero +0x95e8 (chainActive flag). (4) Call Chain::InsertNode(0x626218, &node+0x9644, priority=2). (5) If FAILED (EAX!=0) -> return -1, SKIP draw registration. (6) Else fill draw node at +0x9664: OnDraw=0x42e1d4, Added=NULL, Deleted=NULL, thisPtr=&g_GameManager. (7) Call Chain::InsertNode(0x626218, &node+0x9664, priority=2). (8) Return 0 (XOR EAX,EAX). PRIORITY: both nodes use priority value 2 (small int pushed as immediate). EARLY-EXIT: failure on the update-node insert returns -1 WITHOUT registering the draw node and WITHOUT restoring the +0x95e8 flag (which was just zeroed). ORDERING: update chain MUST be registered before draw chain. The draw node deliberately has NULL Added/Deleted callbacks while the update node has all three callbacks populated. The Chain controller object lives at 0x626218 (separate from g_GameManager) and is passed as the this pointer in ECX for both insertion calls — this is the global Supervisor/Chain singleton, NOT the GameManager.",
+      "reimHints": "INLINE / FRAME: Small leaf-ish function (0x97 bytes); MSVC 7.0 will likely keep it as a normal non-inlined function — do NOT mark #pragma auto_inline off or force-inline; match the natural layout. STACK: Uses classic EBP frame with one 4-byte local ([EBP-4]) holding &g_GameManager. Preserve the local-variable indirection (MOV [EBP-4],0x626270 then read back via EAX) rather than using &g_GameManager directly — MSVC 7.0 emits this pattern. CALLING CONVENTION TRAP: FUN_0042fbd0/FUN_0042fca0 are __thiscall with ECX=0x626218 (the Chain controller), NOT ECX=&g_GameManager. In C++ this means `g_Chain.AddNode(&g_GameManager->updateNode, 2)`. The hardcoded 0x626218 must NOT be replaced with `this->m_chain` style — it's a distinct global. DAT writes to offsets +0x9644/+0x9664 are writes to embedded Chain members of GameManager, so the struct MUST place these as trailing members; struct sizeof will be at least 0x9684 (0x9664 + 0x20). GLOBALS: DAT_0062f858 (GameManager+0x95e8), DAT_0062f8b4 (+0x9644), DAT_0062f8d4 (+0x9664) are all within GameManager and must be expressed as struct member accesses, not free globals. Function pointers stored are th07-specific addresses (0x42d8d5/0x42e1d4/0x42e83e/0x42f2e4) — in C++ source these become method address-of expressions `GameManager::OnUpdate` etc. RETURNS i32: 0 success / -1 failure (OR EAX,-1 path). ASSEMBLY pattern: `MOV dword ptr [EBP + -0x4],0x626270` — match this literal stack-store, do not optimize."
+    },
+    {
+      "functionAddr": "0x42f45d",
+      "inferredName": "GameManager::CutChain",
+      "callingConvention": "__cdecl (leaf, no params; uses global g_GameManager directly)",
+      "hasReturn": "void",
+      "semantics": "GameManager::CutChain detaches the GameManager's two chain nodes (the update-list node at 0x62f8b4 and the draw-list node at 0x62f8d4) from the global Chain controller at 0x626218, effectively unregistering GameManager from the per-frame update/draw callbacks (the counterpart of RegisterChain at 0x42f3c5). After unlinking, it clamps the live score: if the running score exceeds 999999999 it is truncated to 999999999, then the clamped value is copied from the running-score slot into the displayed/committed score slot. This freezes/snapshots the score at chain teardown (scene change / game over / reset).",
+      "fields": [
+        {
+          "offset": "+0x8",
+          "type": "ptr<ScoreSubstruct>",
+          "semantics": "GameManager+0x8 holds a pointer to the score sub-struct. DAT_00626278 is the global holding this pointer (= g_GameManager + 0x8). Read 3x to obtain the sub-struct base, never written here.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0x0",
+          "type": "i32",
+          "semantics": "Displayed / committed score. At teardown this slot is OVERWRITTEN with the clamped running score (*(*(+0x8)+0x4)). In th06 terms this corresponds to guiScore/score display; here it is the 'shown' value.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x4",
+          "type": "i32 (unsigned compare)",
+          "semantics": "Running / live score accumulator. Compared unsigned against 0x3b9aca00 (1000000000); if >= that it is clamped to 0x3b9ac9ff (999999999). Then its value is copied into *(+0x8)+0x0. This is the 'nextScoreIncrement'-fed counter that OnUpdate increments.",
+          "accessMode": "readwrite"
+        }
+      ],
+      "calledFunctions": [
+        {
+          "addr": "0x430140",
+          "purpose": "Chain::Cut (chain node unlink). __thiscall with ECX=0x626218 (the global Chain controller / linked-list head container), param_2 = node pointer. Walks a doubly-linked list (next ptr @ node+0x14, prev ptr @ node+0x10), unlinks the node, clears its active flag @ node+0x4, and if the node owns a deletion callback (node+0xc) invokes it; if the node flag @ node+0x2 & 1 is set it frees the node. Called twice: once for the update-chain node (0x62f8b4) and once for the draw-chain node (0x62f8d4). Module: Chain."
+        }
+      ],
+      "keyLogicNotes": "MAGIC THRESHOLD: the score is clamped to exactly 999999999 (0x3b9ac9ff), NOT 1000000000. The compare is `CMP [EAX+4], 0x3b9aca00` with `JC` (unsigned below), so the clamp fires when liveScore >= 1000000000 and writes 999999999. The compare is UNSIGNED (JC, not JL) — must use unsigned comparison in reimplementation. ORDER: (1) cut update node, (2) cut draw node, (3) clamp running score, (4) commit running->displayed. The clamp-then-copy means after CutChain both score slots hold the same clamped value. NOTE: DAT_00626278 in the decompiler is the POINTER stored at GameManager+0x8 (i.e. *(g_GameManager+0x8)); DAT_00626278[1] == *(that pointer)+4. Do NOT confuse this with GameManager+0xC — there is no direct GameManager field write here besides the +0x8 pointer dereference.",
+      "reimHints": "Very small leaf (76 bytes, 0x42f45d-0x42f4a9). Uses standard PUSH EBP/MOV EBP,ESP frame only to align the two CALLs; no locals. The two Chain::Cut calls are __thiscall — ECX is loaded with 0x626218 (global Chain controller) directly via MOV, param_2 (the node addr) via PUSH. MSVC will emit these as compact MOV ECX,imm32 + CALL sequences; do NOT mark this function for inlining — it must remain a standalone function (caller 0x437c70 invokes it ~9 times for different managers). The score clamp is a straightforward if/assign; keep it as `if ((unsigned)running >= 0x3b9aca00u) running = 0x3b9ac9ff;` then `displayed = running;`. No #pragma auto_inline needed. Ensure the Chain node globals (g_UpdateChainNode @ 0x62f8b4, g_DrawChainNode @ 0x62f8d4) are declared as the same Chain-element struct used by RegisterChain so addresses match."
+    },
+    {
+      "functionAddr": "0x42d8d5",
+      "inferredName": "GameManager::OnUpdate",
+      "callingConvention": "__fastcall",
+      "hasReturn": "undefined4 (int enum: 0 = skip/idle, 1 = normal tick, 3 = return-to-chain-skip / pause-frame)",
+      "semantics": "GameManager::OnUpdate is the per-frame Chain callback (param_1 = GameManager* = 0x626270). It (1) detects a pause request by polling Supervisor input bitfields DAT_004b9e4c/DAT_004b9e54 bit3 vs the engine's pause-allowed flags (param_1+0xd, +0x93dc, +0x93dd, bit1 of +0x93d8) and on transition fires SoundQue \"Pause\", BGM fade, and Supervisor::OnPause which freezes time via timeGetTime delta accumulation; (2) captures 4 RNG seed samples into 0x575a18..0x575a24 (anti-tamper / desync detection) and resets two state globals; (3) runs the stage-result/rank state machine — increments rank counters at +0x962c gated by difficulty threshold tiers (DAT_00575ad8 in ranges <0x14/<0x1e/<0x28/<0x32 with modulo skips), can early-return 3 to skip the rest of update; (4) handles pause-watched-frame accounting at +0x93e0 with per-stage magic thresholds (0x1fa4/0x1b6c/0x120c for \"transition\" and 0x201b/0x1be3/0x1283 for \"force-quit\"), calling a Supervisor chain-swap (FUN_0044b310) + BGM fade; (5) computes a CRC/sum integrity value _DAT_0062f884 from FUN_0042d7be (a 4x rolling byte-sum that also increments *(+0x8)+0xac by *(+0x8)+0xbc) plus base stage-time, then range-checks arrays of entity IDs/positions in the score sub-struct and clamps _DAT_0062f884 to a sentinel if any are OOB; (6) updates the pause bit2 of bitfield +0x93d8; (7) calls the Supervisor vtable OnUpdate-at-0x90; (8) the main score-smoothing block: clamps score target to 999999999, computes a frame delta = (target - displayed) >> 5 clamped to [1 .. 0x8d55e], advances displayed score, updates high-score (+0xc) and copies status byte (+0x20 -> +0x10) on new high; (9) a second rank/continue-counter block keyed on DAT_009a9a80 (current enemy count) in tiers 0x80/0xe0/0x140/0x13f with modulo gating, can early-return 3; finally returns 1 for a normal tick. The function is roughly 1278 bytes (0x42d8d5..0x42e1d3) — the \"6398 byte\" figure in context is inaccurate for this exact entry.",
+      "fields": [
+        {
+          "offset": "+0x4",
+          "type": "u8 (accessed as *(DAT_00626274 + 0x25) i.e. *(0x626299) — this is the byte at GameManager+0x29, NOT a deref of +0x4)",
+          "semantics": "checked at end: 'continue/rank gate' flag — if nonzero, runs the DAT_009a9a80 (enemy-count) rank tier block and may early-return 3. Likely 'stage active / enemies present' or 'in boss/attack' flag.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "+0x8",
+          "type": "ptr<ScoreSubStruct>",
+          "semantics": "Pointer to score/rank sub-struct (DAT_00626278). Dereferenced as *(param_1+8) throughout. Sub-struct holds guiScore/score/highScore/rank-arrays.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "+0xd (DAT_0062627d)",
+          "type": "u8",
+          "semantics": "rank/continue 'force trigger' flag written 0 or 1 by the enemy-count tier block at end of function. Also implicitly the byte at +0xd that the pause-guard reads (*(char*)(param_1+0xd)==0 required to allow pause). Write in rank block, read in pause block.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "+0x93d0",
+          "type": "i32 (used as bool)",
+          "semantics": "Set to 1 when pause is triggered (alongside +0x93dc). 'Pause engaged' latched flag.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x93d8",
+          "type": "u32 (bitfield)",
+          "semantics": "Status bitfield. bit1 (>>1 & 1): 'currently paused' — if set, runs pause-frame accounting at +0x93e0 instead of normal tick. bit2 (mask 0x4): recomputed each frame as (local_1c<<2) where local_1c = (+0x93dc==0 && +0x93dd==0). Cleared via &0xfffffffb then OR'd. So bit2 = 'not pausing/paused' indicator.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "+0x93dc",
+          "type": "u8",
+          "semantics": "'Pause requested' flag — set to 1 when pause transition detected, also takes value 1 or 2 in the early-return guard. Drives the skip-update path.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "+0x93dd",
+          "type": "u8",
+          "semantics": "Companion pause flag (==0 required to allow new pause; ==!0 forces uVar2=3 skip). Likely 'pause menu fully open / paused-for-real'.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "+0x93de",
+          "type": "u8 (enum 0/1/2)",
+          "semantics": "Stage/difficulty selector (0=easy,1=normal,2=hard?) — indexes which magic threshold pair (0x1fa4/0x201b, 0x1b6c/0x1be3, 0x120c/0x1283) is used against +0x93e0 pause-watched-frame counter.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "+0x93e0",
+          "type": "i32",
+          "semantics": "Pause-watched-frame counter — incremented each paused frame. On hitting first threshold -> trigger Supervisor chain-swap + BGM fade. On exceeding second threshold -> force DAT_00575aa8=1 and return 3 (likely aborts pause / returns to menu).",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "+0x95e8",
+          "type": "i32",
+          "semantics": "Per-frame-while-active counter — incremented once per normal (non-paused, non-skip) update tick. General 'frames since stage start' counter.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "+0x962c",
+          "type": "u32 (used as i32)",
+          "semantics": "Rank-up counter — incremented in two places (the DAT_00575ad8 tier block at top, and the DAT_009a9a80 enemy-count tier block at bottom). Reset to 0 when enemy count <0x80. Used modulo 2/3/4/5/6 for skip gating. Drives difficulty/rank progression.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0x0 (a.k.a. **(int**)(param_1+8))",
+          "type": "i32*",
+          "semantics": "Displayed/gui score (guiScore). Incremented each frame by +0x8 delta; clamped to <= target. NOTE decompiler shows it as a double-deref (**ptr) so +0x0 of the sub-struct is itself a pointer to the i32, OR Ghidra mis-typed a direct field. Treat as i32 displayed score (double-indirection may be an artifact).",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0x4",
+          "type": "u32 (score, clamp 999999999)",
+          "semantics": "Target score (score). Clamped to <=999999999. When < guiScore, clamped up to guiScore. Drives the smoothing.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0x8",
+          "type": "u32",
+          "semantics": "Per-frame score increment (delta). Computed as (target-displayed)>>5 clamped to [1 .. 0x8d55e(577118)]. Reset to 0 when displayed reaches target. Raised to computed delta if current < computed.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0xc",
+          "type": "u32",
+          "semantics": "High score — updated to guiScore when guiScore exceeds it.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0x10",
+          "type": "u8",
+          "semantics": "Status/state byte — copied from +0x20 when a new high score is recorded.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x20",
+          "type": "u8",
+          "semantics": "Source status byte — copied into +0x10 on new high score.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0x34 (array[7] i32, stride 4)",
+          "type": "array[7 elem] i32",
+          "semantics": "7 entity/ID slots — each range-checked against [0x198f, 0x1a02f]. If any out of range, _DAT_0062f884 set to sentinel _DAT_00498c80. Likely player/boss bullet-IDs or sprite IDs.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0x54 (array[2] f32)",
+          "type": "array[2 elem] f32",
+          "semantics": "2 floats range-checked [_DAT_00498bac (~6500), _DAT_00498c7c (~67640)]. Likely positions. OOB -> sentinel.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0x60 (array[2] f32)",
+          "type": "array[2 elem] f32",
+          "semantics": "2 floats range-checked (same bounds). Likely positions/velocity.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0x70 (array[3] f32)",
+          "type": "array[3 elem] f32",
+          "semantics": "3 floats range-checked (same bounds). Likely RGB or position.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0x80 (array[2] f32)",
+          "type": "array[2 elem] f32",
+          "semantics": "2 floats range-checked (same bounds).",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0x8c (array[8] i32)",
+          "type": "array[8 elem] i32",
+          "semantics": "8 ints range-checked [0x198f, 0x1a02f] (same ID range as +0x34 array).",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0xac",
+          "type": "i32",
+          "semantics": "CRC/integrity accumulator — set = *(+0x8)+0x3c at start of score block, then incremented by *(+0x8)+0xbc once per byte in FUN_0042d7be (4 iterations). Anti-cheat sum.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0xb4 (array[5] i32)",
+          "type": "array[5 elem] i32",
+          "semantics": "5 ints range-checked [0x198f, 0x1a02f] (same ID range).",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0xbc",
+          "type": "i32",
+          "semantics": "Per-byte CRC step added to +0xac in FUN_0042d7be. Read alongside +0xac.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0x3c",
+          "type": "i32",
+          "semantics": "Seed/base value copied into +0xac each frame (the CRC accumulator is re-seeded from here).",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0x98",
+          "type": "i32 (added to float)",
+          "semantics": "Stage-time base (frames or seconds) — added to CRC-of-inputs (FUN_0042d7be result) to produce _DAT_0062f884 (the frame's integrity/timer value).",
+          "accessMode": "read"
+        }
+      ],
+      "calledFunctions": [
+        {
+          "addr": "0x0044d2f0",
+          "purpose": "SoundPlayer/BGM queue: SoundQueAdd — pushes (channel=6, sub=0, name=\"Pause\") onto Supervisor's sound queue at +0x73c (30-slot array, stride 0x10c). Module: Supervisor."
+        },
+        {
+          "addr": "0x0044c930",
+          "purpose": "Supervisor midi/BGM control — registers track id 0x25 (param_2) into a 5-slot array at +0x620 with a duration from table &DAT_0049ea8e. Used here to start the pause BGM fade. Module: Supervisor."
+        },
+        {
+          "addr": "0x0043a3f4",
+          "purpose": "Supervisor::OnPause — accumulates real time (timeGetTime delta) into play-time globals DAT_0062f4fc/500/504/508 (h/m/s/ms) and stores last timeGetTime at +0x194. Freezes wall-clock accounting. Module: Supervisor."
+        },
+        {
+          "addr": "0x0042ad66",
+          "purpose": "Local helper: returns 0 if param_1+8 (score sub-struct ptr) is null OR its field +0x1fbac is <0 and != -2; else 1. A 'sub-struct valid / not in error state' guard. Module: GameManager-local."
+        },
+        {
+          "addr": "0x0042d7be",
+          "purpose": "GameManager-local CRC builder: calls FUN_0042d75a four times to produce a 4x rolling byte-sum (anti-tamper over input/state buffers). Also bumps *(+0x8)+0xac by *(+0x8)+0xbc inside FUN_0042d75a. Returns summed int."
+        },
+        {
+          "addr": "0x0048b8a0",
+          "purpose": "RNG/floor helper (FPU rounding, ulonglong return). Called 4x to seed the anti-tamper sample slots DAT_00575a18..0x575a24. Likely Rng.Get() or a float->int round thunk. Module: Rng/math."
+        },
+        {
+          "addr": "0x0044b310",
+          "purpose": "Supervisor chain-effect builder — operator_new(0x30), builds a Chain task with switch on param_1 (0..4) wiring OnUpdate/OnDraw callbacks, registers via FUN_0042fbd0 (priority 0xf) and FUN_0042fca0 (priority 0x11). Used here with (0,0,0) to launch the stage-transition/pause-exit effect chain. Module: Supervisor/Chain."
+        },
+        {
+          "addr": "0x0043a0d6",
+          "purpose": "Supervisor BGM fade-out by float param_2=_DAT_00498a8c (3.0f): if state==1 schedules a SoundQue fade via FUN_0044d2f0(5,...); if state==2 calls FUN_00436c90. Module: Supervisor."
+        },
+        {
+          "addr": "DAT_00575958 vtable +0x90",
+          "purpose": "Indirect call through Supervisor singleton vtable slot 0x90 (OnUpdate) with args (0,0,2,DAT_01347fe4,1.0f,0). Drives the Supervisor's own per-frame update from GameManager. Module: Supervisor."
+        }
+      ],
+      "keyLogicNotes": "KEY NON-OBVIOUS LOGIC TO PRESERVE EXACTLY:\n\n1. PAUSE-DETECTION GUARD (top of fn, compound && chain): pause fires ONLY if ALL hold: (a) +0x93dd==0, (b) +0x93dc==0, (c) ((+0x93d8 >> 1) & 1)==0 (bit1 clear), (d) +0xd==0, (e) (DAT_004b9e4c & 8)!=0, (f) (DAT_004b9e4c & 8) != (DAT_004b9e54 & 8). On success: set +0x93dc=1, copy 4 float constants into the pause-effect globals _DAT_0062f864/868/86c/870 (=16.0,16.0,384.0,448.0 from _DAT_00498a84/80/6c/68), set +0x93d0=1, then conditional SoundQue: if (DAT_0062f85c != 6 || DAT_0049fbf0 > 299) call FUN_0044d2f0(6,0,\\\"Pause\\\"). Always FUN_0044c930(0x25,0) then FUN_0043a3f4().\n\n2. ANTI-TAMPER RNG SEEDING: 4 sequential calls to FUN_0048b8a0() stored to DAT_00575a18/1c/20/24, then _DAT_00575a28=0 and _DAT_00575a2c=0x3f800000 (1.0f), and *(DAT_004b9e44 + 0x2e4d4)=0xff.\n\n3. RANK BLOCK #1 (early): gated by (DAT_0062f648>>3 & 1)!=0 AND DAT_0062f64f==1 AND FUN_0042ad66()==0. Increments +0x962c. Then a 4-tier OR chain over DAT_00575ad8 ranges, EACH tier is (range_low < DAT_00575ad8) && (DAT_00575ad8 < range_high) && (+0x962c % MOD !=/== 0). Tiers: (a) DAT_00575ad8<0x14 && +0x962c%3!=0; (b) 0x13<DAT_00575ad8<0x1e && %2!=0; (c) 0x1d<DAT_00575ad8<0x28 && %3==0; (d) 0x27<DAT_00575ad8<0x32 && %6==0. If ANY true -> return 3.\n\n4. PAUSE-FRAME ACCOUNTING (when bit1 of +0x93d8 set): if DAT_004b9e4c!=0 && !=DAT_004b9e54 then DAT_00575aa8=1. Increment +0x93e0. Per +0x93de value (0/1/2), first thresholds 0x1fa4/0x1b6c/0x120c -> FUN_0044b310(0,0,0)+FUN_0043a0d6(_DAT_00498a8c=3.0f). Second thresholds >0x201b/0x1be3/0x1283 -> DAT_00575aa8=1; return 3.\n\n5. BITFIELD UPDATE: bit2 of +0x93d8 = (+0x93dc==0 && +0x93dd==0) ? 1 : 0. Implemented as: *(u32*)(+0x93d8) = (*(u32*)(+0x93d8) & 0xfffffffb) | (local_1c << 2).\n\n6. INTEGRITY/CRC: *(+0x8)+0xac = *(+0x8)+0x3c; iVar1 = FUN_0042d7be(); _DAT_0062f884 = (float)iVar1 + (float)*((i32*)(+0x8)+0x98). Then SIX range-check loops (7/2/2/3/2/8/5 elements over +0x34/+0x60/+0x54/+0x70/+0x80/+0x8c/+0xb4) each clamping _DAT_0062f884 to _DAT_00498c80 if OOB. Order matters: the loops are interleaved with the bitfield update (loop over +0x54/+0x60 happens BEFORE the bitfield write; +0x8c loop AFTER). IDs valid range [0x198f, 0x1a02f]; floats valid [_DAT_00498bac=0x45cc7800≈6500.0, _DAT_00498c7c=0x47d01780≈67640.0].\n\n7. SCORE SMOOTHING (the central block, only if NOT in pause/skip i.e. +0x93dc not in {1,2} and +0x93dd==0): \n   - clamp target *(+0x8)+0x4 to 999999999.\n   - if target != displayed **(+int**)(+0x8): \n     - if target < displayed: target = displayed.\n     - local_10 = (target - displayed) >> 5; clamp to [.., 0x8d55e=577118]; if local_10==0 set =1.\n     - if *(+0x8)+0x8 (delta) < local_10: delta = local_10.\n     - if target < displayed+delta: delta = target - displayed.\n     - displayed += delta.\n     - if displayed >= target: delta=0; displayed=target.\n     - if high (*(+0x8)+0xc) < displayed: high=displayed; *(+0x8)+0x10 = *(+0x8)+0x20.\n\n8. RANK BLOCK #2 (bottom, only in the normal-tick branch): if *(g_GameManager+0x29) != 0: set DAT_0062627d (+0xd)=0; increment +0x962c; 3-tier OR over DAT_009a9a80: (a) 0x13f<DAT_009a9a80 && %3==0; (b) 0xdf<DAT_009a9a80<0x140 && %4==0; (c) 0x7f<DAT_009a9a80<0xe0 && %5==0. If any -> DAT_0062627d=1; return 3. Else if DAT_009a9a80<0x80: +0x962c = 0.\n\n9. RETURN VALUES: 3 = skip/pause-frame/early-abort (multiple paths); 1 = normal tick; (the very first early-return path also yields 3). The top rank block returns 3 BEFORE the main body; the pause-accounting block returns 3; the score-smoothing path returns 1.\n\n10. MAGIC CONSTANTS to hardcode: 999999999 (score clamp), 0x8d55e=577118 (delta clamp), 0x1fa4=8100 / 0x201b=8219, 0x1b6c=7020 / 0x1be3=7139, 0x120c=4620 / 0x1283=4739 (pause thresholds per difficulty +0x93de), 0x198f=6543 / 0x1a02f=106799 (entity-ID valid range), 0x14/0x1e/0x28/0x32 (DAT_00575ad8 rank tiers), 0x80/0xe0/0x140/0x13f/0xdf/0x7f (DAT_009a9a80 enemy-count tiers), 0x3f800000 (1.0f into _DAT_00575a2c), 0xff byte write, the 4 pause-init floats 16.0/16.0/384.0/448.0.",
+      "reimHints": "REIMPLEMENTATION HINTS:\n\n- Calling convention: __fastcall (ECX = GameManager* param_1). Single arg. Return is int (enum-like: 1 normal, 3 skip). Use `int __fastcall GameManager::OnUpdate()` since param_1 is implicitly `this`.\n\n- The function is SMALLER than context claimed: body 0x42d8d5..0x42e1d3 = 0x4FE = 1278 bytes. The \"6398 bytes\" figure is wrong for 0x42d8d5; do NOT pad/reconstruct phantom code. Match this exact span.\n\n- CRC helper FUN_0042d7be/FUN_0042d75a must be kept as SEPARATE non-inlined functions OR inlined identically — Ghidra shows them as calls, so for byte-exact objdiff keep them out-of-line (no #pragma inline). FUN_0042d75a mutates *(+0x8)+0xac as a side effect inside its loop — preserve that side effect exactly (the +0xbc increment per byte).\n\n- FUN_0048b8a0 is an FPU-rounding thunk returning ulonglong but used as 4 separate RNG samples; in C++ model it as `Rng::Get()` or a dedicated rounding helper. Its decompiler output is messy (x87 ROUND) — likely just `(uint64)floor(st0)` with half-adjust; keep as a standalone helper.\n\n- The vtable indirect `(**(code**)(*DAT_00575958 + 0x90))(...)` is Supervisor::OnUpdate — model Supervisor as a class with a vtable; slot 0x90 (index 0x24/4=0x90>>2=36) is OnUpdate. Args (0,0,2,DAT_01347fe4,1.0f,0) — DAT_01347fe4 is likely a render-target/color arg.\n\n- Score sub-struct: define as nested struct (e.g. `struct ScoreSub { i32 displayed; u32 target; u32 delta; u32 high; u8 status10; ...; u8 status20; i32 ids7[7]; f32 pos54[2]; f32 pos60[2]; f32 pos70[3]; f32 pos80[2]; i32 ids8[8]; i32 crc_ac; i32 ids5[5]; i32 crcStep_bc; ...; }`). NOTE: Ghidra shows `**(int**)` double-indirection on +0x0 — VERIFY whether +0x0 is a pointer-to-int or a direct int; the smoothing code reads/writes it as if both. Most likely +0x0 is a direct i32 and Ghidra over-deref'd due to the `*(int*)(*(int*)(param_1+8)+...)` pattern; use `int guiScore;` directly.\n\n- Bitfield +0x93d8: model as u32 with documented bit semantics (bit1=paused, bit2=not-pausing). Do NOT use C++ bitfield struct (layout differs) — use explicit masks &0xfffffffb | (x<<2) and >>1&1.\n\n- All DAT_00498xxx float constants are in .rdata; reference them by value, not address, in C++ (e.g. `constexpr float kScoreClamp = 999999999.0f;` — but note 999999999 is used as uint, not float). Keep 0x8d55e etc. as hex or named constexpr.\n\n- Stack frame: only 3 locals (local_1c int, local_10 uint, local_c uint loop counter). Trivial frame; no alloca; no #pragma needs.\n\n- Watch the INTERLEAVING of the integrity range-check loops around the bitfield write: the +0x54/+0x60 loops run BEFORE `*(+0x93d8) = ... & 0xfffffffb | ...`, and the +0x8c loop runs AFTER. The +0x70/+0x80/+0xb4 loops run inside the else-branch (normal tick). Reproduce statement order verbatim for byte-exact codegen.\n\n- Multiple `return 3` early-exits and one `return 1` — structure as early returns, NOT a single tail value, to match MSVC codegen."
+    },
+    {
+      "functionAddr": "0x42e1d4",
+      "inferredName": "GameManager::OnDraw",
+      "callingConvention": "__fastcall",
+      "hasReturn": "int (always returns 1)",
+      "semantics": "This is GameManager's OnDraw chain callback (registered via RegisterChain at 0x42f3c5; its address is referenced as a DATA pointer at 0x42f428 inside the registration). It is a near-trivial stub: it reads the game-pause/menu state flag byte at GameManager+0x93dc, and if that flag is currently nonzero it upgrades it from 1 to 2 (marking that the draw callback has run since OnUpdate set the flag). The function always returns 1. It performs no actual drawing; the heavy lifting (score smoothing, bullet bounds clamping, menu transition timing) all lives in OnUpdate at 0x42d8d5, which cross-checks (param_1+0x93dc)==0 or 1 vs the +0x93dd byte and the +0x93d8 bitfield bit1/bit2 to drive pause/menu transitions.",
+      "fields": [
+        {
+          "offset": "+0x93dc",
+          "type": "u8 (char)",
+          "semantics": "Pause/menu screen state flag. Values observed across OnUpdate(0x42d8d5) and OnDraw(this fn): 0 = idle/normal play, 1 = OnUpdate just initiated a pause/menu transition (set when input flag DAT_004b9e4c bit3 toggles and char at +0xd is 0 and bitfield +0x93d8 bit1==0), 2 = OnDraw has run while a transition was pending (this fn writes 2 only when current value != 0). OnUpdate gates the big state machine on (0x93dc==0 && 0x93dd==0). Read here to test, written to 2 only if nonzero.",
+          "accessMode": "readwrite"
+        }
+      ],
+      "calledFunctions": [],
+      "keyLogicNotes": "Trivial 23-byte body (0x42e1d4-0x42e1f7). The ONLY logic: `u8 v = *(u8*)(this+0x93dc); if (v != 0) *(u8*)(this+0x93dc) = 2; return 1;`. The write-2-on-nonzero is a \"draw-tick acknowledgement\" of the pause transition that OnUpdate initiated by writing 1 at 0x93dc. The TEST/JZ path (byte==0) skips the store entirely and falls straight to `xor eax,eax / inc eax / leave / ret` (returns 1). Cross-ref confirms OnDraw is registered as a DATA pointer at 0x42f428 inside RegisterChain (0x42f3c5), matching the th07 Chain callback table layout. No thresholds, no arrays, no bitfield math inside this function itself (those live in OnUpdate). The 0x1fa4/0x1b6c/0x120c/0x201b/0x1be3/0x1283 frame-count thresholds, 999999999 score cap, and 0x8d55e (577759) score-delta clamp are all in OnUpdate (0x42d8d5), NOT here.",
+      "reimHints": "Define as `static int __fastcall OnDraw(GameManager* thisptr)` (ECX = this). MSVC 7.0 emits a standard frame: PUSH EBP / MOV EBP,ESP / PUSH ECX / MOV [EBP-4],ECX then reads ECX back into EAX twice. To reproduce byte-exact, write it as a non-inline function with frame pointer (do NOT use /O1-style tail optimization). No #pragma auto_inline needed (it's tiny but already standalone with its own RET at 0x42f7). Use byte access (u8/char) for +0x93dc, NOT int. The boolean `if (*(char*)(this+0x93dc) != '\\\\0')` must remain a single byte test; expanding to int compare would break objdiff. Return type is undefined4 in Ghidra but semantically int (1)."
+    },
+    {
+      "functionAddr": "0x42e83e",
+      "inferredName": "GameManager::AddedCallback",
+      "callingConvention": "__fastcall (ECX = GameManager* param_1)",
+      "hasReturn": "undefined4 (i32: 0 on success, 0xffffffff on failure)",
+      "semantics": "GameManager chain \"AddedCallback\" that initializes/loads a new game stage. It allocates (or reloads in stage-replay mode DAT_00575aa8==3) the player sub-object (param_1+0x4, 0x38 bytes) and score/stats sub-object (param_1+0x8, 0xC8 bytes), seeds the score struct with random item/effect values (FUN_0042e3da), sets difficulty-dependent extend/bomb/graze thresholds (the big switch on param_1+0x10 difficulty), initializes AnmVm managers and registers ~7 game subsystem chains (effect, enemy, bullet, item, etc. via FUN_004074c0/FUN_004276a0/FUN_00422f40/FUN_0041d0a0/FUN_0042d136), loads stage BGM (\"bgm/th07_13b.mid\" for stage 6 extra, else the stage bank), drains the sound preload queue (FUN_0044c9c0 loop), and on any subsystem init failure logs an error string and returns -1. Success path returns 0 with chain fully ready.",
+      "fields": [
+        {
+          "offset": "+0x0",
+          "type": "ptr",
+          "semantics": "param_1[0]. Temporary scratch malloc buffer (freed after copying 0x38 bytes of init data from DAT_00575a68). In non-replay path, malloc'd with Rng%0xffff+0x10 size, then freed.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "+0x4",
+          "type": "ptr",
+          "semantics": "param_1[1] == DAT_00626274. Pointer to player/character sub-object (operator_new(0x38) = 56 bytes). In replay-mode branch reused without reallocation.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "+0x8",
+          "type": "ptr",
+          "semantics": "param_1[2] == DAT_00626278. Pointer to score/stats sub-object (operator_new(200) = 0xC8 bytes). The main game-scoring substructure. Many callees reference DAT_00626278 directly.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "+0xc",
+          "type": "i32",
+          "semantics": "param_1[3]. Generic flag/state, written 0 at success-tail.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x10",
+          "type": "i32",
+          "semantics": "param_1[4]. Difficulty/stage selector index (read in switch: 0-5 normal branch, also used to compute 1<<param_1[4] at +0x14, and compared <4 for +0x30 init 50 vs 200). Acts like a difficulty rank.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "+0x14",
+          "type": "u32",
+          "semantics": "param_1[5]. Written = 1 << (param_1[4] & 0x1f). Difficulty bitmask derived from +0x10.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x93d4",
+          "type": "u8",
+          "semantics": "param_1[0x24f5]. Flag byte, cleared to 0 during init.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x93d5",
+          "type": "u8",
+          "semantics": "((char*)param_1+0x93d5). Read as multiplier for computing +0x93d7.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "+0x93d6",
+          "type": "u8",
+          "semantics": "((char*)param_1+0x93d6). Read addend for computing +0x93d7.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "+0x93d7",
+          "type": "u8",
+          "semantics": "((char*)param_1+0x93d7). Written = +0x93d6 + 2 * +0x93d5 (likely a packed size/stride calc).",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x93d8",
+          "type": "u32",
+          "semantics": "param_1[0x24f6]. Bitfield flags. Bit0 = ? (tested; gates bonus-extend calls), bit2 = set on success (|=4), bit4 = cleared on success (&=~0x10). Also bit0 read to gate special score threshold assignment.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "+0x93dc",
+          "type": "u8",
+          "semantics": "(param_1+0x24f7 byte). Flag byte cleared to 0.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x93dd",
+          "type": "u8",
+          "semantics": "((char*)param_1+0x93dd). Cleared to 0 right before final subsystem chain registration.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x95e4",
+          "type": "u16",
+          "semantics": "param_1[0x2579] (low 2 bytes). Written from DAT_0049fe20 (a u16 random-seed word).",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x95ec",
+          "type": "i32",
+          "semantics": "param_1[0x257b]. Stage play counter. Incremented by 1 at tail (param_1[0x257b] += 1). Used to pick dummy-string index [0x257b] and compared !=1 for +0x7c seed. Also used to write extend/bomb records (value-1).",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "+0x9614",
+          "type": "f32",
+          "semantics": "param_1[0x2585+?] via FUN_004012b0 (OnUpdate helper writes here as *(param_1+0x9614)). Float derived from randSum+seed. Not directly in this fn but populated by callee FUN_004012b0.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x9618",
+          "type": "i32",
+          "semantics": "param_1[0x2586]. Primary extend/high-score threshold. Set per-difficulty: base +0x88 + 200000/250000/300000/400000 etc. For 'extra' (DAT_0062f648&1) branch additionally boosted by +50000/+100000/+150000/+200000 based on param_1[0x257b].",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x961c",
+          "type": "i32",
+          "semantics": "param_1[0x2587]. Secondary extend threshold. Initialized = +0x88 (initial score). In non-practice mode stages 4-5 set to +0x88+200000/300000. In extra-flags mode mirrors +0x9618 after boosting.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x9620",
+          "type": "i32",
+          "semantics": "param_1[0x2588]. Mirror of score-struct +0x88 (initial score) - written = *(param_1[2]+0x88) twice.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x9628",
+          "type": "i32",
+          "semantics": "param_1[0x258a]. Counter cleared to 0 during init.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x9640",
+          "type": "i32",
+          "semantics": "param_1[0x2590]. Counter cleared to 0 at tail.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x8454+DAT_00626280+DAT_0062f647*0x1c",
+          "type": "u8",
+          "semantics": "((char*)param_1 + 0x8454 + stageIndex*0x1c + charaIndex*0x1c). Per-stage/chara 'extend lives granted' record. Set to max(prev, playCount-1) when +0x20 of score struct ==0.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "+0x845a+DAT_00626280+DAT_0062f647*0x1c",
+          "type": "u8",
+          "semantics": "((char*)param_1 + 0x845a + ...). Per-stage/chara record (bomb-related). Set to max(prev, playCount-1).",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x4)+0x1c",
+          "type": "u8",
+          "semantics": "Player sub-object byte. Set to 2 if DAT_00626280>3 (stage>3), set to 8 if DAT_0062f648&1. Indicates player count/mode flag.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x4)+0x25",
+          "type": "u8",
+          "semantics": "Player sub-object byte. Cleared to 0 when difficulty(+0x10)>=4 OR when DAT_0062f648>>3&1. When ==0 in non-practice, triggers 4x (or 6x/8x) calls to FUN_0042e81b (extend/life increment).",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0x0",
+          "type": "i32",
+          "semantics": "Score struct base field. In replay-mode set to value at +0x4. Otherwise cleared to 0.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x4",
+          "type": "i32",
+          "semantics": "Score field. Cleared to 0 at init tail.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x8",
+          "type": "i32",
+          "semantics": "Field cleared to 0 (replay-mode explicitly 0).",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0xc",
+          "type": "i32",
+          "semantics": "Initialized to 100000 (0x186a0). Likely starting-graze/bonus base.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x10",
+          "type": "u8",
+          "semantics": "Flag byte. In practice-mode (DAT_0062f648&1) set to 0 by FUN_0042e634.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x14",
+          "type": "i32",
+          "semantics": "Field cleared to 0 at tail.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x18",
+          "type": "i32",
+          "semantics": "Field cleared to 0.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x1c",
+          "type": "i32",
+          "semantics": "Field cleared to 0.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x20",
+          "type": "u8",
+          "semantics": "Flag byte. Cleared to 0; read to gate extend-record update (must be 0).",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0x24",
+          "type": "i32",
+          "semantics": "Field cleared to 0 at tail.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x28",
+          "type": "i32",
+          "semantics": "Field cleared to 0.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x2c",
+          "type": "i32",
+          "semantics": "Field cleared to 0.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x30",
+          "type": "i32",
+          "semantics": "Initialized to 50 (0x32) when difficulty(+0x10)<4, else 200 (0xc8). Likely point-value/bonus base.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x34",
+          "type": "array[7 elem i32]",
+          "semantics": "Filled by FUN_0042e3da: 7 dwords each = Rng%100000 + 0x198f (6543). Item/drop seeds.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x50",
+          "type": "i32",
+          "semantics": "Field cleared to 0.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x54",
+          "type": "array[2 elem f32]",
+          "semantics": "Filled by FUN_0042e3da: 2 floats = RngF32*_DAT_00498bb0 + _DAT_00498bac.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x5c",
+          "type": "f32",
+          "semantics": "Set (when DAT_0062f648>>3&1==0) = (float)(byte)playerSub+0x1c. Player-count as float (sound/Anm pitch?).",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x60",
+          "type": "array[2 elem f32]",
+          "semantics": "Filled by FUN_0042e3da: 2 random floats.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x6c",
+          "type": "i32",
+          "semantics": "Field cleared to 0.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x70",
+          "type": "array[3 elem f32]",
+          "semantics": "Filled by FUN_0042e3da: 3 random floats.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x7c",
+          "type": "i32",
+          "semantics": "Cleared to 0 during init; then set to _DAT_00498b24 when chain-bit-test (param_1[0x24f6]&1 && playCount!=1).",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0x80",
+          "type": "array[2 elem f32]",
+          "semantics": "Filled by FUN_0042e3da: 2 random floats.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x88",
+          "type": "i32",
+          "semantics": "Main seed/score base. Set by FUN_0042e3da = Rng%100000 + 0x198f (6543). Used as the additive base for all extend thresholds at +0x9618/+0x961c.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0x8c",
+          "type": "array[8 elem i32]",
+          "semantics": "Filled by FUN_0042e3da: 8 dwords each = Rng%100000+0x198f.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0xac",
+          "type": "i32",
+          "semantics": "Copy of +0x3c value (set in FUN_0042e3da and FUN_004012b0).",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0xb0",
+          "type": "i32",
+          "semantics": "randSum from FUN_0042d7be (sum of 4 Rng draws). Stored also as float into g_GameManager+0x9614 by callee.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0xb4",
+          "type": "array[5 elem i32]",
+          "semantics": "Filled by FUN_0042e3da: 5 dwords each = Rng%100000+0x198f.",
+          "accessMode": "write"
+        }
+      ],
+      "calledFunctions": [
+        {
+          "addr": "0x004315f0",
+          "purpose": "Error logger: sprintf into a 0x2000-byte log buffer (param_1=&DAT_00624210 logger obj). CRT/string module."
+        },
+        {
+          "addr": "0x0042e1f8",
+          "purpose": "Performs DirectX device Reset/restore via IDirect3DDevice8 vtable @ DAT_00575958 (likely DeviceLost recovery). Graphics/Supervisor."
+        },
+        {
+          "addr": "0x0042e3da",
+          "purpose": "Score-struct randomizer: fills +0x34/+0x8c/+0xb4 dword arrays and +0x54/+0x60/+0x70/+0x80 float arrays in DAT_00626278 with Rng values; sets +0x88/+0xac/+0xb0."
+        },
+        {
+          "addr": "0x0042d657",
+          "purpose": "Initializes 8 dwords at GameManager+0x95f4..0x9610 from constant pool DAT_00498xxx (likely Anm/sprite color setup)."
+        },
+        {
+          "addr": "0x0042e634",
+          "purpose": "Stage/chapter data init: clears 0x1086 dwords at DAT_00626288, fills 0x8d chapter records (tag 'PACK' 0x4b544143), loads score.dat via FUN_00444c20, applies chapter pointer at +0xc. Stage/BGM module."
+        },
+        {
+          "addr": "0x0042e38c",
+          "purpose": "Loads 3 dwords into GameManager+0x9634/+0x9638/+0x963c from DAT_0049f5d0 table indexed by stage DAT_00626280. Color/tone per stage."
+        },
+        {
+          "addr": "0x0042e81b",
+          "purpose": "if(*p<999999) (*p)++; — increments an extend/life counter capped at 999999. Called 4-8 times for initial bonus life grants."
+        },
+        {
+          "addr": "0x0042d7be",
+          "purpose": "Returns sum of 4 FUN_0042d75a(stage, chara) random draws (randSum used for +0xb0)."
+        },
+        {
+          "addr": "0x004012b0",
+          "purpose": "Re-randomize score-struct +0x3c/+0x98/+0xac/+0xb0 and float +0x9614. Called multiple times after Anm/sound setup."
+        },
+        {
+          "addr": "0x004429d0",
+          "purpose": "Clears 0x2df9e dwords at DAT_004bdad8, sets DAT_004bfee1, allocates 3 Chain callback nodes and registers chain (prio 8/6/8). Effect/Bullet chain module init."
+        },
+        {
+          "addr": "0x004074c0",
+          "purpose": "Clears 0x14ad dwords at DAT_01347b00, registers 3 chain callbacks (priorities 7/3/4). Item chain init."
+        },
+        {
+          "addr": "0x004276a0",
+          "purpose": "Registers 2 chain callbacks (prio 0xc/10) at DAT_009a9abc. Player/UI chain init."
+        },
+        {
+          "addr": "0x00422f40",
+          "purpose": "Registers 3 chain callbacks (prio 10/5/7) at DAT_012fe210. Enemy chain init."
+        },
+        {
+          "addr": "0x0040e420",
+          "purpose": "Loads an ECL/script file via FUN_00431330 indexed by param (dummy strings PTR_s_dummy_0049f560[playCount]). Stage script loader."
+        },
+        {
+          "addr": "0x0041d0a0",
+          "purpose": "Registers 2 chain callbacks (prio 0xb/9) at DAT_013478f8. Boss/Supervisor chain init."
+        },
+        {
+          "addr": "0x0042d136",
+          "purpose": "Allocates 0x20a30-byte supervisor struct (if not replay-mode), registers 2 chain callbacks (prio 0xd/0xc). Main game Supervisor init."
+        },
+        {
+          "addr": "0x00443aa0",
+          "purpose": "Creates/player-selects MenuController @ DAT_004b9e48 (operator_new 0xd8) with prio-16/5/0x11 chain callbacks. Only in practice-mode (DAT_0062f648>>3&1)."
+        },
+        {
+          "addr": "0x00439dd0",
+          "purpose": "Sound BGM loader: takes (channel, ptr) and if midi-mode plays via MIDI, if wav-mode rewrites .mid to .wav and FUN_0044d2f0. Sound module."
+        },
+        {
+          "addr": "0x00439ec1",
+          "purpose": "Sound stop/reset for given channel. Sound module."
+        },
+        {
+          "addr": "0x0043a05f",
+          "purpose": "Sound fade-out-all. Used for stage 6 extra BGM transition. Sound module."
+        },
+        {
+          "addr": "0x0044c9c0",
+          "purpose": "Sound preload queue pump: returns nonzero while queue (param_1+0x73c) has pending entries; looped via do/while. Sound module."
+        },
+        {
+          "addr": "0x004390a5",
+          "purpose": "Framerate/fps counter update (QueryPerformanceCounter / timeGetTime). Called once at init."
+        },
+        {
+          "addr": "0x00401a00",
+          "purpose": "GameManager large zero-init: clears 0x93 dwords at offset 0x24c, 0x93 at 0x0, 0x1800 at 0x14bc, 0x653 at 0x74e8, 0x407 at 0x8e34, 0x1c3e at 0xa09c — major state reset. Also calls AnmVm init twice."
+        },
+        {
+          "addr": "0x0048b8a0",
+          "purpose": "Returns a float/time value (likely get-current-frame-time). Used for +0x7c seed timestamps."
+        },
+        {
+          "addr": "0x00401390",
+          "purpose": "Setter that consumes FUN_0048b8a0 result (timing-related)."
+        },
+        {
+          "addr": "0x00437903",
+          "purpose": "Logging no-op stub: 'random seed %d %d' sprintf but function body is just 'return'. Debug print sink."
+        },
+        {
+          "addr": "0x004318d0",
+          "purpose": "th07::Rng::GetRandomU32 — random number source."
+        }
+      ],
+      "keyLogicNotes": "1. MODE BRANCH on DAT_00575aa8 (game mode global): if ==3 (replay mode), only a light path: copy *(+0x8)+4 into *(+0x8)+0, clear +0x8, call FUN_004429d0, return early on failure. Otherwise the FULL allocation+seed+chain-register path runs.\\n2. ALLOCATION ORDER (non-replay): FUN_0042e1f8 (device reset) → free old +0x4/+0x8 if non-null → Rng malloc for scratch +0x0 → operator_new(0x38) for +0x4 → operator_new(0xC8=200) for +0x8 → FUN_0042e3da (seed) → memcpy 0x38 bytes (14 dwords) from DAT_00575a68 into +0x4 → free scratch +0x0.\\n3. PLAYER COUNT FLAG *(+0x4)+0x1c: =2 when stage index DAT_00626280>3; =8 when extra-bit DAT_0062f648&1; the later non-practice branch uses +0x4+0x25 == 0 as the gate for extend-grant calls.\\n4. DIFFICULTY-THRESHOLD SWITCH (param_1[4] == +0x10): two parallel switches (normal vs extra-flag DAT_0062f648&1). NORMAL: diff 0/1→+200000, 2→+250000, 3→+300000, 4→+400000 (and +0x961c=+200000), 5→+400000 (+0x961c=+300000). EXTRA: same base 0-3 then a SECOND switch on param_1[0x257b] (1:+0, 2:+50000, 3:+100000, 4:+150000, 5:+200000) applied to +0x9618 and mirrored into +0x961c.\\n5. EXTEND GRANT LOOP: in non-practice (DAT_0062f648>>3&1==0) AND *(+0x4)+0x25==0: call FUN_0042e81b 4 times (each increments a counter<999999); if DAT_00575aa8==10 add 2 more calls; if DAT_0062f648&1 add 2 more. In practice mode (*(+0x4)+0x25 is forced 0 first, then the gate path skipped via the else branch).\\n6. SUBSYSTEM INIT CASCADE: returns -1 on the FIRST failure of FUN_004074c0 → FUN_004276a0 → FUN_00422f40 → FUN_0040e420(stage script indexed by dummy_strings[playCount]) → FUN_0041d0a0 → FUN_0042d136. Each failure logs a distinct error string.\\n7. BGM SELECT: if param_1[0x257b]==6 (stage 6 / extra) → FUN_0043a05f (fade all) + FUN_00439dd0(2, \\\"bgm/th07_13b.mid\\\"); else FUN_00439ec1(0) (stop channel 0). Bank offsets DAT_01347f9c+0x290 (ch0) and +0x310 (ch1).\\n8. SOUND QUEUE DRAIN: do { iVar5 = FUN_0044c9c0(); } while(iVar5 != 0); — fully processes sound preload before returning.\\n9. SUCCESS-TAIL STATE TRANSITIONS: *(+0x93dd)=0; +0x93d8 |= 4 (success flag); if DAT_00575aa8!=3 clear _DAT_00575ad0/_DAT_00575ad4 (fps accumulators); *(+0xc)=0; *(+0x8)+4=0; +0x93d8 &= ~0x10; FUN_00401a00 (big zero-init); DAT_0062627d=0 (frame-skip gate cleared); FUN_004390a5(fps reset); FUN_00437903('random seed %d %d', DAT_0049fe20, DAT_0049fe24).\\n10. CLOSING TAIL (runs even on the replay-mode path): +0x9640=0; *(+0x8)+0x24=0; *(+0x8)+0x14=0; (+0x93dc byte)=0; param_1[0x257b] += 1; per-stage extend/bomb record update gated by DAT_0062f648>>3&1==0 and reading DAT_0062f647 (chara index) and DAT_00626280 (stage index).",
+      "reimHints": "- CALLING CONVENTION: __fastcall — ECX holds GameManager*. The decompiler types param_1 as undefined4* so all C-array indexing `param_1[N]` is DWORD-stride; convert to ((char*)this + N*4) for the HPP. Be careful: `param_1 + 0x24f5` etc. are DWORD offsets, so byte offset = 0x24f5*4 = 0x93d4.\\n- LARGE STRUCT: g_GameManager is >= 0x9644 bytes (highest field accessed is +0x9640 i32; FUN_00401a00 zeroes up through +0xa09c+0x1c3e*4 region so struct is likely ~0x9700+ bytes). Embed inline arrays rather than separate allocations for the bullet/item tables.\\n- INLINING: FUN_004012b0, FUN_0042d657, FUN_0042e38c, FUN_0042e81b are tiny leaf helpers — MSVC 7.0 likely inlined them; check objdiff and consider `#pragma auto_inline(on)` / `__forceinline` to match. FUN_0042e3da (random seeder) and FUN_0042d7be (4x Rng sum) are also candidates.\\n- BITFIELD OPS: `param_1[0x24f6] & 1`, `|= 4`, `&= ~0x10` (0xffffffef), DAT_0062f648 &1, DAT_0062f648>>3 &1, DAT_0062f648>>2 &1 — preserve exact bitwise semantics; DAT_0062f648 is a global options bitfield (bit0=extra, bit2=show-fps, bit3=practice).\\n- STACK: function uses __chkstk (FUN_004315f0 has 8196-byte local) but AddedCallback itself has only ~0x20 bytes of locals; alloca_probe not needed here.\\n- ERROR-PATH ORDER: the nested if/else failure cascade MUST be preserved exactly — each subsystem init returns -1 and skips subsequent inits; objdiff will catch reordering.\\n- RANDOM SEED USAGE: th07::Rng::GetRandomU32 calls must remain in the exact sequence shown (allocation, then FUN_0042e3da's 7+8+5+4-float loops, then FUN_0042d7be's 4 draws) — Rng state is order-sensitive.\\n- STRING CONSTANTS: error strings @ DAT_00498064, DAT_00497e30, DAT_00497e58, DAT_00497e84, DAT_00497f4c, DAT_00498010, DAT_00498038, DAT_00498090 — must match byte-for-byte; BGM path \\\"bgm/th07_13b.mid\\\" is hardcoded.\\n- DAT_0049f5d0 table (3 dwords per stage, indexed by DAT_00626280) feeds FUN_0042e38c; PTR_s_dummy_0049f560 is a 7-entry string pointer table indexed by playCount for ECL script names."
+    },
+    {
+      "functionAddr": "0x42f2e4",
+      "inferredName": "GameManager::DeletedCallback",
+      "callingConvention": "__fastcall",
+      "hasReturn": "int (always returns 0)",
+      "semantics": "Chain \"OnDelete\" callback for the GameManager (param_1 == &g_GameManager == 0x626270). It is invoked when the GameManager chain node is cut from the active chain list. It performs cleanup/teardown across many subsystems: shuts down the MIDI music device (if Supervisor state == 2 and a midi device is open), drains the streaming-sound command queue, then calls a series of inline-dedicated teardown routines that release various allocated buffers (these appear in the asm as bare CALLs with no ECX setup because they are static helpers taking hardcoded singleton pointers), nulls the Supervisor redraw flag, advances two play-time accumulators via timeGetTime, clears the GameManager's chain-active bitfield bit 2 (offset +0x93d8 &= ~0x4), resets an Effect/Anm singleton at 0x134ce18, then clears the GameManager byte flag at +0xd and the state counter at +0x95e8. Returns 0.",
+      "fields": [
+        {
+          "offset": "+0x93d8",
+          "type": "u32 (bitfield)",
+          "semantics": "Chain/state flags bitfield (DAT_0062f648). DeletedCallback reads then clears bit 2 by ANDing with 0xfffffffb (clears the 'chain registered / active' flag). Set by RegisterChain-family code, read broadly across Anm/Sound/Effect modules as a liveness gate.",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "+0xd",
+          "type": "u8",
+          "semantics": "GameManager boolean flag (DAT_0062627d). Cleared to 0 on delete. Also touched by OnUpdate (0x42d8d5) and AddedCallback (0x42e83e) and read by CutChain path; likely a 'isInitialized / hasChain' marker.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0x95e8",
+          "type": "u32",
+          "semantics": "State / stage counter (DAT_0062f858). Initialized to 0 by RegisterChain (which does AND [EAX+0x95e8],0 with EAX=0x626270). Read by FUN_0044b0e0 as a frame-counter/state guard (compared with 2). DeletedCallback resets it to 0.",
+          "accessMode": "write"
+        }
+      ],
+      "calledFunctions": [
+        {
+          "addr": "0x0043a05f",
+          "purpose": "Supervisor::OnDelete (this=0x575950). If Supervisor state byte 0x575a87==2 and midi device ptr 0x575acc!=0, calls midi close; else if state==1 issues dummy Anm/Sound op via FUN_0044d2f0. Returns 0 / -1."
+        },
+        {
+          "addr": "0x00436b30",
+          "purpose": "MidiOut/Device::CloseAll (this=ptr from 0x575acc). Loops 0x20 times over indexed device slots calling FUN_00436bc0 per slot, then teardown."
+        },
+        {
+          "addr": "0x00436790",
+          "purpose": "MidiOut::Open (this=0x575acc, param=0x1e=30). __thiscall; opens midi device index 30. Reads/writes +0x98/+0x118/+0x11c/+0x120/+0x124/+0x138 fields of the midi object."
+        },
+        {
+          "addr": "0x00436ad0",
+          "purpose": "MidiOut::Play (this=0x575acc). Issues 'midi play'."
+        },
+        {
+          "addr": "0x0044c9c0",
+          "purpose": "StreamingSound::ProcessQueue (this=0x4ba0d8). Returns nonzero while pending sound commands exist; DeletedCallback spins in do/while until queue drained. Switch on command type (1=PreLoad,2=Load/Stop/Recreate/Fill/Play,3=Stop,4=ThreadStop+Close,5=FadeOut,6/7=lock-guard)."
+        },
+        {
+          "addr": "0x004075d0",
+          "purpose": "Release/free helper for three globals at 0x134cdd4, 0x1347ae0, 0x134cdb4 (calls FUN_00430140, a refcount/smart-ptr release). Likely CRT/singleton teardown."
+        },
+        {
+          "addr": "0x00427760",
+          "purpose": "EffectManager/Item teardown: releases 0x9a9abc and 0x62f934, then zeroes a ~0xde859*4 byte region starting at 0x62f958 (the giant Item array embed)."
+        },
+        {
+          "addr": "0x00442b10",
+          "purpose": "AnmManager teardown: releases DAT_00575934, DAT_00575938, DAT_0057593c (3 ptrs) via FUN_00430140 and nulls them."
+        },
+        {
+          "addr": "0x00423050",
+          "purpose": "Releases globals at 0x12fe210, 0x9a9adc, 0x12fe230 (smart-ptr release)."
+        },
+        {
+          "addr": "0x0040e4f0",
+          "purpose": "COleDispParams::~COleDispParams (CRT/COM, this=0x1347938). Frees internal buffer and nulls."
+        },
+        {
+          "addr": "0x0041d150",
+          "purpose": "Releases globals at 0x13478f8, 0x1347918 (smart-ptr release)."
+        },
+        {
+          "addr": "0x0042d53d",
+          "purpose": "Chain teardown: calls FUN_00430140 on chain control blocks at 0x62f914 and 0x62f8f4 (these are the OnUpdate/OnDraw chain nodes' sibling structures)."
+        },
+        {
+          "addr": "0x00443d30",
+          "purpose": "BGM/fade bookkeeping helper: bumps DAT_004b9e48->+0x84 (write cursor), writes a 0 marker, indexes into a 7-slot table at +0x88 using DAT_0062f85c-1 clamped to 6. No GameManager access."
+        },
+        {
+          "addr": "0x0043a3f4",
+          "purpose": "Supervisor::UpdateTimeAccumulatorB (this=0x575950). Updates globals 0x62f4fc..0x62f508 (a second play-time H:M:S:ms accumulator) using timeGetTime deltas against Supervisor+0x194. Gated by DAT_0062f648 bit 3 being clear."
+        },
+        {
+          "addr": "0x0043a27f",
+          "purpose": "Supervisor::UpdateTimeAccumulatorA (this=0x575950). Same pattern against Supervisor+0x190(=400 decimal); updates globals 0x62f4ec..0x62f4f8 (primary play-time accumulator). Always called."
+        },
+        {
+          "addr": "0x00401a00",
+          "purpose": "EffectManager::Reset (this=0x134ce18, __fastcall). Zeros the entire 0x134ce18 struct in 6 mem-sized chunks (0x93,0x93,0x1800,0x653,0x407,0x1c3e dwords), then sets sentinel values (-1, 1.0f, 1.0f), ORs flags 0xc00 at +0x40c, inits two AnmVm sub-objects, sets scale 0.107f etc. NOT a GameManager method."
+        }
+      ],
+      "keyLogicNotes": "Critical details for exact reimpl: (1) Ghidra's decompiler MISLABELS this function. It shows `FUN_0043a05f(param_1,param_1)` and a stream of `param_1`-derived calls, but the DISASSEMBLY reveals that after saving incoming ECX (GameManager*) into a stack local at [EBP-8], every subsequent CALL uses a HARDCODED ECX immediate (0x575950 Supervisor, 0x4ba0d8 SoundMgr, 0x1347938 COleDispParams, 0x134ce18 EffectMgr). The GameManager* is ONLY ever re-read at offset +0x93d8. So the C++ source is calls to OTHER singletons, not GameManager member calls. (2) The midi teardown block is guarded by TWO conditions: `byte[0x575a87] == 2` (Supervisor state == 2) AND `dword[0x575acc] != 0` (midi device open). Only then: MidiClose(0x575acc) -> MidiOpen(0x575acc, 30) -> MidiPlay(0x575acc). (3) The do/while loop over FUN_0044c9c0 drains the streaming-sound command queue until it returns 0 (no pending commands). This is a busy-wait that must run to completion before teardown proceeds. (4) `*(param_1+0x93d8) &= 0xfffffffb` — clears bit 2 of the chain-flags bitfield (the 'chain registered' flag set by RegisterChain). Read-modify-write, not blind store. (5) The DAT_0062f648>>3 & 1 gate: if bit 3 of the bitfield is CLEAR, call Supervisor::UpdateTimeAccumulatorB; otherwise skip. (6) Always call Supervisor::UpdateTimeAccumulatorA unconditionally after nulling DAT_00575ae4. (7) Order matters: null DAT_00575ae4 (Supervisor redraw flag) BEFORE the time accumulators. (8) Two distinct time accumulators exist: primary (globals 0x62f4ec..f8) and secondary (0x62f4fc..508), gated by different bitfield bits. (9) The Supervisor time functions use 3600000/60000/1000 ms divisions (hours/min/sec/ms) with carry normalization thresholds 999 (<1000), 0x3b (<60).",
+      "reimHints": "(1) The function is NOT a member function body that calls `this->...` — it is a free callback that receives GameManager* via __fastcall ECX, then immediately dispatches to a fixed sequence of singleton method calls. Model it as `int GameManager::DeletedCallback(GameManager* this)` where the body calls `g_Supervisor.OnDelete()`, `g_SoundMgr.ProcessQueue()`, etc. — NOT `this->OnDelete()`. The disassembly proves this: each CALL is preceded by `MOV ECX, <singleton_addr>` and sometimes a PUSH for __thiscall args. (2) The two stack locals ([EBP-4] and [EBP-8]) are: [EBP-8] = saved GameManager* (used only for +0x93d8 RMW); [EBP-4] = cached midi device ptr (loaded from 0x575acc, passed as ECX to three midi calls). MSVC 7.0 will reuse stack slots this way; do NOT merge them. (3) Do NOT inline FUN_0044c9c0's switch — it's a separate function. The do/while must remain a loop. (4) `#pragma auto_inline(off)` around the midi teardown block is plausible since MSVC 7.0 sometimes inlines the 3-call sequence; verify objdiff. (5) Bitfield ops must use unsigned 32-bit `(u32&)` casts, not bool. (6) The `AND byte ptr [0x62627d],0` and `AND dword ptr [0x62f858],0` are zero-stores via AND — emit as `g_GameManager.flagD = 0;` and `g_GameManager.stateCounter95e8 = 0;` but expect objdiff to want the AND form; if mismatch, use explicit `*(u8*)0x62627d &= 0;` style. (7) Calling convention trap: FUN_00436790 is __thiscall (PUSH 0x1e then ECX=device ptr) while FUN_00436b30 and FUN_00436ad0 are __fastcall/__thiscall with ECX only — preserve arg passing exactly. (8) Function returns 0 via `XOR EAX,EAX; LEAVE; RET` — single return path, no branching return."
+    },
+    {
+      "functionAddr": "0x432990",
+      "inferredName": "GameManager::OnItemUpdate",
+      "callingConvention": "__fastcall",
+      "hasReturn": "void",
+      "semantics": "This is the per-frame Item/collectible update dispatcher, called every tick. It walks a fixed 1100-entry array of Item structs (0x288 bytes each) embedded in the GameManager starting at param_1+0xae2f0, counting live entries (flag byte +0x27d) into param_1+0xae2ec and maintaining a singly-linked active-list (head/tail pointers at +0xae574/+0xae578, next at item+0x284). For each live item it advances position by velocity, handles despawn when off-screen (funneling back through FUN_0042f526 which decrements player lives), then for collected items a 10-way switch on item type byte *(item+0x27c) (0=small power, 1=point/value, 2=large power, 3=star/pattern, 4=full power, 5=bomb, 6=life-piece, 7=point-with-graze, 8=score, 9=life-piece-alt) awards score, graze, life and bomb counters via the Score sub-struct at *(param_1+8) and calls the Supervisor (sound/bomb/life state) plus AnmManager number-popup helper FUN_004024f0. A progress/lives-pieces ladder at *(+0x8)+0x2c..0x30 uses tiered thresholds (0x4b/0x96/200 scaling) gated by difficulty DAT_00626280. The function ends early with a fatal assert (FUN_0044c930) if bVar3 (item collected-flag) was set on a previous iteration, i.e. it asserts single-pass collection.",
+      "fields": [
+        {
+          "offset": "+0x8",
+          "type": "ptr",
+          "semantics": "Pointer to Score/Player sub-struct (DAT_00626278). Dereferenced throughout: +4=score, +0x18=collected count A, +0x1c=collected count B, +0x24=graze count, +0x28=progress count, +0x2c=life-piece tier, +0x30=life-piece threshold, +0x7c=float (point item bonus accumulator, set to 0x43000000=128.0f), +0x88=hi-score/point-of-graze reference",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0x4",
+          "type": "i32",
+          "semantics": "Current score (incremented by value/10 repeatedly; this is the live score)",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0x18",
+          "type": "i32",
+          "semantics": "Counter used in case 6/9 item-value scaling: value = (*0x18 / 0x28)*10 + 300, clamped to min 10 (point item pickup count or similar)",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0x1c",
+          "type": "i32",
+          "semantics": "Counter used in case 7: value = *0x1c * 100 + 1000 (graze-derived point value)",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0x24",
+          "type": "i32",
+          "semantics": "Graze counter, incremented in case 1 (point item)",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0x28",
+          "type": "i32",
+          "semantics": "Progress counter toward life-piece threshold, incremented in case 1; compared against +0x30 in the tiered ladder loop",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0x2c",
+          "type": "i32",
+          "semantics": "Current life-piece tier index. Drives threshold computation in switch: tiers 0-2 give 0x32/0x7d/0xc8 (+0x4b step), 3-4 give 0x12c/0x1c2 (+0x96 step), >=5 give +0xc8 step; alternate scaling when difficulty (DAT_00626280) >= 4. Incremented by FUN_0042d83a",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0x30",
+          "type": "i32",
+          "semantics": "Life-piece threshold target (compared against +0x28). When +0x28 >= +0x30, FUN_0042d83a fires a life/bomb award and +0x2c increments",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x7c",
+          "type": "f32",
+          "semantics": "Point-item auto-collect bonus float; set to 0x43000000 (128.0f) on full-power / 128-RNG branch (FUN_004325e0 reads/writes *(param_1+8)+0x7c)",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0x88",
+          "type": "i32",
+          "semantics": "Reference hi-score / base score used in case 1/7 point-item value scaling: delta = DAT_0062f88c - *0x88, bonus deltas computed vs 50000",
+          "accessMode": "read"
+        },
+        {
+          "offset": "+0xae2ec",
+          "type": "i32",
+          "semantics": "Live item count this frame (incremented for every item with active flag (+0x27d)!=0). Reset to 0 at function start",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0xae2f0",
+          "type": "array[1100 elem, stride 0x288]",
+          "semantics": "Start of the embedded Item struct array. 1100 entries * 0x288 bytes = 0xbb280 bytes. Iterated by local_28 += 0x288, loop guard local_8 < 1099",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "+0xae574",
+          "type": "ptr",
+          "semantics": "Active-item list head pointer (cleared to NULL at function start; rebuilt as items pass on-screen test via FUN_0043e4e0)",
+          "accessMode": "write"
+        },
+        {
+          "offset": "+0xae578",
+          "type": "ptr",
+          "semantics": "Active-item list tail pointer. Initialized to param_1+0xae2f0 (start of array) at function entry; updated as items are appended",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0xae578)+0x284",
+          "type": "ptr",
+          "semantics": "Active-list 'next' link inside item struct; tail->next = item when appending (writes to *(*(+0xae578)+0x284))",
+          "accessMode": "write"
+        },
+        {
+          "offset": "item+0x24c",
+          "type": "f32[3]",
+          "semantics": "Item position vec3 (x,y,z). +0x24c=x +0x250=y +0x254=z. Updated by velocity each frame; passed to FUN_0043e4e0/FUN_004024f0",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "item+0x258",
+          "type": "f32[3]",
+          "semantics": "Item velocity vec3 baseline (vx,vy,vz). +0x258=vx (==+0x258 referenced as '600'=0x258), +0x25c=vy, +0x260=vz. Mixed with auto-collect velocity in case 'else' branch",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "item+0x25c",
+          "type": "f32",
+          "semantics": "Item velocity Y. Clamped: if < _DAT_00498d44 set to 0xc00ccccd (-2.1f); if >= _DAT_00498a8c set to 0x40400000 (3.0f). Otherwise accelerated by _DAT_00498bf0 * DAT_00575ac8 (gravity-like)",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "item+0x260",
+          "type": "f32",
+          "semantics": "Item velocity Z, scaled by DAT_00575ac8 (frame-time) and added to position z",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "item+0x264",
+          "type": "f32[3]",
+          "semantics": "Auto-collect target velocity vec3 (interpolation endpoint); +0x264 +0x268 +0x26c. Lerped with current velocity when case '\\x02' (auto-collect state)",
+          "accessMode": "read"
+        },
+        {
+          "offset": "item+0x270",
+          "type": "i32",
+          "semantics": "Copy of item lifetime/frame counter (+0x278) at despawn time (snapshot before reset)",
+          "accessMode": "write"
+        },
+        {
+          "offset": "item+0x274",
+          "type": "f32",
+          "semantics": "Sub-frame lifetime fraction; fed to FUN_0043958d (angle accumulator) and used for lerp t = (int(+0x278)+*(+0x274)) / _DAT_00498a48",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "item+0x278",
+          "type": "i32",
+          "semantics": "Lifetime frame counter. Compared vs 0x3b (59) / 0x3c (60) thresholds in case '\\x02'; on ==0x3c resets auto-collect. Incremented via FUN_0043958d",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "item+0x27c",
+          "type": "u8",
+          "semantics": "Item type ID (0-9). Master switch variable. 0=small power, 1=point, 2=large power, 3=pattern/star, 4=full power, 5=bomb-pickup, 6=life-piece, 7=point-graze, 8=score-piece, 9=life-piece-alt",
+          "accessMode": "read"
+        },
+        {
+          "offset": "item+0x27d",
+          "type": "bool",
+          "semantics": "Item alive/active flag. If !=0 the item is processed. Set to 0 when item is collected or despawns off-screen",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "item+0x27f",
+          "type": "u8",
+          "semantics": "Item movement state: 0=normal falling, 1=auto-collecting (player above collection line), 2=transitioning into auto-collect. Set to 1 when FUN_00442370 angle test passes; set to 2 via lerp transition",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "item+0x280",
+          "type": "bool",
+          "semantics": "Force-collect flag (set to 1 when DAT_004bfee5==1 in auto-collect branch). Forces value=50000 in case 1 and color 0xffffff00 in popups",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "item+0x1e0",
+          "type": "ptr",
+          "semantics": "Item-associated ECL/ANM script handle (if !=0 calls FUN_00450d60 to advance the enemy-bullet script state on despawn)",
+          "accessMode": "read"
+        },
+        {
+          "offset": "item+0x284",
+          "type": "ptr",
+          "semantics": "Singly-linked-list 'next active item' pointer. Set to 0 (NULL) when item is appended as new tail of the active list",
+          "accessMode": "write"
+        }
+      ],
+      "calledFunctions": [
+        {
+          "addr": "0x48b8a0",
+          "purpose": "Rng::GetRandomInt (returns a random integer from ST0). Used heavily for difficulty/RNG checks (iVar < 0x80, < 8, lookup DAT_0049ed74 table). Module: Rng."
+        },
+        {
+          "addr": "0x43e4e0",
+          "purpose": "OnScreen culling test: given item pos+velocity and bounds at item+0x978/0x97c/0x984/0x988 returns 1 if item is within playable area (considers item type +0x2408). GameManager/Supervisor helper."
+        },
+        {
+          "addr": "0x3958d",
+          "purpose": "Address typo - real callee FUN_0043958d at 0x43958d."
+        },
+        {
+          "addr": "0x43958d",
+          "purpose": "Angle/frame accumulator: increments *param_2 (frame counter) or accumulates fractional angle into *param_3 wrapping at _DAT_00498a54 (2*PI=6.2832). Used on item+0x278/+0x274 to advance lifetime."
+        },
+        {
+          "addr": "0x4024f0",
+          "purpose": "AnmManager-style number-popup spawner: writes value digits into a popup slot array (param_1+0xa09c + idx*0x28), sets position from param_2 (vec3), color from param_4. Module: GameManager/Supervisor number popup (called on this GameManager)."
+        },
+        {
+          "addr": "0x402630",
+          "purpose": "Variant popup spawner for case 6 (life-piece). Same family as 0x4024f0."
+        },
+        {
+          "addr": "0x4325e0",
+          "purpose": "Adds param_2 to *(param_1+8)+0x7c (point-item bonus float) and refreshes something (clears 0xb4 dwords at DAT_00575950). Module: GameManager helper called with this."
+        },
+        {
+          "addr": "0x4325c0",
+          "purpose": "Polar-to-cartesian: sets *param_1 = cos(angle)*radius, param_1[1] = sin(angle)*radius. Used to seed item+0x24c velocity from angle when entering auto-collect."
+        },
+        {
+          "addr": "0x42370",
+          "purpose": "Address typo - real callee FUN_00442370."
+        },
+        {
+          "addr": "0x442370",
+          "purpose": "Angle computation (atan2-like) returning float10; fed into FUN_004325c0 to aim auto-collect velocity. Best guess: Supervisor trig helper."
+        },
+        {
+          "addr": "0x433b20",
+          "purpose": "Mass-kill items (case 0/2 full-power): walks 0x44c items, sets non-collected items to type 7 with velocity Y=0xbf000000 (-0.5f) and despawn flag. Module: GameManager helper."
+        },
+        {
+          "addr": "0x44c930",
+          "purpose": "Fatal error / assert helper (similar to th06 ERROR func). Called with code 0x15 (at exit if bVar3 stuck) and 0x1f (popup overflow). Module: CRT/debug."
+        },
+        {
+          "addr": "0x42f526",
+          "purpose": "Decrement player lives/continues counter: subtracts param_2 from +0x9640 with borrow into +0x9634, clamped at +0x963c. Called with 3 on off-screen despawn (player loses progress). Module: GameManager."
+        },
+        {
+          "addr": "0x42f4aa",
+          "purpose": "Increment score/life progress counter: adds param_2 to +0x9640 carrying into +0x9634, clamped at +0x9638. Values: 1 (case 0), 3 or 10 (case 1), 5 (case 3), 200 (via FUN_0042d83a). Module: GameManager."
+        },
+        {
+          "addr": "0x42f5a2",
+          "purpose": "Add graze/point value to +0x961c (clamped to +0x9618) and track +0x9620 hi-water; if exceeded, calls FUN_00441960. Also fires FUN_00427c81 on threshold cross. Values: 0x14, 10, 0x1e, 0x46, local_10 (case 7). Module: GameManager."
+        },
+        {
+          "addr": "0x42f69f",
+          "purpose": "Sibling of 0x42f5a2 used in case 6/8 (alternate counter, likely bomb-piece counter +0x961c variant). Module: GameManager."
+        },
+        {
+          "addr": "0x42d83a",
+          "purpose": "Life/bomb award: rolls RNG; on success calls FUN_0042d5cd or FUN_0042d612 (increment sub-struct+0x68 or +0x68), plays sound 0x1c, adds 200 to counter, sets DAT_0049fbf4 bits. Module: GameManager."
+        },
+        {
+          "addr": "0x42d612",
+          "purpose": "Adds param_2 to *(param_1+8)+0x68 (another score-substruct accumulator, e.g. bomb count). Module: GameManager."
+        },
+        {
+          "addr": "0x4012b0",
+          "purpose": "Supervisor/Chain callback invoker (notify redraw/state). Called after modifying score sub-struct to propagate. Module: Supervisor."
+        },
+        {
+          "addr": "0x424740",
+          "purpose": "Sound/effect trigger (arg=1). Played on full-power pickup (case 0/2/4). Module: SoundPlayer/Supervisor."
+        },
+        {
+          "addr": "0x427c81",
+          "purpose": "Sound playback (args: idx, volume). Used for collection SFX. Module: SoundPlayer."
+        },
+        {
+          "addr": "0x450d60",
+          "purpose": "Item/ECL script interpreter step: huge switch on opcode byte advancing item+0x78 script pointer through case 0x00..0x52 (set pos/vel/angle/spin, conditional jumps, math ops on item vars). Module: GameManager ECL VM. Only invoked if item+0x1e0 != 0."
+        }
+      ],
+      "keyLogicNotes": "LOOP STRUCTURE: do-while over local_8 in [0,1099], local_28 = param_1 (base, then += 0x288 each iter). The 1100-entry Item array starts at param_1+0xae2f0, NOT param_1+0. So local_28 is actually a misnomer — it iterates &item[i] = param_1 + 0xae2f0 + i*0x288, but the decompiler folded the base into param_1 because it rewrote `param_1 + 0xae2f0 + i*0x288` as `param_1` re-cast. Actually NO: the decompiler shows local_28=param_1 and increments by 0x288, meaning the Item array starts at param_1+0 and the struct offsets like +0x27d are direct. BUT the function also writes param_1+0xae2ec/+0xae578 — those are AFTER the 1100*0x288=0xbb280 byte array, at the END of the GameManager struct. So Item array is [param_1+0 .. param_1+0xbb280), and +0xae2ec/+0xae2f0/+0xae574/+0xae578 are managerial fields AFTER the array (consistent with a ~0x9700+? NO: 0xbb280 = 766848 bytes which exceeds 0x9700). REVISED: the Item array occupies the bulk of GameManager (offsets 0..0xbb280), and +0xae2ec..+0xae578 are trailing bookkeeping fields. This means param_1 passed here IS the array base, and +0xae2f0 is param_1+0xae2f0 = the linked-list/active-pool head (the 'first item slot' address used as sentinel).\\n\\nMAGIC THRESHOLDS:\\n- 1099 (0x44b): max item index (loop bound, so 1100 slots, item IDs 0..1099)\\n- 0x288 (648): Item struct size in bytes\\n- 0x44c (1100): alternate loop bound used in FUN_00433b20 (mass-kill), confirming 1100 items\\n- 0x3b (59) / 0x3c (60): auto-collect lerp activation frames (case 0x27f==2)\\n- 0x80 (128): RNG threshold for 'full-power' pickup branch in cases 0 and 2\\n- 0x7f (127): secondary RNG check; if RNG >= 128 do alternate path\\n- 0x1e (30): max cap on DAT_0062f644 (consecutive pickup streak), used as index into DAT_0049ecf8 value table\\n- 50000 (0xC350): base point-item value, also 'hi-score delta' reference in case 1/7\\n- 0x3200 (12800): small-value popup color threshold in case 0\\n- 0x4b (75) / 0x96 (150) / 200 (0xC8) / 300 / 500 / 800: life-piece tier thresholds at *(+0x8)+0x30, scaled by +0x2c tier and difficulty DAT_00626280\\n- 0x43000000 (128.0f): written to *(+0x8)+0x7c on power-up\\n- 0xbf000000 (-0.5f): written to item+0x25c on certain despawn (case 0x27f==0 with DAT_004bfee0)\\n- 0xc00ccccd (-2.1f): min clamp for item+0x25c velocity Y\\n- 0x40400000 (3.0f): max clamp for item+0x25c velocity Y\\n- 0x41800000 (16.0f): local_18 initializer (unused/stack artifact)\\n\\nSTATE MACHINE on item+0x27f: 0=normal gravitating, 1=locked auto-collect (set when player enters collection zone via FUN_00442370 angle test and FUN_004325c0 seeds velocity), 2=lerping into auto-collect (enters when 0x3b < lifetime < 0x3c, exits at ==0x3c).\\n\\nSWITCH(item+0x27c) cases: 0=small-power-item (PICHUUN), 1=point item (auto-collect value scaling), 2=large-power, 3=star/pattern (FUN_0042d612 adds to +0x68), 4=full-power (sets +0x7c=128, +100 score), 5=bomb despawn, 6=life-piece (value=(+0x18/0x28)*10+300, min 10, or 100 if DAT_004bfeb4!=0), 7=point-with-graze, 8=score-piece, 9=life-piece-alt (same value formula as 6).\\n\\nBITFIELD OPS on DAT_0049fbf4 (a Supervisor/UI state byte):\\n- `& 0xffffffcf | 0x20` : set bits 5, clear bits 4-5\\n- `& 0xfffffcff | 0x200` : set bit 9, clear bits 8-9\\n- `& 0xfffffff3 | 8` : set bit 3, clear bits 2-3\\n- `& 0xfffffffc | 2` : set bit 1, clear bits 0-1\\n\\nBITFIELD OPS on DAT_004b9e48+0xd6 (a UI flags ushort): `| 0x40` sets bit 6 (set when item fails on-screen test, i.e. about to despawn).\\n\\nbVar3 SINGLE-PASS ASSERT: bVar3 starts false; becomes true only after a collection branch executes. The exit guard `if (bVar3) FUN_0044c930(0x15,0)` only fires at the very end after the loop completes all 1100 iterations — but since bVar3 is set inside the collection switch and the loop continues, the real check is: it asserts that at most ONE item triggered collection per call. If two did, the function would already have returned early from the first. Actually re-reading: bVar3 is set after the switch, and the loop continues to the next item; if a SECOND item is collected, the switch runs again but does NOT early-return. The final `if(bVar3) FUN_0044c930(0x15,0)` is a DEBUG ASSERT that fires after the loop if ANY collection happened — i.e. in debug builds this would trap, in release FUN_0044c930 may be a no-op logger. IMPORTANT for reimpl: must replicate this exact control flow.\\n\\nOFFSCREEN DESPAWN: `if (_DAT_0062f870 + _DAT_00498a80 < *(float*)(item+0x250))` (player Y + threshold < item Y) → item+0x27d=0, FUN_0042f526(3) decrements lives. This is the 'item fell off bottom of screen' penalty.\\n\\nAUTO-COLLECT TRIGGER (case 0x27f==1 setup): `if (DAT_004bfee0==1) { item+0x25c = -0.5f; item+0x27f=0; }` else compute angle = FUN_00442370(item+0x24c), call FUN_004325c0(angle, *(DAT_00575948+0x14)), set item+0x27f=1. So DAT_00575948+0x14 is the auto-collect speed scalar. DAT_00575948 is a foreign global (Supervisor/Player), NOT GameManager.\\n\\nGRAZE/COLLECTION-LINE: DAT_00575948+0x20 is the player Y position (collection line). If item Y <= player Y, point value = 50000; else value = RNG*-100+50000 (case 1).\\n\\nDIFFICULTY GLOBALS: DAT_00626280 = difficulty level (Lunatic etc), compared <3 and <4 in the life-piece tier ladder. DAT_0062f88c = current hi-score or graze counter (compared against DAT_0062f888 in case 7/9).",
+      "reimHints": "CALLING CONVENTION: __fastcall, single arg param_1 in ECX = GameManager* (== &g_GameManager == 0x626270). The decompiler's `local_28 = param_1` is just Ghidra folding the array base; in C++ the body is `for (i=0; i<1100; i++) { Item* item = &this->items[i]; ... }` where `items` is at offset 0 of the struct (or the function receives a pointer to the items array). Given +0xae2ec/+0xae578 are accessed as param_1+0xae2ec, the Item array must START at param_1+0 and span 0xbb280 bytes, with managerial fields at +0xae2ec+. Verify: 0xae2ec > 0xbb280? No: 0xae2ec=713836, 0xbb280=766848. So 0xae2ec < 0xbb280, meaning the managerial fields are INSIDE the array range — impossible for a flat array. CONCLUSION: the array is NOT at offset 0. Instead param_1 here is the items[] array base pointer (a field somewhere in GameManager), and the writes at +0xae2ec/+0xae578 are into PADDING/managerial slots at the END of the items array (slot 1099 ends at 1100*0x288=0xbb280; +0xae2ec is within slot ~712). This is inconsistent — RE-EXAMINE: the loop bound is 1099, so last slot is &items[1099] = base + 1099*0x288 = base + 0xbb1f8. Fields at +0xae2ec are within slot 712, meaning they overlap live items. THEREFORE: param_1 is NOT the items base. The decompiler shows local_28=param_1 incremented by 0x288, but param_1 is the GameManager, and local_28 actually = param_1 + (some array offset that Ghidra constant-folded). Given the task context says Item array starts around +0xae2f0, the REAL iteration is local_28 = param_1 + 0xae2f0 + i*0x288, and managerial fields +0xae2ec/+0xae578 are the Item-manager header IMMEDIATELY BEFORE the array. The decompiler lost the +0xae2f0 base because it propagated it as a constant offset into all item field accesses (so item+0x27d is really param_1+0xae2f0+i*0x288+0x27d). For reimpl: define `Item items[1100]` at offset 0xae2f0, and ItemManager fields {i32 activeCount@-4, ptr listHead@+0xae574-0xae2f0, ptr listTail@+0xae578-0xae2f0} just before it. INLINING: Do NOT inline — function is 4305 bytes with a hot loop; MSVC will keep it as a standalone function. CALL SITE: likely invoked from OnUpdate (0x42d8d5). STACK FRAME: ~0xf8 bytes, no alloca. The local_10 variable is REUSED across switch cases as a scratch int (assigned in case 1, read in case 2) — preserve this aliasing or introduce distinct locals and risk differing stack layout. For objdiff fidelity, use a single shared `int local_10;` scratch. FLOATING POINT: comparisons use direct float compares against constants stored in .rdata (_DAT_00498a48, _DAT_00498a54=2*PI, _DAT_00498a80, _DAT_00498a8c, _DAT_00498bf0, _DAT_00498d44, _DAT_00498d48, _DAT_00498b24); these are 2*PI and angle constants — declare as `static const float`. The expression `_DAT_00498a54 / _DAT_00498a70` in FUN_0043e4e0 suggests a radius/velocity projection constant. PRAGMA: no special #pragma needed; just avoid /O2 over-inlining of the inner switch by keeping case bodies as-is."
+    },
+    {
+      "functionAddr": "0x42d7be",
+      "inferredName": "GameManager::CalculateChecksum",
+      "callingConvention": "__fastcall",
+      "hasReturn": "int",
+      "semantics": "Anti-tamper / RNG-state checksum helper called from OnUpdate (0x42d8d5) and from the RNG-reseed routine (0x42e3da). Sums bytes over 4 memory regions: (1) sub-struct *(+0x8)+0x34..+0xac (length 0x78 = 120 bytes), (2) sub-struct *(+0x8)+0xb4 (length 0x14 = 20 bytes), (3) sub-object at base+0x4 DAT_00626274 (length 0x38 = 56 bytes), (4) global table at 0x575a68 (length 0x38 = 56 bytes). The result is stored to *(+0x8)+0xb0 and added to *(+0x8)+0x98 to produce the magic value _DAT_0062f884 used by OnUpdate to validate that the 7 int fields + float fields + 8 int fields were freshly randomized into legal ranges (0x198f..0x1a02f for ints; a float range for floats).",
+      "fields": [
+        {
+          "offset": "+0x4",
+          "type": "ptr",
+          "semantics": "Second sub-object base (DAT_00626274). FUN_0042d7be sums 0x38 (56) bytes starting here. Likely a small per-frame state/meter sub-struct.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "+0x8",
+          "type": "ptr",
+          "semantics": "Primary score/state sub-struct pointer (DAT_00626278). Dereferenced to reach RNG-generated fields and the checksum storage at +0xb0.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0x34",
+          "type": "array[7 elem] i32",
+          "semantics": "Array of 7 RNG-seeded ints (range 0x198f..0x1a02f). Summed as bytes [0x34..0xac) by this function (range length 0x78).",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0xac",
+          "type": "i32",
+          "semantics": "Running LCG counter / accumulator. FUN_0042d75a does `+= *(+0x8)+0xbc` once per byte summed; before this call OnUpdate sets it equal to *(+0x8)+0x3c (a seed copy).",
+          "accessMode": "readwrite"
+        },
+        {
+          "offset": "*(+0x8)+0xb0",
+          "type": "i32",
+          "semantics": "Result slot. FUN_0042e3da (reseed routine) stores this function's return value here. OnUpdate does NOT re-store; it recomputes inline.",
+          "accessMode": "write"
+        },
+        {
+          "offset": "*(+0x8)+0xb4",
+          "type": "array[5 elem] i32",
+          "semantics": "Array of 5 RNG-seeded ints (range 0x198f..0x1a02f). Summed as 0x14 (20) bytes by this function.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0xbc",
+          "type": "i32",
+          "semantics": "LCG increment / step added into *(+0x8)+0xac once per byte processed by FUN_0042d75a. Seed-progression constant.",
+          "accessMode": "read"
+        }
+      ],
+      "calledFunctions": [
+        {
+          "addr": "0x42d75a",
+          "purpose": "Per-byte sum helper (GameManager-internal, inline-able). Signature __fastcall(byte* ptr ECX, int count EDX). Loops count times: accumulates *ptr into local sum AND does `(*(+0x8)+0xac) += *(+0x8)+0xbc` each iteration. Returns the byte sum. Read of DAT_00626278 inside the loop is a hidden this-relative access (the decompiler shows DAT_00626278 but in C++ it is `this->field8->ac` since param_1 is preserved across the call)."
+        }
+      ],
+      "keyLogicNotes": "FOUR byte-range sums added together (CRITICAL to preserve exact ranges):\\n1. Region 1: start = *(+0x8)+0x34, length = 0x78 (=0xac-0x34, computed at runtime via SUB EDX,EAX: `((*(+0x8)+0xac) - (*(+0x8)+0x34))`). This length is DERIVED from pointer arithmetic, not a literal. The decompiler inlines this to `param_1,param_1` losing both args.\\n2. Region 2: start = *(+0x8)+0xb4, length = literal 0x14 (PUSH 0x14 / POP EDX).\\n3. Region 3: start = DAT_00626274 (=+0x4 sub-object), length = literal 0x38.\\n4. Region 4: start = global 0x575a68 (RNG scratch table, 0x38 bytes), length = literal 0x38.\\nThe byte-summing helper FUN_0042d75a has a SIDE EFFECT: each iteration adds *(+0x8)+0xbc into *(+0x8)+0xac (an LCG-style seed advance) BEFORE the byte is read. So the total +=0xbc advances equals total_bytes_processed = (0x78 + 0x14 + 0x38 + 0x38) = 0xFC = 252 byte-iterations per call. This mutation of *(+0x8)+0xac MUST happen during the checksum loop, not before/after — it is interleaved.\\nContext from FUN_0042e3da (reseed): sets *(+0x8)+0xac = *(+0x8)+0x3c (seed copy) immediately BEFORE calling this function; stores return into *(+0x8)+0xb0; then DAT_0062f884 = result + *(+0x8)+0x98.\\nContext from OnUpdate (0x42d8d5): same pattern — sets *(+0x8)+0xac = *(+0x8)+0x3c, calls this function, then DAT_0062f884 = (float)result + (float)*((+0x8)+0x98). OnUpdate then iterates 7 ints at +0x34, 2 floats at +0x60, 2 floats at +0x54, 3 floats at +0x70, 2 floats at +0x80, 8 ints at +0x8c, 5 ints at +0xb4 and zeros DAT_0062f884 to _DAT_00498c80 if any are out of legal range (int: 0x198f..0x1a02f; float: _DAT_00498bac.._DAT_00498c7c). The 0x8c array (8 ints) is NOT directly summed by this function but is validated in OnUpdate — its checksum coverage comes via the +0xac seed-advance side-effect path.\\nParam_1 (ECX) is preserved across calls because the helper reaches DAT_00626278 via the GLOBAL pointer; in clean C++ this should be `this->m_subStruct->...`.\\nThe 0x1fa4 / 0x1b6c / 0x120c / 0x8d55e / 999999999 / 0x201b / 0x1be3 / 0x1283 magic thresholds in OnUpdate are for separate rank/pause state-machines, NOT for this function.",
+      "reimHints": "Calling-convention trap: the decompiler produced `FUN_0042d75a(param_1,param_1)` and 3x `FUN_0042d75a()` — COMPLETELY WRONG. The real per-call args are set in EDX (count) and ECX (ptr) via PUSH/POP and arithmetic. Reimplement as a helper that takes (const u8* ptr, int count) and preserves the LCG side-effect on *(+0x8)+0xac. Mark FUN_0042d75a as `__fastcall` and likely `#pragma auto_inline(off)` is NOT needed — it's only 0x60 bytes and called 4 times; MSVC 7.0 will NOT inline a function with a loop this size by default, so leaving it out-of-line matches the disassembly (separate CALL sites). Keep the side-effect ORDER exact: the `+=0xbc` into +0xac happens INSIDE the byte loop, once per byte, before reading the next byte. Region-1 length is computed via pointer subtraction ((+0xac) - (+0x34)) — write it as `(intptr_t)&sub->ac - (intptr_t)&sub->arr34` to reproduce the SUB EDX,EAX, OR hardcode 0x78 if struct layout guarantees it (it does, since these are contiguous). DAT_00626278 / DAT_00626274 / 0x575a68 are absolute globals in the original but should be expressed as this->m_subStruct (+0x8), this->m_subObject2 (+0x4), and an external RNG scratch table g_RngScratch[0x38] respectively, to match g_GameManager-relative C++ semantics."
+    },
+    {
+      "functionAddr": "0x42ad66",
+      "inferredName": "GameManager::IsGameActive",
+      "callingConvention": "__fastcall",
+      "hasReturn": "i32 (bool-like: returns 0 or 1)",
+      "semantics": "Small leaf helper that reports whether the game is currently \"active\" (in a playable state). It reads the GameManager struct's sub-object pointer at +0x8 (DAT_00626278, the score/player sub-struct); if that pointer is NULL it returns 0 (not active). Otherwise it inspects a deep int32 status field at +0x1fbac inside the sub-struct and returns 1 only when that field is >= 0 OR exactly -2 (0xFFFFFFFE); any other negative value (i.e. the field is negative and not -2) returns 0. Callers (OnUpdate at 0x42d8d5, the bullet/enemy update at 0x420620, and several stage controllers) use the return to gate progression code-paths: when 0, the game is considered paused/menu/transitioning and many update side-effects are skipped. Despite its trivial body, Ghidra does NOT mark it as inlined (it has a real RET and is a standalone function body 0x42ad66-0x42adaa), and it is called from at least 8 sites.",
+      "fields": [
+        {
+          "offset": "+0x8",
+          "type": "ptr",
+          "semantics": "Pointer (GameManager->score/player sub-struct, aka DAT_00626278). Read to test for NULL and then dereferenced to reach the status field. NULL means not-active.",
+          "accessMode": "read"
+        },
+        {
+          "offset": "*(+0x8)+0x1fbac",
+          "type": "i32",
+          "semantics": "Game-state / activity-status code inside the sub-struct. Semantics: value >= 0 => active; value == -2 (0xFFFFFFFE) => also active (special \"active\" sentinel); any other negative => not active. Likely a stage-phase or game-mode enum where negative values encode menu/pause/transition/game-over states and -2 is an explicit 'still active during boss/demo' override.",
+          "accessMode": "read"
+        }
+      ],
+      "calledFunctions": [],
+      "keyLogicNotes": "The core decision is a two-level test that MUST be preserved bit-for-bit:\n  (1) if (*(i32*)(this+0x8) == 0) return 0;        // sub-struct pointer NULL => not active\n  (2) s = *(i32*)(*(this+0x8) + 0x1fbac);\n      if (s < 0 && s != -2) return 0;               // negative-but-not-(-2) => not active\n      else              return 1;\nNote the asymmetric treatment of -2: it is the ONLY negative value treated as active. The CMP at 0x42ad90 uses literal -0x2 (0xFFFFFFFE). Equivalent C: `return sub != NULL && (sub->status_at_0x1fbac >= 0 || sub->status_at_0x1fbac == -2);`\nReturn type is int32 holding a boolean (0/1). The -2 sentinel is a magic constant that must appear literally in the reimplementation.",
+      "reimHints": "Leaf function, no callees, trivial body (~17 instructions, 68 bytes). Do NOT inline it in the C++ source even though it is tiny: Ghidra shows it as a real standalone function with its own prologue/epilogue and it is referenced from 8+ call sites, so MSVC 7.0 must emit it as a non-inlined function to match byte-exact. Implement as `int GameManager::IsGameActive()` taking `this` in ECX (__fastcall thiscall equivalent). Keep the NULL-check short-circuit first and the `!= -2` comparison second so the generated CMP/JGE/JZ branch shape matches the disassembly (CMP [EAX+0x1fbac],0 / JGE / CMP ..., -2 / JZ). No #pragma auto_inline needed. No stack-frame quirks beyond a 2-dword local frame (local_c + compiler temp). Watch the calling convention: param comes via ECX (fastcall), NOT via stack/EDX, so in hand-written C++ declare it as a regular member function so MSVC emits __thiscall which passes this in ECX."
+    }
+  ],
+  "synthesis": {
+    "structFields": [
+      {
+        "offset": "0x0",
+        "name": "scratchBuf",
+        "type": "void*",
+        "semantics": "Temporary malloc scratch buffer (AddedCallback allocs rand-sized, copies 0x38 bytes of init data, then frees). Repurposed each stage load. Do not confuse with vtable.",
+        "confidence": "low"
+      },
+      {
+        "offset": "0x4",
+        "name": "playerSub",
+        "type": "PlayerSub*",
+        "semantics": "Pointer to player/character sub-object (operator_new(0x38)=56 bytes). Field +0x1c=player-count/mode flag (2 if stage>3, 8 if extra); +0x25=bonus-extend gate flag. Also summed (0x38 bytes) by CalculateChecksum.",
+        "confidence": "high"
+      },
+      {
+        "offset": "0x8",
+        "name": "scoreSub",
+        "type": "ScoreSub*",
+        "semantics": "Pointer to score/stats sub-struct (operator_new(0xC8)=200 bytes). Primary scoring/rank/CRC structure; see subStructs. Written by AddedCallback, read everywhere.",
+        "confidence": "high"
+      },
+      {
+        "offset": "0xc",
+        "name": "flagC",
+        "type": "i32",
+        "semantics": "Generic flag/state. Written 0 at AddedCallback success-tail.",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x10",
+        "name": "difficulty",
+        "type": "i32",
+        "semantics": "Difficulty/stage selector index (0-5). Drives extend/bomb threshold switch and 1<<difficulty bitmask at +0x14. Compared <4 for point-base 50 vs 200.",
+        "confidence": "high"
+      },
+      {
+        "offset": "0x14",
+        "name": "difficultyMask",
+        "type": "u32",
+        "semantics": "= 1 << (difficulty & 0x1f). Difficulty bitmask.",
+        "confidence": "high"
+      },
+      {
+        "offset": "0xd",
+        "name": "rankForceFlag",
+        "type": "u8",
+        "semantics": "Rank/continue 'force trigger' flag (DAT_0062627d). Written 0 or 1 by enemy-count tier block in OnUpdate; read by pause-guard (==0 required to allow pause). Cleared by DeletedCallback.",
+        "confidence": "high"
+      },
+      {
+        "offset": "0x29",
+        "name": "stageActiveGate",
+        "type": "u8",
+        "semantics": "Checked at OnUpdate end: if nonzero, runs enemy-count rank tier block. Likely 'stage active / enemies present' or 'in boss' flag.",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x24c",
+        "name": "zeroInitRegion0",
+        "type": "u8[0x7274]",
+        "semantics": "Large cleared region (FUN_00401a00 zeroes 0x93 dwords here, then more chunks at +0x14bc, +0x74e8, +0x8e34, +0xa09c). Exact field boundaries unknown; contains bullet/item/effect embedded tables accessed by other subsystems via their own globals (DAT_004bdad8 etc). Treat as opaque reserved.",
+        "confidence": "low"
+      },
+      {
+        "offset": "0x93d0",
+        "name": "pauseEngagedLatch",
+        "type": "i32",
+        "semantics": "Set to 1 when pause is triggered (alongside +0x93dc). 'Pause engaged' latched flag.",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x93d4",
+        "name": "flag93d4",
+        "type": "u8",
+        "semantics": "Flag byte cleared to 0 during AddedCallback init.",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x93d5",
+        "name": "val93d5",
+        "type": "u8",
+        "semantics": "Multiplier read for computing +0x93d7 = +0x93d6 + 2*this.",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x93d6",
+        "name": "val93d6",
+        "type": "u8",
+        "semantics": "Addend read for computing +0x93d7.",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x93d7",
+        "name": "packedSize93d7",
+        "type": "u8",
+        "semantics": "= +0x93d6 + 2*+0x93d5 (packed size/stride calc).",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x93d8",
+        "name": "statusBitfield",
+        "type": "u32",
+        "semantics": "Status bitfield (DAT_0062f648). bit1=currently-paused (drives pause-frame accounting at +0x93e0). bit2=(+0x93dc==0 && +0x93dd==0)<<2 recomputed each frame. bit4 cleared (&=~0x10) on AddedCallback success. bit2 of THIS field cleared by DeletedCallback (& 0xfffffffb). Also holds global options: bit0=extra, bit2=show-fps, bit3=practice.",
+        "confidence": "high"
+      },
+      {
+        "offset": "0x93de",
+        "name": "difficultySelector",
+        "type": "u8",
+        "semantics": "Stage/difficulty selector (0/1/2) indexing pause-frame threshold pairs (0x1fa4/0x201b, 0x1b6c/0x1be3, 0x120c/0x1283).",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x93e0",
+        "name": "pauseFrameCounter",
+        "type": "i32",
+        "semantics": "Pause-watched-frame counter. Incremented each paused frame. First threshold -> Supervisor chain-swap + BGM fade; second threshold -> force quit (return 3).",
+        "confidence": "high"
+      },
+      {
+        "offset": "0x95e4",
+        "name": "randSeedWord",
+        "type": "u16",
+        "semantics": "Written from DAT_0049fe20 (u16 random-seed word) during AddedCallback.",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x95e8",
+        "name": "frameCounter",
+        "type": "i32",
+        "semantics": "Per-frame-active counter. Zeroed by RegisterChain, incremented once per normal update tick in OnUpdate, reset to 0 by DeletedCallback. 'Frames since stage start'.",
+        "confidence": "high"
+      },
+      {
+        "offset": "0x95ec",
+        "name": "playCount",
+        "type": "i32",
+        "semantics": "Stage play counter. Incremented by 1 at AddedCallback tail. Used to pick ECL script index, compared !=1 for seed, writes extend/bomb records (value-1).",
+        "confidence": "high"
+      },
+      {
+        "offset": "0x95f4",
+        "name": "anmColorSetup",
+        "type": "i32[8]",
+        "semantics": "8 dwords at +0x95f4..0x9610 initialized by FUN_0042d657 from constant pool DAT_00498xxx (Anm/sprite color setup).",
+        "confidence": "medium",
+        "isArray": true,
+        "arrayInfo": "8 x 0x4 = 0x20 bytes"
+      },
+      {
+        "offset": "0x9614",
+        "name": "randSumFloat",
+        "type": "f32",
+        "semantics": "Float derived from randSum+seed, populated by callee FUN_004012b0.",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x9618",
+        "name": "extendThresholdA",
+        "type": "i32",
+        "semantics": "Primary extend/high-score threshold. Per-difficulty: base +0x88 + 200000/250000/300000/400000; extra-mode boosted +50000..+200000 by playCount.",
+        "confidence": "high"
+      },
+      {
+        "offset": "0x961c",
+        "name": "extendThresholdB",
+        "type": "i32",
+        "semantics": "Secondary extend threshold. = +0x88 (initial score) initially; stages 4-5 non-practice +200000/300000; extra mirrors +0x9618.",
+        "confidence": "high"
+      },
+      {
+        "offset": "0x9620",
+        "name": "initScoreMirror",
+        "type": "i32",
+        "semantics": "Mirror of score-struct +0x88 (initial score). Written = *(scoreSub+0x88) twice.",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x9628",
+        "name": "counter9628",
+        "type": "i32",
+        "semantics": "Counter cleared to 0 during AddedCallback init.",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x962c",
+        "name": "rankCounter",
+        "type": "u32",
+        "semantics": "Rank-up counter. Incremented in two OnUpdate blocks (DAT_00575ad8 tier, DAT_009a9a80 enemy tier). Reset 0 when enemy count <0x80. Used modulo 2/3/4/5/6 for skip gating. Drives difficulty/rank progression.",
+        "confidence": "high"
+      },
+      {
+        "offset": "0x9634",
+        "name": "stageColorA",
+        "type": "i32",
+        "semantics": "Loaded by FUN_0042e38c from DAT_0049f5d0 table indexed by stage DAT_00626280. Color/tone per stage.",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x9638",
+        "name": "stageColorB",
+        "type": "i32",
+        "semantics": "Loaded by FUN_0042e38c; second stage color dword.",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x963c",
+        "name": "stageColorC",
+        "type": "i32",
+        "semantics": "Loaded by FUN_0042e38c; third stage color dword.",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x9640",
+        "name": "counter9640",
+        "type": "i32",
+        "semantics": "Counter cleared to 0 at AddedCallback tail. Subtracted-from (with borrow into +0x9634) by FUN_0042f526 (life decrement).",
+        "confidence": "medium"
+      },
+      {
+        "offset": "0x9644",
+        "name": "updateChainNode",
+        "type": "ChainNode",
+        "semantics": "Embedded UPDATE chain node (size 0x20). +0x0 priority(i16=2), +0x4 OnUpdate=FUN_0042d8d5, +0x8 Added=FUN_0042e83e, +0xc Deleted=FUN_0042f2e4, +0x10 prev, +0x14 next, +0x18 unused, +0x1c thisPtr=&g_GameManager. Inserted via FUN_0042fbd0.",
+        "confidence": "high"
+      },
+      {
+        "offset": "0x9664",
+        "name": "drawChainNode",
+        "type": "ChainNode",
+        "semantics": "Embedded DRAW chain node (size 0x20). +0x0 priority(i16=2), +0x4 OnDraw=FUN_0042e1d4, +0x8 Added=NULL, +0xc Deleted=NULL, +0x10 prev, +0x14 next, +0x1c thisPtr=&g_GameManager. Inserted via FUN_0042fca0.",
+        "confidence": "high"
+      },
+      {
+        "offset": "0x8454",
+        "name": "extendRecords",
+        "type": "u8[]",
+        "semantics": "Per-stage/chara extend-lives-granted record block. Indexed by 0x8454 + stageIndex*0x1c + charaIndex*0x1c. Set to max(prev, playCount-1) when scoreSub+0x20==0. Companion bomb-record at +0x845a (same indexing). NOTE: this offset is INSIDE the opaque 0x24c region above; exact array bounds need the stage/chara max to resolve.",
+        "confidence": "low"
+      },
+      {
+        "offset": "0xae2ec",
+        "name": "liveItemCount",
+        "type": "i32",
+        "semantics": "Live item count this frame (OnItemUpdate). Reset to 0 at function start, incremented for every item with active flag (+0x27d)!=0.",
+        "confidence": "high"
+      },
+      {
+        "offset": "0xae2f0",
+        "name": "items",
+        "type": "Item",
+        "semantics": "Item array base. 1100 entries * 0x288 = 0xbb280 bytes. Iterated by OnItemUpdate with stride 0x288, loop guard <1099 (0x44b). Item struct fields: +0x24c pos[3], +0x258 vel[3], +0x264 autoCollectVel[3], +0x270 lifetimeSnapshot, +0x274 subFrameFrac, +0x278 lifetimeFrames, +0x27c type(u8), +0x27d alive(bool), +0x27f moveState(u8), +0x280 forceCollect(bool), +0x1e0 eclScriptHandle(ptr), +0x284 nextActive(ptr). NOTE: array base placement is CONTRADICTED by chain-node fields at +0x9644 (see contradictions) — resolve by confirming the true base offset.",
+        "confidence": "high",
+        "isArray": true,
+        "arrayInfo": "1100 x 0x288 = 0xbb280 bytes (if base=0xae2f0, spans 0xae2f0..0x169570)"
+      },
+      {
+        "offset": "0xae574",
+        "name": "activeItemListHead",
+        "type": "Item*",
+        "semantics": "Active-item singly-linked-list head pointer. Cleared to NULL at OnItemUpdate start; rebuilt as items pass on-screen test.",
+        "confidence": "high"
+      },
+      {
+        "offset": "0xae578",
+        "name": "activeItemListTail",
+        "type": "Item*",
+        "semantics": "Active-item list tail pointer. Initialized to items base (+0xae2f0) at OnItemUpdate entry; updated as items appended (tail->next=item).",
+        "confidence": "high"
+      }
+    ],
+    "structSizeGuess": "0x1695xx (if Item array base = +0xae2f0, last byte = 0xae2f0 + 1100*0x288 = 0x169570). The chain nodes at +0x9644/+0x9664 (+0x20) give a floor of >=0x9684. The Item array is the dominant region. The opaque cleared region (FUN_00401a00 zeroes through +0xa09c+0x1c3e*4=+0xbd2c) sits between the header fields and the Item array. CRITICAL: the relative placement of the Item array base (is it +0xae2f0 as the head/tail pointers imply, or a different base) is the single biggest open question — see contradictions.",
+    "methods": [
+      {
+        "addr": "0x42f3c5",
+        "name": "GameManager::RegisterChain",
+        "callingConvention": "__cdecl (uses &g_GameManager; chain inserts are __thiscall ECX=0x626218)",
+        "size": "0x97 bytes (0x42f3c5-0x42f45c)",
+        "semantics": "Registers GameManager singleton into global Chain system: fills update node (+0x9644, OnUpdate/Added/Deleted=this+0x95e8=0) and draw node (+0x9664, OnDraw only); calls Chain::InsertNode(0x626218, node, prio=2) for each. Returns 0 on success, -1 if update-node insert fails (skips draw)."
+      },
+      {
+        "addr": "0x42f45d",
+        "name": "GameManager::CutChain",
+        "callingConvention": "__cdecl (leaf, no params; uses global g_GameManager)",
+        "size": "0x4d bytes (0x42f45d-0x42f4a9)",
+        "semantics": "Detaches both chain nodes via Chain::Cut(0x626218, node) twice (update @0x62f8b4, draw @0x62f8d4), then clamps running score *(scoreSub+0x4) to <=999999999 (unsigned) and copies it into displayed *(scoreSub+0x0)."
+      },
+      {
+        "addr": "0x42d8d5",
+        "name": "GameManager::OnUpdate",
+        "callingConvention": "__fastcall (ECX=GameManager*)",
+        "size": "0x4fe bytes (0x42d8d5-0x42e1d3)",
+        "semantics": "Per-frame Chain update callback. Pause detection (6-way && guard), anti-tamper RNG seeding (4 samples), rank state machine (DAT_00575ad8 + DAT_009a9a80 tier blocks, early-return 3), pause-frame accounting (+0x93e0 thresholds per difficulty), integrity CRC (FUN_0042d7be + 6 range-check loops), score smoothing (clamp 999999999, delta=(target-displayed)>>5 clamp 0x8d55e, high-score update), Supervisor vtable OnUpdate. Returns 1 normal tick / 3 skip."
+      },
+      {
+        "addr": "0x42e1d4",
+        "name": "GameManager::OnDraw",
+        "callingConvention": "__fastcall (ECX=GameManager*)",
+        "size": "0x23 bytes (0x42e1d4-0x42e1f7)",
+        "semantics": "Trivial draw-tick acknowledgement: if +0x93dc != 0, sets it to 2. Always returns 1. No actual rendering."
+      },
+      {
+        "addr": "0x42e83e",
+        "name": "GameManager::AddedCallback",
+        "callingConvention": "__fastcall (ECX=GameManager*)",
+        "size": "large (~0xaa6 bytes 0x42e83e-0x42f2e3)",
+        "semantics": "Stage-load initializer. Allocates playerSub(0x38) + scoreSub(0xC8), seeds score struct (FUN_0042e3da random fill), sets per-difficulty extend/bomb/graze thresholds (+0x9618/+0x961c), inits AnmVm, registers ~7 subsystem chains (effect/enemy/bullet/item/boss/supervisor), loads stage BGM ('bgm/th07_13b.mid' for stage 6), drains sound preload queue. Returns 0 success / -1 on first subsystem failure."
+      },
+      {
+        "addr": "0x42f2e4",
+        "name": "GameManager::DeletedCallback",
+        "callingConvention": "__fastcall (ECX=GameManager*)",
+        "size": "~0xe1 bytes (0x42f2e4-0x42f3c4)",
+        "semantics": "Chain teardown. Shuts MIDI device (if Supervisor state==2 && midi ptr!=0: close->open(30)->play), drains streaming-sound queue (busy-wait FUN_0044c9c0), runs singleton teardowns (Anm/Effect/Item/Boss release helpers), nulls Supervisor redraw flag, updates two time accumulators, clears statusBitfield bit2 (&0xfffffffb), resets EffectManager singleton, clears +0xd and +0x95e8. Returns 0."
+      },
+      {
+        "addr": "0x432990",
+        "name": "GameManager::OnItemUpdate",
+        "callingConvention": "__fastcall (ECX=GameManager*)",
+        "size": "~0xfca bytes (0x432990-0x433a59)",
+        "semantics": "Per-frame Item dispatcher. Walks 1100-entry Item array (stride 0x288), counts live items into +0xae2ec, maintains active singly-linked list (head +0xae574 / tail +0xae578). Per item: advance pos by vel, handle despawn (off-bottom -> FUN_0042f526 life-decrement), 10-way switch on item type (+0x27c) awarding score/graze/life/bomb. Fatal assert (FUN_0044c930 code 0x15) if collection happened (single-pass guard)."
+      },
+      {
+        "addr": "0x42d7be",
+        "name": "GameManager::CalculateChecksum",
+        "callingConvention": "__fastcall (ECX=GameManager*)",
+        "size": "~0x68 bytes (0x42d7be-0x42d826 est)",
+        "semantics": "Anti-tamper byte-sum over 4 regions: scoreSub+0x34 (len 0x78), scoreSub+0xb4 (len 0x14), playerSub +0x4 (len 0x38), global 0x575a68 (len 0x38). Helper FUN_0042d75a has LCG side-effect: scoreSub+0xac += scoreSub+0xbc per byte (252 total advances). Result stored to scoreSub+0xb0; added to scoreSub+0x98 to produce integrity value DAT_0062f884."
+      },
+      {
+        "addr": "0x42ad66",
+        "name": "GameManager::IsGameActive",
+        "callingConvention": "__fastcall (ECX=GameManager*) / __thiscall",
+        "size": "0x44 bytes (0x42ad66-0x42adaa)",
+        "semantics": "Leaf liveness check. Returns 0 if scoreSub (+0x8) is NULL, else reads scoreSub+0x1fbac: returns 1 if >=0 OR ==-2 (magic active sentinel), else 0. Used by OnUpdate/bullet-enemy/stage-controllers to gate progression."
+      }
+    ],
+    "dependencies": [
+      {
+        "addr": "0x42fbd0",
+        "module": "Chain",
+        "purpose": "Chain::InsertNode — UPDATE chain. __thiscall ECX=0x626218 (global Chain controller), node=&gm+0x9644, prio=2. Sorted linked-list insert on priority, invokes node AddedCallback."
+      },
+      {
+        "addr": "0x42fca0",
+        "module": "Chain",
+        "purpose": "Chain::InsertNode — DRAW chain. __thiscall ECX=0x626218, node=&gm+0x9664, prio=2. Same algorithm, traverses from this+0x20 (draw head)."
+      },
+      {
+        "addr": "0x430140",
+        "module": "Chain",
+        "purpose": "Chain::Cut — unlink node from doubly-linked list (next@+0x14, prev@+0x10), clear active flag, invoke deletion callback. Called by CutChain for both nodes."
+      },
+      {
+        "addr": "0x44d2f0",
+        "module": "Supervisor/Sound",
+        "purpose": "SoundQueAdd — pushes (channel,sub,name) e.g. 'Pause' onto Supervisor sound queue at +0x73c (30-slot, stride 0x10c)."
+      },
+      {
+        "addr": "0x44c930",
+        "module": "Supervisor/Sound",
+        "purpose": "BGM control — registers track id into 5-slot array at Supervisor+0x620 with duration from table. Starts pause BGM fade."
+      },
+      {
+        "addr": "0x43a3f4",
+        "module": "Supervisor",
+        "purpose": "Supervisor::OnPause / UpdateTimeAccumulatorB — accumulates real time (timeGetTime delta) into play-time globals; freezes wall-clock."
+      },
+      {
+        "addr": "0x43a27f",
+        "module": "Supervisor",
+        "purpose": "Supervisor::UpdateTimeAccumulatorA — primary play-time H:M:S:ms accumulator (globals 0x62f4ec..f8) via timeGetTime deltas."
+      },
+      {
+        "addr": "0x43a0d6",
+        "module": "Supervisor",
+        "purpose": "BGM fade-out by float (3.0f). state==1 schedules SoundQue fade; state==2 calls FUN_00436c90."
+      },
+      {
+        "addr": "0x44b310",
+        "module": "Supervisor/Chain",
+        "purpose": "Chain task builder — operator_new(0x30), switch(0..4) wiring callbacks, registers via FUN_0042fbd0(prio 0xf)/FUN_0042fca0(prio 0x11). Launches stage-transition/pause-exit effect."
+      },
+      {
+        "addr": "0x42d75a",
+        "module": "GameManager-local",
+        "purpose": "Per-byte checksum helper (__fastcall ptr=ECX, count=EDX). Loops: accumulates *ptr into sum AND scoreSub+0xac += scoreSub+0xbc each iteration. Called 4x by CalculateChecksum."
+      },
+      {
+        "addr": "0x48b8a0",
+        "module": "Rng/math",
+        "purpose": "FPU-rounding thunk / Rng.Get(). Returns ulonglong; used for RNG samples (anti-tamper seeds, item power-up rolls, difficulty checks)."
+      },
+      {
+        "addr": "0x4318d0",
+        "module": "Rng",
+        "purpose": "th07::Rng::GetRandomU32 — random number source. Order-sensitive across AddedCallback allocation+seeding."
+      },
+      {
+        "addr": "0x44c9c0",
+        "module": "Sound",
+        "purpose": "StreamingSound::ProcessQueue (this=0x4ba0d8). Returns nonzero while pending commands; busy-wait drained by DeletedCallback and AddedCallback sound-preload."
+      },
+      {
+        "addr": "0x315f0",
+        "module": "CRT/debug",
+        "purpose": "Error logger: sprintf into 0x2000-byte log buffer (param_1=&DAT_00624210 logger)."
+      },
+      {
+        "addr": "0x439dd0",
+        "module": "Sound",
+        "purpose": "BGM loader: (channel, ptr). midi-mode plays via MIDI; wav-mode rewrites .mid->.wav and SoundQueAdd. Loads stage BGM."
+      },
+      {
+        "addr": "0x439ec1",
+        "module": "Sound",
+        "purpose": "Sound stop/reset for given channel."
+      },
+      {
+        "addr": "0x43a05f",
+        "module": "Sound/Supervisor",
+        "purpose": "Sound fade-out-all. Used for stage-6-extra BGM transition and DeletedCallback OnDelete."
+      },
+      {
+        "addr": "0x36790",
+        "module": "MidiOut",
+        "purpose": "MidiOut::Open (this=0x575acc, param=0x1e=30). Opens midi device index 30. __thiscall."
+      },
+      {
+        "addr": "0x36b30",
+        "module": "MidiOut",
+        "purpose": "MidiOut::CloseAll (this=0x575acc). Loops 0x20 slots calling per-slot close."
+      },
+      {
+        "addr": "0x36ad0",
+        "module": "MidiOut",
+        "purpose": "MidiOut::Play (this=0x575acc). Issues midi play."
+      },
+      {
+        "addr": "0x442370",
+        "module": "Supervisor/math",
+        "purpose": "Angle computation (atan2-like) returning float10. Feeds FUN_004325c0 for auto-collect velocity aiming."
+      },
+      {
+        "addr": "0x43e4e0",
+        "module": "GameManager/Supervisor",
+        "purpose": "OnScreen culling test: item pos+vel vs bounds. Returns 1 if within playable area."
+      },
+      {
+        "addr": "0x43958d",
+        "module": "GameManager/math",
+        "purpose": "Angle/frame accumulator: increments frame counter or accumulates fractional angle wrapping at 2*PI (DAT_00498a54). Advances item lifetime."
+      },
+      {
+        "addr": "0x4024f0",
+        "module": "GameManager/AnmManager",
+        "purpose": "Number-popup spawner: writes value digits into popup slot array (this+0xa09c+idx*0x28), sets position+color. Called on item collection."
+      },
+      {
+        "addr": "0x433b20",
+        "module": "GameManager",
+        "purpose": "Mass-kill items (full-power): walks 0x44c items, sets non-collected to type 7, velocity Y=-0.5f, despawn flag."
+      },
+      {
+        "addr": "0x42f526",
+        "module": "GameManager",
+        "purpose": "Decrement player lives: subtracts param from +0x9640 with borrow into +0x9634, clamped at +0x963c. Called with 3 on off-screen item despawn."
+      },
+      {
+        "addr": "0x42f4aa",
+        "module": "GameManager",
+        "purpose": "Increment score/life progress: adds param to +0x9640 carrying into +0x9634, clamped at +0x9638. Values 1/3/5/10/200."
+      },
+      {
+        "addr": "0x42f5a2",
+        "module": "GameManager",
+        "purpose": "Add graze/point value to +0x961c (clamped +0x9618), track +0x9620 hi-water; fires FUN_00441960/FUN_00427c81 on threshold cross."
+      },
+      {
+        "addr": "0x42f69f",
+        "module": "GameManager",
+        "purpose": "Sibling of 0x42f5a2 (alternate/bomb-piece counter variant)."
+      },
+      {
+        "addr": "0x42d83a",
+        "module": "GameManager",
+        "purpose": "Life/bomb award: rolls RNG; on success increments scoreSub+0x68, plays sound 0x1c, adds 200, sets DAT_0049fbf4 bits."
+      },
+      {
+        "addr": "0x42d612",
+        "module": "GameManager",
+        "purpose": "Adds param to scoreSub+0x68 (bomb-count accumulator)."
+      },
+      {
+        "addr": "0x4325e0",
+        "module": "GameManager",
+        "purpose": "Adds param to scoreSub+0x7c (point-item bonus float), clears 0xb4 dwords at DAT_00575950."
+      },
+      {
+        "addr": "0x4325c0",
+        "module": "GameManager/math",
+        "purpose": "Polar-to-cartesian: *p1=cos(angle)*radius, p1[1]=sin(angle)*radius. Seeds item velocity from angle."
+      },
+      {
+        "addr": "0x424740",
+        "module": "SoundPlayer/Supervisor",
+        "purpose": "Sound/effect trigger (arg=1). Played on full-power pickup."
+      },
+      {
+        "addr": "0x427c81",
+        "module": "SoundPlayer",
+        "purpose": "Sound playback (idx, volume). Collection SFX."
+      },
+      {
+        "addr": "0x450d60",
+        "module": "GameManager ECL VM",
+        "purpose": "Item/ECL script interpreter step: switch on opcode 0x00..0x52 (set pos/vel/angle/spin, conditional jumps, math). Invoked if item+0x1e0 != 0."
+      },
+      {
+        "addr": "0x4429d0",
+        "module": "Effect/Bullet",
+        "purpose": "Effect/Bullet chain module init: clears 0x2df9e dwords, sets flag, allocates 3 chain callback nodes (prio 8/6/8)."
+      },
+      {
+        "addr": "0x4074c0",
+        "module": "Item",
+        "purpose": "Item chain init: clears 0x14ad dwords, registers 3 chain callbacks (prio 7/3/4)."
+      },
+      {
+        "addr": "0x4276a0",
+        "module": "Player/UI",
+        "purpose": "Player/UI chain init: registers 2 chain callbacks (prio 0xc/10)."
+      },
+      {
+        "addr": "0x422f40",
+        "module": "Enemy",
+        "purpose": "Enemy chain init: registers 3 chain callbacks (prio 10/5/7)."
+      },
+      {
+        "addr": "0x40e420",
+        "module": "Stage script",
+        "purpose": "Loads ECL/script file via FUN_00431330 indexed by dummy_strings[playCount]."
+      },
+      {
+        "addr": "0x41d0a0",
+        "module": "Boss/Supervisor",
+        "purpose": "Boss/Supervisor chain init: registers 2 chain callbacks (prio 0xb/9)."
+      },
+      {
+        "addr": "0x42d136",
+        "module": "Supervisor",
+        "purpose": "Allocates 0x20a30-byte supervisor struct (non-replay), registers 2 chain callbacks (prio 0xd/0xc). Main game Supervisor init."
+      },
+      {
+        "addr": "0x43aa0",
+        "module": "Menu",
+        "purpose": "MenuController create/select (operator_new 0xd8) with prio-16/5/0x11 chain callbacks. Practice-mode only."
+      },
+      {
+        "addr": "0x4012b0",
+        "module": "Supervisor/Chain",
+        "purpose": "Re-randomize scoreSub +0x3c/+0x98/+0xac/+0xb0 and float +0x9614. Notifies redraw/state."
+      },
+      {
+        "addr": "0x401a00",
+        "module": "EffectManager/Reset",
+        "purpose": "Big zero-init: clears 0x93+0x93+0x1800+0x653+0x407+0x1c3e dwords in chunks, sets sentinels, ORs flags 0xc00 at +0x40c, inits 2 AnmVm. Called by AddedCallback/DeletedCallback."
+      },
+      {
+        "addr": "0x390a5",
+        "module": "Supervisor/fps",
+        "purpose": "Framerate counter update (QueryPerformanceCounter / timeGetTime). Called at init."
+      },
+      {
+        "addr": "0x2e1f8",
+        "module": "Graphics/Supervisor",
+        "purpose": "DirectX device Reset/restore via IDirect3DDevice8 vtable (DeviceLost recovery)."
+      },
+      {
+        "addr": "0x2e3da",
+        "module": "GameManager",
+        "purpose": "Score-struct randomizer: fills +0x34/+0x8c/+0xb4 dword arrays and +0x54/+0x60/+0x70/+0x80 float arrays with Rng; sets +0x88/+0xac/+0xb0."
+      },
+      {
+        "addr": "0x2e634",
+        "module": "Stage/BGM",
+        "purpose": "Stage/chapter data init: clears 0x1086 dwords, fills 0xd chapter records, loads score.dat, applies chapter pointer."
+      },
+      {
+        "addr": "0x2d657",
+        "module": "GameManager",
+        "purpose": "Inits 8 dwords at +0x95f4..0x9610 from constant pool (Anm/sprite color setup)."
+      },
+      {
+        "addr": "0x2e38c",
+        "module": "GameManager",
+        "purpose": "Loads 3 dwords into +0x9634/+0x9638/+0x963c from stage-indexed color table."
+      },
+      {
+        "addr": "0x2e81b",
+        "module": "GameManager",
+        "purpose": "if(*p<999999) (*p)++; — increments extend/life counter capped 999999. Called 4-8x for initial bonus grants."
+      }
+    ],
+    "subStructs": [
+      {
+        "reachedVia": "+0x8 pointer (scoreSub)",
+        "fields": [
+          {
+            "offset": "0x0",
+            "type": "i32",
+            "semantics": "Displayed/committed score (guiScore). OVERWRITTEN at CutChain with clamped running score. NOTE: Ghidra shows **(int**) double-deref — likely a direct i32 (over-deref artifact), but VERIFY."
+          },
+          {
+            "offset": "0x4",
+            "type": "u32",
+            "semantics": "Running/live score (target for smoothing). Clamped to <=999999999 (unsigned). Drives smoothing; copied into +0x0 at teardown."
+          },
+          {
+            "offset": "0x8",
+            "type": "u32",
+            "semantics": "Per-frame score increment (delta). =(target-displayed)>>5 clamped [1..0x8d55e=577118]. Reset 0 when reached."
+          },
+          {
+            "offset": "0xc",
+            "type": "u32",
+            "semantics": "High score. Updated to guiScore when exceeded; on new high, +0x10 = +0x20."
+          },
+          {
+            "offset": "0x10",
+            "type": "u8",
+            "semantics": "Status byte. Copied from +0x20 on new high score. In practice-mode set to 0 by FUN_0042e634."
+          },
+          {
+            "offset": "0x14",
+            "type": "i32",
+            "semantics": "Cleared to 0 at AddedCallback tail."
+          },
+          {
+            "offset": "0x18",
+            "type": "i32",
+            "semantics": "Counter for case-6/9 item-value scaling: value=(this/0x28)*10+300, min 10."
+          },
+          {
+            "offset": "0x1c",
+            "type": "i32",
+            "semantics": "Counter for case-7: value = this*100 + 1000 (graze-derived point value)."
+          },
+          {
+            "offset": "0x20",
+            "type": "u8",
+            "semantics": "Source status byte. Copied into +0x10 on new high score. Gates extend-record update (must be 0)."
+          },
+          {
+            "offset": "0x24",
+            "type": "i32",
+            "semantics": "Graze counter. Incremented in case-1 (point item)."
+          },
+          {
+            "offset": "0x28",
+            "type": "i32",
+            "semantics": "Progress counter toward life-piece threshold. Compared against +0x30 in tiered ladder."
+          },
+          {
+            "offset": "0x2c",
+            "type": "i32",
+            "semantics": "Life-piece tier index. Drives threshold: tiers 0-2 -> 0x32/0x7d/0xc8 (+0x4b step), 3-4 -> 0x12c/0x1c2 (+0x96), >=5 -> +0xc8 step; alt scaling when difficulty>=4."
+          },
+          {
+            "offset": "0x30",
+            "type": "i32",
+            "semantics": "Life-piece threshold target. When +0x28>=this, FUN_0042d83a awards life/bomb and +0x2c increments."
+          },
+          {
+            "offset": "0x34",
+            "type": "i32[7]",
+            "semantics": "7 RNG-seeded ints (range 0x198f..0x1a02f). Item/drop seeds. Summed as bytes [0x34..0xac) by CalculateChecksum (len 0x78). Range-checked by OnUpdate (OOB -> sentinel)."
+          },
+          {
+            "offset": "0x3c",
+            "type": "i32",
+            "semantics": "Seed/base value copied into +0xac each frame (CRC re-seed)."
+          },
+          {
+            "offset": "0x50",
+            "type": "i32",
+            "semantics": "Cleared to 0 at tail."
+          },
+          {
+            "offset": "0x54",
+            "type": "f32[2]",
+            "semantics": "2 random floats (range ~6500..67640). Filled by FUN_0042e3da = RngF32*_DAT_00498bb0 + _DAT_00498bac. Likely positions."
+          },
+          {
+            "offset": "0x5c",
+            "type": "f32",
+            "semantics": "Set = (float)(byte)playerSub+0x1c when not extra-mode. Player-count as float."
+          },
+          {
+            "offset": "0x60",
+            "type": "f32[2]",
+            "semantics": "2 random floats (same bounds). Likely positions/velocity."
+          },
+          {
+            "offset": "0x68",
+            "type": "i32",
+            "semantics": "Score-substruct accumulator (bomb count). Incremented by FUN_0042d612. Read in case-3 RNG gate (FUN_0048b8a0 < 8)."
+          },
+          {
+            "offset": "0x6c",
+            "type": "i32",
+            "semantics": "Cleared to 0."
+          },
+          {
+            "offset": "0x70",
+            "type": "f32[3]",
+            "semantics": "3 random floats (same bounds). Likely RGB or position."
+          },
+          {
+            "offset": "0x7c",
+            "type": "f32",
+            "semantics": "Point-item auto-collect bonus. Set to 0x43000000 (128.0f) on full-power branch. Read for RNG power-up rolls."
+          },
+          {
+            "offset": "0x80",
+            "type": "f32[2]",
+            "semantics": "2 random floats (same bounds)."
+          },
+          {
+            "offset": "0x88",
+            "type": "i32",
+            "semantics": "Main seed/score base. = Rng%100000+0x198f. Additive base for all extend thresholds at +0x9618/+0x961c. Reference hi-score in case-1/7 value scaling."
+          },
+          {
+            "offset": "0x8c",
+            "type": "i32[8]",
+            "semantics": "8 RNG-seeded ints (range 0x198f..0x1a02f). Range-checked by OnUpdate. NOT directly summed by checksum but validated."
+          },
+          {
+            "offset": "0x98",
+            "type": "i32",
+            "semantics": "Stage-time base. Added to CRC result to produce integrity value DAT_0062f884."
+          },
+          {
+            "offset": "0xac",
+            "type": "i32",
+            "semantics": "CRC/LCG accumulator. Re-seeded from +0x3c each frame; +=0xbc once per byte in checksum loop (252 advances)."
+          },
+          {
+            "offset": "0xb0",
+            "type": "i32",
+            "semantics": "Checksum result slot. FUN_0042e3da stores CalculateChecksum return here."
+          },
+          {
+            "offset": "0xb4",
+            "type": "i32[5]",
+            "semantics": "5 RNG-seeded ints (range 0x198f..0x1a02f). Summed as 0x14 bytes by checksum. Range-checked."
+          },
+          {
+            "offset": "0xbc",
+            "type": "i32",
+            "semantics": "LCG increment/step added into +0xac per byte in checksum."
+          },
+          {
+            "offset": "0x1fbac",
+            "type": "i32",
+            "semantics": "Game-state/activity-status code (read by IsGameActive). >=0 => active; ==-2 => active sentinel; other negative => not active. NOTE: this offset (0x1fbac) exceeds the 0xC8 allocation — likely the sub-struct is LARGER than 0xC8, OR this is a DIFFERENT sub-struct reached via +0x8 (contradiction to resolve)."
+          }
+        ]
+      },
+      {
+        "reachedVia": "+0x4 pointer (playerSub)",
+        "fields": [
+          {
+            "offset": "0x0",
+            "type": "u8[0x1c]",
+            "semantics": "Player sub-object header. First 0x1c bytes copied from DAT_00575a68 (14 dwords=0x38 total alloc) during AddedCallback."
+          },
+          {
+            "offset": "0x1c",
+            "type": "u8",
+            "semantics": "Player-count/mode flag. =2 when stage>3; =8 when extra-bit set."
+          },
+          {
+            "offset": "0x25",
+            "type": "u8",
+            "semantics": "Bonus-extend gate flag. Cleared when difficulty>=4 OR extra-bit. When ==0 in non-practice, triggers 4-8x FUN_0042e81b extend grants."
+          }
+        ]
+      },
+      {
+        "reachedVia": "+0x9644 / +0x9664 embedded (ChainNode x2)",
+        "fields": [
+          {
+            "offset": "0x0",
+            "type": "i16",
+            "semantics": "Priority value (=2 for both update and draw nodes)."
+          },
+          {
+            "offset": "0x4",
+            "type": "void*",
+            "semantics": "Primary callback: OnUpdate (update node) / OnDraw (draw node)."
+          },
+          {
+            "offset": "0x8",
+            "type": "void*",
+            "semantics": "AddedCallback. FUN_0042e83e for update; NULL for draw."
+          },
+          {
+            "offset": "0xc",
+            "type": "void*",
+            "semantics": "DeletedCallback. FUN_0042f2e4 for update; NULL for draw."
+          },
+          {
+            "offset": "0x10",
+            "type": "void*",
+            "semantics": "Linked-list prev pointer (filled by insertion at runtime)."
+          },
+          {
+            "offset": "0x14",
+            "type": "void*",
+            "semantics": "Linked-list next pointer (filled by insertion at runtime)."
+          },
+          {
+            "offset": "0x18",
+            "type": "void*",
+            "semantics": "Unused/reserved."
+          },
+          {
+            "offset": "0x1c",
+            "type": "void*",
+            "semantics": "thisPtr / param_1 = &g_GameManager (0x626270). Passed to callbacks as ECX."
+          }
+        ]
+      },
+      {
+        "reachedVia": "Item array (base +0xae2f0, 1100 entries, stride 0x288) — see contradictions",
+        "fields": [
+          {
+            "offset": "0x1e0",
+            "type": "void*",
+            "semantics": "ECL/ANM script handle. If !=0, FUN_00450d60 advances the script on despawn."
+          },
+          {
+            "offset": "0x24c",
+            "type": "f32[3]",
+            "semantics": "Position (x,y,z). Updated by velocity each frame."
+          },
+          {
+            "offset": "0x258",
+            "type": "f32[3]",
+            "semantics": "Velocity baseline (vx,vy,vz). vy clamped [-2.1f, 3.0f], gravity-accelerated."
+          },
+          {
+            "offset": "0x264",
+            "type": "f32[3]",
+            "semantics": "Auto-collect target velocity (interpolation endpoint). Lerped when moveState==2."
+          },
+          {
+            "offset": "0x270",
+            "type": "i32",
+            "semantics": "Lifetime frame-counter snapshot (copied from +0x278 at despawn)."
+          },
+          {
+            "offset": "0x274",
+            "type": "f32",
+            "semantics": "Sub-frame lifetime fraction. Fed to angle accumulator; lerp t=(int(+0x278)+this)/const."
+          },
+          {
+            "offset": "0x278",
+            "type": "i32",
+            "semantics": "Lifetime frame counter. Thresholds 0x3b(59)/0x3c(60) for auto-collect lerp activation/reset."
+          },
+          {
+            "offset": "0x27c",
+            "type": "u8",
+            "semantics": "Item type ID (0-9). 0=small-power,1=point,2=large-power,3=star/pattern,4=full-power,5=bomb-pickup,6=life-piece,7=point-graze,8=score-piece,9=life-piece-alt. Master switch."
+          },
+          {
+            "offset": "0x27d",
+            "type": "u8 (bool)",
+            "semantics": "Alive/active flag. Set 0 when collected or despawned."
+          },
+          {
+            "offset": "0x27f",
+            "type": "u8",
+            "semantics": "Move state: 0=normal falling, 1=locked auto-collect, 2=lerping into auto-collect."
+          },
+          {
+            "offset": "0x280",
+            "type": "u8 (bool)",
+            "semantics": "Force-collect flag. Forces value=50000 in case-1 and color 0xffffff00."
+          },
+          {
+            "offset": "0x284",
+            "type": "void*",
+            "semantics": "Singly-linked-list 'next active item' pointer. NULL when appended as new tail."
+          }
+        ]
+      }
+    ],
+    "contradictions": [
+      "CRITICAL — Item array base offset vs chain-node fields: OnItemUpdate (0x432990) iterates local_28=param_1 with stride 0x288 for 1100 entries, implying Item[0] is at GameManager offset 0x0 and the array spans [0x0, 0xbb280). But RegisterChain (0x42f3c5) writes chain nodes at GameManager+0x9644 and +0x9664, and OnUpdate/DeletedCallback use fields at +0x93d8, +0x95e8, +0x962c — all of which fall INSIDE the [0x0,0xbb280) range (they'd be inside Item slots 0x9644/0x288=61.7 and 0x93d8/0x288=51.6). The live-item-count field +0xae2ec and list head/tail +0xae574/+0xae578 also fall inside that range (slot ~712). This is impossible for a flat array. RESOLUTION NEEDED: (a) the Item array base is NOT offset 0 — Ghidra constant-folded a base offset into local_28 (the disasm MOV EAX,ECX / ADD EAX,0x288 strongly suggests base=param_1, but verify by checking what FUN_00432990's CALLER passes as ECX — it may pass &g_GameManager->items rather than &g_GameManager); (b) OR Item struct is much smaller than 0x288 and the stride includes per-item padding that the manager fields live inside (unlikely given +0x284 next-ptr). The strongest signal (head/tail ptrs at +0xae574/+0xae578 being initialized to +0xae2f0) suggests Item array base = +0xae2f0, making the manager count at +0xae2ec a -4 header. If base=+0xae2f0, struct sizeof >= 0xae2f0+0xbb280 = 0x169570. This must be resolved by disassembling the caller of FUN_00432990.",
+      "+0x8 scoreSub allocation size vs IsGameActive field: AddedCallback allocates scoreSub via operator_new(0xC8=200 bytes), but IsGameActive (0x42ad66) reads scoreSub+0x1fbac (offset 130988) — far beyond 0xC8. Either (a) the sub-struct is realloc'd/grown later to >=0x1fbb0 bytes, (b) +0x8 points to a DIFFERENT larger sub-struct than the one allocated in AddedCallback, or (c) IsGameActive dereferences a nested pointer (scoreSub itself contains a pointer at some offset leading to the real status struct). Resolve by checking the allocation lifetime and any realloc of DAT_00626278.",
+      "+0x93d8 statusBitfield double-duty: Used both as GameManager per-instance pause/status bitfield (bit1=paused, bit2=not-pausing, bit4 cleared on success, bit2 cleared on delete) AND referenced as DAT_0062f648 which analyses describe as a GLOBAL options bitfield (bit0=extra, bit2=show-fps, bit3=practice). 0x626270+0x93d8 = 0x62f648 confirms SAME address. This means the global game-options flags are stored INSIDE the GameManager struct at +0x93d8 — verify this is intentional (GameManager owns the options word) and not a separate global that happens to alias.",
+      "+0x0 scratchBuf vs potential vtable: +0x0 is written as a temporary malloc scratch pointer in AddedCallback (alloc'd, copied-into, freed). Most C++ objects have a vtable at +0x0. If GameManager has virtual methods, +0x0 would be a vtable ptr and the scratch usage would corrupt it — implying GameManager has NO vtable (plain struct, callbacks are free function pointers in chain nodes). Confirm no virtual calls on GameManager.",
+      "scoreSub+0x0 displayed score: Ghidra decompiler shows **(int**) double-indirection (*(int*)(*(int*)(param_1+8)+0)) in OnUpdate score-smoothing, but AddedCallback writes it as a direct i32 field (*(scoreSub+0)=value). Most likely Ghidra over-deref'd due to the nested global-pointer pattern; treat as direct i32. VERIFY by checking the actual MOV instruction addressing mode in OnUpdate.",
+      "OnUpdate body size: one analysis claims 6398 bytes; the decompile/disasm shows 0x42d8d5..0x42e1d3 = 0x4fe = 1278 bytes. The 6398 figure is WRONG for this entry — do not pad phantom code. (May refer to a different function or include inlined helpers.)"
+    ],
+    "recommendedNextSteps": [
+      "HIGHEST PRIORITY — Resolve Item array base: Disassemble the CALLER of FUN_00432990 (OnItemUpdate) to see what ECX value is passed. If it passes &g_GameManager (0x626270) directly, the Item array overlaps the header fields (impossible) — meaning the Item struct must be reexamined. If it passes 0x626270+ARRAY_OFFSET, record that offset. Also check xrefs to fields +0xae2ec/+0xae574/+0xae578 from OTHER functions to triangulate the true array base.",
+      "Reverse FUN_00432990's Item movement/collection logic in full (the 10-way switch is partially mapped) to lock down the Item struct fields +0x24c..+0x284 and confirm stride 0x288. Then define Item.hpp.",
+      "Resolve the scoreSub+0x1fbac mystery: disassemble IsGameActive (0x42ad66) raw instructions and check if there's an intermediate pointer dereference (scoreSub -> nested ptr -> +0x1fbac) that Ghidra flattened. Also check if DAT_00626278 is ever reassigned to a larger allocation.",
+      "Reverse the caller of RegisterChain/CutChain (likely a Supervisor or Scene manager at ~0x437c70 per CutChain notes) to understand GameManager lifecycle and confirm the struct is a global singleton (not heap-allocated with a vtable).",
+      "Reverse FUN_00401a00 (the big zero-init) to map the opaque reserved region +0x24c..+0x93d0 — it clears 6 chunks (0x93,0x93,0x1800,0x653,0x407,0x1c3e dwords) which define the bullet/effect embedded table boundaries. This fills the gap between the header and the chain/status fields.",
+      "Map the AnmVm popup array at +0xa09c (referenced by FUN_004024f0 as this+0xa09c+idx*0x28) and the EffectManager reset chunks to determine if +0x8e34 and +0xa09c are separate embedded arrays or part of the Item array region.",
+      "Confirm the +0x9644/+0x9664 chain nodes are the LAST 'small' fields before the giant embedded arrays (bullet/item/effect). If the Item array truly starts at +0xae2f0, the region +0x9684..+0xae2ec (~0x4c68 bytes) contains the bullet/effect/anm embedded tables cleared by FUN_00401a00 — reverse those subsystem inits (FUN_004429d0, FUN_004074c0) to map them.",
+      "Once Item array base is resolved, compute the final sizeof(GameManager) and add ZUN_ASSERT_SIZE. Current estimate 0x1695xx (if base=+0xae2f0) — verify against any memset/memcpy of the whole struct."
+    ]
+  }
+}

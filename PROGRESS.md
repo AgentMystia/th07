@@ -1,8 +1,49 @@
 # TH07-RE 反编译重建进度
 
-最后更新：2026-06-14
+最后更新：2026-06-15
 
-## 已 objdiff 验证模块（12 模块，~110 函数，21×100%）
+## ★Session 2026-06-15: Controller 验证 + GameManager 基础★
+
+### Controller（第 13 模块，7 函数，平均 **98.0%**，5×100%）
+| 函数 | match% |
+|---|---|
+| GetInput | **99.9%**（1904B，含 win32+DInput 全部 key check）|
+| ResetKeyboard | **99.6%** |
+| GetJoystickCaps | **98.8%** |
+| GetControllerInput | 94.1% |
+| GetControllerState | 93.3% |
+| SetButtonFromDirectInputJoystate | **100%**（83.8%→100%，见下）|
+| SetButtonFromControllerInputs | **100%**（83.8%→100%）|
+
+地址：GetJoystickCaps@0x430290 / SetButtonFromDirectInputJoystate@0x4302f0 /
+SetButtonFromControllerInputs@0x430370 / GetControllerInput@0x4303f0 /
+GetControllerState@0x4309c0 / GetInput@0x430b50 / ResetKeyboard@0x4312c0
+
+### GameManager（最大模块，首批 3 函数 + 结构体基础）
+- **g_GameManager @ 0x626270**（~1.4MB 含 Item[1100]×0x288 等实体数组）
+- **g_Chain @ 0x626218**（全局 Chain 控制器，AddToCalc/DrawChain 的 this）
+- 嵌入式链节点：updateChainNode@+0x9644 / drawChainNode@+0x9664（ChainElem 0x20）
+- +0x8 = **scoreSub 指针**（堆分配，ScoreSub.guiScore@+0x0 / .score@+0x4，CutChain clamp 到 999999999）
+
+| 函数 | match% | 备注 |
+|---|---|---|
+| OnDraw | **100%** | trivial（unk_93dc=2）|
+| CutChain | **97.4%** | Cut 两节点 + score clamp |
+| RegisterChain | 76.1% | objdiff 符号命名限制（见下）|
+
+9 函数地址全锁定（mapping.csv）：RegisterChain@0x42f3c5 / CutChain@0x42f45d /
+OnUpdate@0x42d8d5(2303B) / OnDraw@0x42e1d4 / AddedCallback@0x42e83e(2726B) /
+DeletedCallback@0x42f2e4 / **OnItemUpdate@0x432990(4298B,Item 调度器)** /
+CalculateChecksum@0x42d7be / IsGameActive@0x42ad66
+
+### 关键技术发现（本 session）
+1. **MSVC 7.0 不支持 `nullptr`**（C++11，2010 才有）→ 用 `0`。`ptr_field = 0` 编译成 `and [mem],0`（匹配 orig 的零初始化 idiom）
+2. **objdiff 全局存储符号命名限制**：reimpl 用 `?g_GameManager@th07@@...(mangled)+offset`，orig delink 成 `DAT_xxxxxxxx`——同一地址不同名，objdiff 按字符串比操作数 → RegisterChain 类（多次 g_GameManager+offset 存储）被压低到 ~76%，但逻辑正确（同 Chain switch/Rng F32 限制类）
+3. **callback 赋值需 C 风格 cast**：`(ChainCallback)OnUpdate`（typedef 是 `(*)(void*)`，方法取 `GameManager*`，MSVC 宽容但需 cast 对齐）
+4. **🔑 movzx codegen 技巧**：orig 对 enum/int 参数用 `movzx word ptr [param]`（当 u16 加载）时，reimpl 用 `(u16)param` 而非 `param & 0xFFFF`——前者产生 movzx，后者产生 `mov+and 0xffff`。修复 Controller SetButtonFrom\* 83.8%→100%
+5. **🔑🔑 GameManager 尺寸重大修正**：sizeof(GameManager)=**0x9700**（非 0x169570）。Item[1100]×0x288 数组**不在 GameManager**，在 **ItemManager 单例 @ 0x575c70**（OnItemUpdate 调用点 `MOV ECX,0x575c70` 为证）。OnItemUpdate(0x432990) 是 ItemManager 函数，已从 GameManager mapping 移除。g_GameManager 字段止于 +0x96ec。ScoreSub 确认 0xC8（但 IsGameActive 读 +0x1fbac 矛盾待解）
+
+## 已 objdiff 验证模块（此前 12 模块，~110 函数，21×100%）
 
 ### ★Wave 10 AnmManager 结构体关键修正★
 - **sizeof(AnmManager) = 0x17e560**（不是 0x2e4dc！后者是 vertexBuffer 字段偏移）

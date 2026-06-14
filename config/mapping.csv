@@ -171,3 +171,16 @@ th07::AnmManager::SetAndExecuteScript,0x44ea20,0xc0,__thiscall,,ZunResult,AnmVm*
 th07::AnmManager::ExecuteScript,0x450d60,0x2b9c,__thiscall,,ZunResult,AnmVm*
 th07::AnmManager::DrawInner,0x450520,0x524,__thiscall,,void,AnmVm*
 th07::AnmManager::SetRenderStateForVm,0x44eae0,0x3e0,__thiscall,,void,AnmVm*,i32
+th07::Controller::GetJoystickCaps,0x430290,0x60,__fastcall,,u16
+th07::Controller::SetButtonFromDirectInputJoystate,0x4302f0,0x80,__fastcall,,u16,u16*,i16,u16,u8*
+th07::Controller::SetButtonFromControllerInputs,0x430370,0x80,__fastcall,,u32,u16*,i16,u16,u32
+th07::Controller::GetControllerInput,0x4303f0,0x5d0,__fastcall,,u16,u16
+th07::Controller::GetControllerState,0x4309c0,0x190,__fastcall,,u8*
+th07::Controller::GetInput,0x430b50,0x770,__fastcall,,u16
+th07::Controller::ResetKeyboard,0x4312c0,0x6d,__fastcall,,void
+th07::GameManager::RegisterChain,0x42f3c5,0x97,__cdecl,,ZunResult
+th07::GameManager::CutChain,0x42f45d,0x4d,__cdecl,,void
+th07::GameManager::OnUpdate,0x42d8d5,0x8fe,__fastcall,,ChainCallbackResult,GameManager*
+th07::GameManager::OnDraw,0x42e1d4,0x23,__fastcall,,ChainCallbackResult,GameManager*
+th07::GameManager::AddedCallback,0x42e83e,0xaa5,__fastcall,,ZunResult,GameManager*
+th07::GameManager::DeletedCallback,0x42f2e4,0xe0,__fastcall,,ZunResult,GameManager*

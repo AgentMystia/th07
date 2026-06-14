@@ -234,9 +234,9 @@ u32 __fastcall Controller::SetButtonFromDirectInputJoystate(u16 *outButtons, i16
         return 0;
     }
 
-    *outButtons |= (inputButtons[controllerButtonToTest] & 0x80 ? touhouButton & 0xFFFF : 0);
+    *outButtons |= (inputButtons[controllerButtonToTest] & 0x80 ? (u16)touhouButton : 0);
 
-    return inputButtons[controllerButtonToTest] & 0x80 ? touhouButton & 0xFFFF : 0;
+    return inputButtons[controllerButtonToTest] & 0x80 ? (u16)touhouButton : 0;
 }
 
 u32 __fastcall Controller::SetButtonFromControllerInputs(u16 *outButtons, i16 controllerButtonToTest,
@@ -251,9 +251,9 @@ u32 __fastcall Controller::SetButtonFromControllerInputs(u16 *outButtons, i16 co
 
     mask = 1 << controllerButtonToTest;
 
-    *outButtons |= (inputButtons & mask ? touhouButton & 0xFFFF : 0);
+    *outButtons |= (inputButtons & mask ? (u16)touhouButton : 0);
 
-    return inputButtons & mask ? touhouButton & 0xFFFF : 0;
+    return inputButtons & mask ? (u16)touhouButton : 0;
 }
 
 DIFFABLE_STATIC_ARRAY(u8, (32 * 4), g_ControllerData)
