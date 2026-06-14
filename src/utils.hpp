@@ -5,6 +5,7 @@
 
 #include "ZunMath.hpp"
 #include "ZunResult.hpp"
+#include "ZunBool.hpp"
 #include "diffbuild.hpp"
 #include "i18n.hpp"
 #include "inttypes.hpp"

@@ -62,6 +62,12 @@
 #define DIFFABLE_STATIC_ARRAY_ASSIGN(type, size, name) type name[size]
 #endif
 
+// C_ASSERT fallback (normally provided by windows.h). Defined here so headers
+// using ZUN_ASSERT_SIZE compile without explicitly including windows.h.
+#ifndef C_ASSERT
+#define C_ASSERT(e) typedef char __C_ASSERT__[(e) ? 1 : -1]
+#endif
+
 #if defined(BINARYMATCHBUILD) || defined(DIFFBUILD) || defined(DLLBUILD)
 #define ZUN_ASSERT_SIZE(type, size) C_ASSERT(sizeof(type) == size);
 #else
