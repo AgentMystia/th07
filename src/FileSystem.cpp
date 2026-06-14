@@ -57,7 +57,7 @@ u8 *__fastcall OpenPath(char *filepath, i32 isExternalResource)
         // to match objdiff block-for-block.
         if (fsize != 0)
         {
-            utils::DebugPrint2("%s Decode ... \r\n", entryname);
+            utils::DebugPrint("%s Decode ... \r\n", entryname);
             data = (u8 *)malloc(fsize);
             if (data == NULL)
             {
@@ -68,7 +68,7 @@ u8 *__fastcall OpenPath(char *filepath, i32 isExternalResource)
         }
     }
 
-    utils::DebugPrint2("%s Load ... \r\n", filepath);
+    utils::DebugPrint("%s Load ... \r\n", filepath);
     // th07 switched from th06's fopen/fread to the Win32 file API. The flags
     // below decode to GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING, and
     // FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS.
@@ -76,7 +76,7 @@ u8 *__fastcall OpenPath(char *filepath, i32 isExternalResource)
                        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS, NULL);
     if (file == INVALID_HANDLE_VALUE)
     {
-        utils::DebugPrint2("error : %s is not found.\r\n", filepath);
+        utils::DebugPrint("error : %s is not found.\r\n", filepath);
         data = NULL;
     }
     else
@@ -113,7 +113,7 @@ i32 __fastcall RawWriteFile(LPCSTR fileName, LPCVOID buffer, DWORD size)
                         FILE_ATTRIBUTE_NORMAL, NULL);
     if (hFile == INVALID_HANDLE_VALUE)
     {
-        utils::DebugPrint2("error : %s write error\r\n", fileName);
+        utils::DebugPrint("error : %s write error\r\n", fileName);
         return -1;
     }
     else
@@ -122,13 +122,13 @@ i32 __fastcall RawWriteFile(LPCSTR fileName, LPCVOID buffer, DWORD size)
         if (size == bytesWritten)
         {
             CloseHandle(hFile);
-            utils::DebugPrint2("%s write ...\r\n", fileName);
+            utils::DebugPrint("%s write ...\r\n", fileName);
             return 0;
         }
         else
         {
             CloseHandle(hFile);
-            utils::DebugPrint2("error : %s write error\r\n", fileName);
+            utils::DebugPrint("error : %s write error\r\n", fileName);
             return -2;
         }
     }
