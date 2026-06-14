@@ -667,13 +667,10 @@ HRESULT CStreamingSound::Reset()
 // Constructs the class.  Corresponds to th07.exe FUN_0045e020.
 CWaveFile::CWaveFile()
 {
-    m_dwFlags = 0;
+    m_pwfx = NULL;
     m_pad04 = 0;
-    m_dwRemainingInChunk = 0;
     m_dwSize = 0;
     m_bIsReadingFromMemory = 0;
-    m_hFile = (HANDLE)-1;
-    m_pwfx = NULL;
 }
 
 // Closes the file if open.  Corresponds to th07.exe FUN_0045e4b0.
