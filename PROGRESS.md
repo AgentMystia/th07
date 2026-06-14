@@ -2,7 +2,14 @@
 
 最后更新：2026-06-14
 
-## 已 objdiff 验证模块（11 模块，~95 函数，21×100%）
+## 已 objdiff 验证模块（12 模块，~110 函数，21×100%）
+
+### ★Wave 10 AnmManager 结构体关键修正★
+- **sizeof(AnmManager) = 0x17e560**（不是 0x2e4dc！后者是 vertexBuffer 字段偏移）
+- sprites/scripts/spriteIndices = **2560**（非 th06 的 2048）
+- anmFiles = **50**（非 128，anmIdx<0x32）
+- 完整字段偏移表（sprites@0x60, textures[264]@0x282ac, scripts@0x28ef0, vertexBuffer@0x2e4dc, scratchRegion[0x150000]@0x2e534）
+- 第 12 模块：CreateEmptyTexture 99.4%/ReleaseTexture 88.3%，ExecuteScript(11KB)/Draw 家族 stub 待 lift
 
 ### 完整验证（100% 或 99%+）
 | 模块 | 结果 |
