@@ -130,3 +130,29 @@ th07::SoundPlayer::LoadBgmFmtFile,0x0044bff0,0x20,__thiscall,,ZunResult,char* pa
 th07::SoundPlayer::ProcessSoundQueues,0x0044c9c0,0xa70,__fastcall,,void,
 th07::SoundPlayer::SoundQueueAdd,0x0044d2f0,0xd0,__thiscall,,void,i32 command,i32 param1,char* name
 th07::SoundPlayer::BackgroundMusicPlayerThread,0x0044d200,0xf0,__stdcall,,DWORD,LPVOID lpThreadParameter
+th07::Player::RegisterChain,0x4429d0,0xd0,__fastcall,,ZunResult,u8
+th07::Player::CutChain,0x442b10,0x60,__cdecl,,void,
+th07::Player::AddedCallback,0x4423e0,0x4f8,__fastcall,,ZunResult,Player*
+th07::Player::DeletedCallback,0x4428e0,0xf0,__fastcall,,ZunResult,Player*
+th07::Player::OnUpdate,0x441fb0,0xc0,__fastcall,,ChainCallbackResult,Player*
+th07::Player::OnDrawHighPrio,0x4420b0,0x140,__fastcall,,ChainCallbackResult,Player*
+th07::Player::OnDrawLowPrio,0x442350,0x20,__fastcall,,ChainCallbackResult,Player*
+th07::Player::AngleToPlayer,0x442370,0x70,__fastcall,,f32,D3DXVECTOR3*
+th07::Player::HandlePlayerInputs,0x43ee50,0x6c0,__fastcall,,ZunResult,
+th07::Player::CalcItemBoxCollision,0x43e4e0,0x1d0,__thiscall,,i32,D3DXVECTOR3*,D3DXVECTOR3*
+th07::Player::CheckGraze,0x43e3b0,0x150,__thiscall,,i32,D3DXVECTOR3*,D3DXVECTOR3*
+th07::Player::ScoreGraze,0x43eb90,0x200,__thiscall,,void,D3DXVECTOR3*
+th07::Player::Die,0x43edc0,0x60,__fastcall,,void,
+th07::Player::CalcKillBoxCollision,0x43e260,0x150,__thiscall,,i32,D3DXVECTOR3*,D3DXVECTOR3*
+th07::Player::CalcLaserHitbox,0x43e6b0,0x1e0,__thiscall,,i32,D3DXVECTOR3*,D3DXVECTOR3*,D3DXVECTOR3*,f32,i32
+th07::Player::CalcDamageToEnemy,0x43d9e0,0x280,__thiscall,,i32,D3DXVECTOR3*,D3DXVECTOR3*,ZunBool*
+th07::Player::DrawBullets,0x43d690,0x100,__fastcall,,void,Player*
+th07::Player::DrawBulletExplosions,0x43d790,0xf0,__fastcall,,void,Player*
+th07::Player::SpawnBullets,0x43d160,0x190,__fastcall,,void,Player*,u32
+th07::Player::StartFireBulletTimer,0x43d990,0x30,__fastcall,,void,Player*
+th07::Player::UpdateFireBulletsTimer,0x43d880,0x80,__fastcall,,ZunResult,Player*
+th07::Player::UpdatePlayerBullets,0x43d2f0,0x3a0,__fastcall,,void,Player*
+th07::Player::ClearBombRegions,0x440940,0xb0,__fastcall,,void,Player*
+th07::Player::HandleBombInput,0x4409f0,0x2c0,__fastcall,,void,Player*
+th07::Player::StartSupernaturalBorder,0x441960,0x270,__fastcall,,void,Player*
+th07::Player::EndSupernaturalBorder,0x441bd0,0x210,__fastcall,,void,Player*

@@ -31,6 +31,7 @@
 #pragma once
 
 #include "AnmVm.hpp"
+#include "ZunTimer.hpp"
 #include "Chain.hpp"
 #include "ZunResult.hpp"
 #include "diffbuild.hpp"
