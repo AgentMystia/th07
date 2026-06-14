@@ -56,3 +56,7 @@ th07::ScreenEffect::ShakeScreen,0x44b0e0,0x198,__fastcall,,ChainCallbackResult,S
 th07::ScreenEffect::AddedCallback,0x44b280,0x34,__fastcall,,ZunResult,ScreenEffect*
 th07::ScreenEffect::DeletedCallback,0x44b2c0,0x4f,__fastcall,,ZunResult,ScreenEffect*
 th07::ScreenEffect::RegisterChain,0x44b310,0x1ea,__fastcall,,ScreenEffect*,i32,u32,u32,u32,u32
+th07::AnmVm::AnmVm,0x401170,0x31,__fastcall,,void,AnmVm*
+th07::AnmVm::Initialize,0x4010f0,0x7b,__fastcall,,void,AnmVm*
+th07::AnmVm::ResetInterpTimers,0x4011b0,0xfa,__fastcall,,void,AnmVm*
+D3DXMatrixIdentity,0x401000,0xad,__fastcall,,D3DXMATRIX*,D3DXMATRIX*

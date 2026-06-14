@@ -119,6 +119,7 @@ def configure(build_type):
             "zwave",
             "BulletData",
             "ZunTimer",
+            "AnmVm",
         ]
 
         small_codegen_sources = set(

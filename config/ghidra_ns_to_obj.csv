@@ -1,4 +1,5 @@
-AnmManager,th07::AnmVm,th07::AnmManager
+AnmManager,th07::AnmManager
+AnmVm,th07::AnmVm,D3DXMatrixIdentity
 AsciiManager,th07::AsciiManager,th07::StageMenu
 BombData,th07::BombData
 BulletData,th07::BulletData
