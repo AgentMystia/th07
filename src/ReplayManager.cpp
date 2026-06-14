@@ -9,6 +9,9 @@
 #include <time.h>
 
 #include "ReplayManager.hpp"
+#include <stdlib.h>
+#include <string.h>
+extern int g_CurrentStage;
 
 extern "C"
 {

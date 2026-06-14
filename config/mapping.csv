@@ -84,7 +84,6 @@ th07::CSoundManager::SetPrimaryBufferFormat,0x0045c7d0,0x108,__thiscall,,HRESULT
 th07::CSoundManager::CreateStreaming,0x0045c8e0,0x34b,__thiscall,,HRESULT,CStreamingSound **ppStreamingSound,LPSTR strWaveFileName,DWORD dwCreationFlags,GUID guid3DAlgorithm,DWORD dwNotifyCount,DWORD dwNotifySize,DWORD dwUnknown,HANDLE hNotifyEvent,WaveFormat *pwfx
 th07::CSoundManager::CreateStreamingFromMemory,0x0045cc30,0x31a,__thiscall,,HRESULT,CStreamingSound **ppStreamingSound,BYTE *pbData,ULONG ulDataSize,DWORD dwCreationFlags,GUID guid3DAlgorithm,DWORD dwNotifyCount,DWORD dwNotifySize,DWORD dwUnknown,HANDLE hNotifyEvent,WaveFormat *pwfx
 th07::CSound::CSound,0x0045cf50,0xdc,__thiscall,,void,LPDIRECTSOUNDBUFFER *apDSBuffer,DWORD dwDSBufferSize,DWORD dwNumBuffers,CWaveFile *pWaveFile
-th07::CSound::`scalar deleting destructor',0x0045d030,0x2d,__thiscall,,void,DWORD flags
 th07::CSound::~CSound,0x0045d2c0,0xf0,__thiscall,,void,
 th07::CSound::FillBufferWithSound,0x0045d3c0,0x1e3,__thiscall,,HRESULT,LPDIRECTSOUNDBUFFER pDSB,BOOL bRepeatWavIfBufferLarger
 th07::CSound::RestoreBuffer,0x0045d5b0,0xa2,__thiscall,,HRESULT,LPDIRECTSOUNDBUFFER pDSB,BOOL *pbWasRestored
@@ -94,7 +93,6 @@ th07::CSound::Play,0x0045d760,0xf9,__thiscall,,HRESULT,DWORD dwPriority,DWORD dw
 th07::CSound::Stop,0x0045d860,0xaa,__thiscall,,HRESULT,
 th07::CSound::Reset,0x0045d9b0,0x6d,__thiscall,,HRESULT,
 th07::CStreamingSound::CStreamingSound,0x0045da20,0x5f,__thiscall,,void,LPDIRECTSOUNDBUFFER pDSBuffer,DWORD dwDSBufferSize,CWaveFile *pWaveFile,DWORD dwNotifySize
-th07::CStreamingSound::`scalar deleting destructor',0x0045da80,0x2d,__thiscall,,void,DWORD flags
 th07::CStreamingSound::~CStreamingSound,0x0045dab0,0x1b,__thiscall,,void,
 th07::CStreamingSound::UpdateFadeOut,0x0045dad0,0x8e,__thiscall,,HRESULT,
 th07::CStreamingSound::HandleWaveStreamNotification,0x0045db60,0x3e8,__thiscall,,HRESULT,BOOL bLoopedPlay
@@ -107,3 +105,15 @@ th07::CWaveFile::GetSize,0x0045e1f0,0x10,__fastcall,,DWORD,
 th07::CWaveFile::ResetFile,0x0045e210,0x147,__thiscall,,HRESULT,BOOL bLoop
 th07::CWaveFile::Read,0x0045e360,0x147,__thiscall,,HRESULT,BYTE *pBuffer,DWORD dwSizeToRead,DWORD *pdwSizeRead
 th07::CWaveFile::Close,0x0045e4b0,0x32,__thiscall,,HRESULT,
+th07::ReplayManager::RegisterChain,0x00443aa0,0x28e,__fastcall,,ZunResult,i32 isDemo,char* replayFile
+th07::ReplayManager::OnUpdate,0x00442cd0,0x17a,__fastcall,,ChainCallbackResult,ReplayManager* mgr
+th07::ReplayManager::OnUpdateDemoHighPrio,0x00442ee0,0x154,__fastcall,,ChainCallbackResult,ReplayManager* mgr
+th07::ReplayManager::OnUpdateDemoLowPrio,0x00442e50,0x8d,__fastcall,,ChainCallbackResult,ReplayManager* mgr
+th07::ReplayManager::OnDraw,0x0041c1b0,0xa,__fastcall,,ChainCallbackResult,ReplayManager* mgr
+th07::ReplayManager::AddedCallback,0x00443040,0x365,__fastcall,,ZunResult,ReplayManager* mgr
+th07::ReplayManager::AddedCallbackDemo,0x00443550,0x456,__fastcall,,ZunResult,ReplayManager* mgr
+th07::ReplayManager::DeletedCallback,0x004439b0,0xe7,__fastcall,,ZunResult,ReplayManager* mgr
+th07::ReplayManager::StopRecording,0x00443d30,0x6b,__cdecl,,void,(void)
+th07::ReplayManager::SaveReplay,0x00443da0,0x724,__fastcall,,void,char* replayPath,char* replayName
+th07::ReplayManager::RewriteReplay,0x004444d0,0x58a,__fastcall,,void,char* replayPath
+th07::ReplayManager::ValidateReplayData,0x004433b0,0x19f,__fastcall,,ZunResult,ReplayData* data,i32 fileSize (INLINED into ReadReplayFile in orig)
