@@ -18,7 +18,7 @@
 ### 部分验证
 | 模块 | 结果 |
 |---|---|
-| zwave | 26 函数，**5×100%**，平均 92.3%（CSound/CWaveFile/CStreamingSound）|
+| zwave | 26 函数，**5×100%**，平均 **96.0%**（CSound/CWaveFile/CStreamingSound 全近完整）|
 | SoundPlayer | 13 函数，平均 75.9%（StopBGM 92.6%, BGMThread 88.8%）|
 | ReplayManager | StopRecording 99.7%, DeletedCallback 89%, RegisterChain 84%（其余 stub 依赖下游）|
 | FileSystem | OpenPath 92%, RawWriteFile 64%（错误路径实现不全）|
