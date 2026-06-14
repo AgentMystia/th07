@@ -137,7 +137,7 @@ extern "C" void *g_BombDataTable; // 6 entries * 4 pointers each
 // wires AddedCallback/DeletedCallback onto the calc elem, and adds the calc
 // elem to the calc chain at priority 8 and the two draw elems at priorities
 // 6 and 8.
-ZunResult __fastcall Player_RegisterChain(u8 unk)
+ZunResult __fastcall Player::RegisterChain(u8 unk)
 {
     Player *p = &g_Player;
     memset(p, 0, 0xb7e78);
@@ -176,7 +176,7 @@ ZunResult __fastcall Player_RegisterChain(u8 unk)
 // =============================================================================
 // CutChain  --  FUN_00442b10
 // =============================================================================
-void Player_CutChain()
+void Player::CutChain()
 {
     Chain_Cut(g_Player_chainCalc);
     g_Player_chainCalc = NULL;
@@ -194,7 +194,7 @@ void Player_CutChain()
 // stored at g_GameManager+0 and +4 (the per-stage replay scratch buffers that
 // AddedCallback may have allocated). Returns ZUN_SUCCESS.
 extern "C" void __fastcall AnmManager_ReleaseAnm_fileIdx10(void *anmMgr); // tail of FUN_0044e4e0 with idx=10
-ZunResult __fastcall Player_DeletedCallback(Player *p)
+ZunResult __fastcall Player::DeletedCallback(Player *p)
 {
     (void)p;
     i32 curState = *reinterpret_cast<i32 *>(&g_Supervisor_curState);
@@ -224,10 +224,10 @@ ZunResult __fastcall Player_DeletedCallback(Player *p)
 // =============================================================================
 // Trivial: calls DrawBulletExplosions and returns CHAIN_CALLBACK_RESULT_CONTINUE.
 extern "C" void __fastcall Player_DrawBulletExplosions(Player *p); // FUN_0043d790
-i32 __fastcall Player_OnDrawLowPrio(Player *p)
+ChainCallbackResult __fastcall Player::OnDrawLowPrio(Player *p)
 {
     Player_DrawBulletExplosions(p);
-    return 1; // CHAIN_CALLBACK_RESULT_CONTINUE
+    return CHAIN_CALLBACK_RESULT_CONTINUE;
 }
 
 // =============================================================================
@@ -238,10 +238,10 @@ i32 __fastcall Player_OnDrawLowPrio(Player *p)
 //   relY = this->positionCenter.y - pos->y;
 //   if (relY == 0.0f && relX == 0.0f) return PI/2;   // 0x3fc90fdb
 //   return atan2f(relY, relX);
-f32 __fastcall Player_AngleToPlayer(Player *p, D3DXVECTOR3 *pos)
+f32 Player::AngleToPlayer(D3DXVECTOR3 *pos)
 {
-    f32 relX = p->PositionCenter()->x - pos->x;
-    f32 relY = p->PositionCenter()->y - pos->y;
+    f32 relX = PositionCenter()->x - pos->x;
+    f32 relY = PositionCenter()->y - pos->y;
     if (relY == 0.0f && relX == 0.0f)
     {
         return 0x3fc90fdb; // PI/2
@@ -253,7 +253,7 @@ f32 __fastcall Player_AngleToPlayer(Player *p, D3DXVECTOR3 *pos)
 // StartFireBulletTimer  --  FUN_0043d990
 // =============================================================================
 // Verified: if fireBulletTimer.current < 0, reset to {-999, 0, 0}.
-void __fastcall Player_StartFireBulletTimer(Player *p)
+void __fastcall Player::StartFireBulletTimer(Player *p)
 {
     if (*reinterpret_cast<i32 *>(&p->raw[0x169fc]) < 0)
     {
@@ -272,7 +272,7 @@ void __fastcall Player_StartFireBulletTimer(Player *p)
 // resets the invulnerability timer at +0x16a00 to {-999, 0, 0}, and plays
 // the death sound (idx 4).
 extern "C" void __fastcall Gui_ClearFlags(); // FUN_004012b0
-void __fastcall Player_Die(Player *p)
+void __fastcall Player::Die(Player *p)
 {
     Gui_ClearFlags();
     EffectManager_SpawnEffect(0xc, p->PositionCenter(), 3, 1, 0xff4040ff);
@@ -297,22 +297,19 @@ void __fastcall Player_Die(Player *p)
 // raw pixel-space size into the per-axis half-extent used by the AABB test.
 extern "C" f32 g_CollisionScaleNumerator;   // DAT_00498a54
 extern "C" f32 g_CollisionScaleDenominator; // DAT_00498a70
-i32 __fastcall Player_CalcItemBoxCollision(Player *p, D3DXVECTOR3 *center, D3DXVECTOR3 *size)
+i32 Player::CalcItemBoxCollision(D3DXVECTOR3 *center, D3DXVECTOR3 *size)
 {
-    u8 state = p->raw[0x2408];
+    u8 state = raw[0x2408];
     if (state != PLAYER_STATE_ALIVE && state != PLAYER_STATE_INVULNERABLE &&
         state != PLAYER_STATE_DYING)
     {
         return 0;
     }
-    // The binary reads the precomputed grab box corners directly. These were
-    // written by HandlePlayerInputs from grabItemSize at +0x99c.
-    f32 *grabTopLeft = reinterpret_cast<f32 *>(&p->raw[0x978]);
-    f32 *grabBotRight = reinterpret_cast<f32 *>(&p->raw[0x984]);
+    f32 *grabTopLeft = reinterpret_cast<f32 *>(&raw[0x978]);
+    f32 *grabBotRight = reinterpret_cast<f32 *>(&raw[0x984]);
     f32 scaleFactor = g_CollisionScaleNumerator / g_CollisionScaleDenominator;
     f32 halfX = size->x * scaleFactor;
     f32 halfY = size->y * scaleFactor;
-    // AABB overlap test. Order of operands matches the binary's comparisons.
     if (center->x + halfX < grabTopLeft[0] || grabBotRight[0] < center->x - halfX ||
         center->y + halfY < grabTopLeft[1] || grabBotRight[1] < center->y - halfY)
     {
@@ -341,7 +338,7 @@ extern "C" i32 g_GameManager_scoreFrameBase; // @ GameManager + 0x88
 extern "C" i32 g_CurrentScoreFrame;          // @ DAT_0062f88c
 extern "C" i32 g_Cherry;                     // @ DAT_012fe0d0
 extern "C" u32 g_GuiFlags;                   // DAT_0049fbf4 (bitfield)
-void __fastcall Player_ScoreGraze(Player *p, D3DXVECTOR3 *center)
+void Player::ScoreGraze(D3DXVECTOR3 *center)
 {
     if (*reinterpret_cast<i32 *>(&g_GameManager_scoreFrameBase) == 0)
     {
@@ -358,13 +355,13 @@ void __fastcall Player_ScoreGraze(Player *p, D3DXVECTOR3 *center)
     }
     f32 scaleFactor = g_CollisionScaleNumerator / g_CollisionScaleDenominator;
     D3DXVECTOR3 particlePos;
-    particlePos.x = (p->PositionCenter()->x + center->x) * scaleFactor;
-    particlePos.y = (p->PositionCenter()->y + center->y) * scaleFactor;
-    particlePos.z = (p->PositionCenter()->z + center->z) * scaleFactor;
+    particlePos.x = (PositionCenter()->x + center->x) * scaleFactor;
+    particlePos.y = (PositionCenter()->y + center->y) * scaleFactor;
+    particlePos.z = (PositionCenter()->z + center->z) * scaleFactor;
     // Color depends on focus state when inside a Supernatural Border.
-    if (p->raw[0x240d] == 1)
+    if (raw[0x240d] == 1)
     {
-        if (p->raw[0x240b] == 0)
+        if (raw[0x240b] == 0)
         {
             EffectManager_SpawnParticles(8, &particlePos, 3, 0xffff8080);
         }
@@ -382,9 +379,9 @@ void __fastcall Player_ScoreGraze(Player *p, D3DXVECTOR3 *center)
     SoundPlayer_PlaySoundByIdx(0x1e, 0);
     g_Cherry = g_Cherry + 0x9c4 + ((g_CurrentScoreFrame - g_GameManager_scoreFrameBase) / 0x5dc) * 0x14;
     g_CurrentScoreFrame = g_CurrentScoreFrame + 200; // GameManager.score
-    if (p->raw[0x240d] == 1)
+    if (raw[0x240d] == 1)
     {
-        if (p->raw[0x240b] == 0)
+        if (raw[0x240b] == 0)
         {
             GameManager_IncreaseSubrank(0x50);
             GameManager_AddScore(0x50);

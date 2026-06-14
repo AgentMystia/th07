@@ -19,17 +19,20 @@
 SetButtonFromControllerInputs@0x430370 / GetControllerInput@0x4303f0 /
 GetControllerState@0x4309c0 / GetInput@0x430b50 / ResetKeyboard@0x4312c0
 
-### GameManager（最大模块，首批 3 函数 + 结构体基础）
-- **g_GameManager @ 0x626270**（~1.4MB 含 Item[1100]×0x288 等实体数组）
-- **g_Chain @ 0x626218**（全局 Chain 控制器，AddToCalc/DrawChain 的 this）
-- 嵌入式链节点：updateChainNode@+0x9644 / drawChainNode@+0x9664（ChainElem 0x20）
-- +0x8 = **scoreSub 指针**（堆分配，ScoreSub.guiScore@+0x0 / .score@+0x4，CutChain clamp 到 999999999）
+### GameManager（最大模块，6/6 函数全部完成，平均 **89.1%**）
+- **g_GameManager @ 0x626270**（sizeof 0x9700；Item[1100] 在 ItemManager @0x575c70，不在此）
+- **g_Chain @ 0x626218**（全局 Chain 控制器）
+- 嵌入式链节点：updateChainNode@+0x9644 / drawChainNode@+0x9664
+- +0x8 = scoreSub 指针（堆分配 ScoreSub 0xC8）；+0x4 = playerSub（0x38）
 
 | 函数 | match% | 备注 |
 |---|---|---|
 | OnDraw | **100%** | trivial（unk_93dc=2）|
 | CutChain | **97.4%** | Cut 两节点 + score clamp |
-| RegisterChain | 76.1% | objdiff 符号命名限制（见下）|
+| DeletedCallback | **94.6%** | MIDI teardown + release cascade |
+| OnUpdate | **90.6%** | 2303B 每帧核心逻辑（暂停/rank/score平滑）|
+| RegisterChain | 76.1% | objdiff 符号命名限制（CALL 密集）|
+| AddedCallback | 75.8% | 2726B 分配器，CALL 密集 plateau |
 
 9 函数地址全锁定（mapping.csv）：RegisterChain@0x42f3c5 / CutChain@0x42f45d /
 OnUpdate@0x42d8d5(2303B) / OnDraw@0x42e1d4 / AddedCallback@0x42e83e(2726B) /

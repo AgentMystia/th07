@@ -235,6 +235,23 @@ struct Player
     {
         return reinterpret_cast<PlayerBombInfo *>(&raw[0x16a20]);
     }
+
+    // --- chain-lifecycle + gameplay methods (signatures from mapping.csv /
+    //     disasm). __fastcall static = ECX holds Player* (or u8 for RegisterChain);
+    //     __thiscall instance = ECX holds this, args on stack, RET n. ---
+    static ZunResult __fastcall RegisterChain(u8 unk);
+    static void CutChain();
+    static ZunResult __fastcall AddedCallback(Player *p);
+    static ZunResult __fastcall DeletedCallback(Player *p);
+    static ChainCallbackResult __fastcall OnUpdate(Player *p);
+    static ChainCallbackResult __fastcall OnDrawHighPrio(Player *p);
+    static ChainCallbackResult __fastcall OnDrawLowPrio(Player *p);
+    static void __fastcall StartFireBulletTimer(Player *p);
+    static void __fastcall Die(Player *p);
+    // __thiscall instance methods (this in ECX, args pushed, callee RET n):
+    f32 AngleToPlayer(D3DXVECTOR3 *pos);
+    i32 CalcItemBoxCollision(D3DXVECTOR3 *center, D3DXVECTOR3 *size);
+    void ScoreGraze(D3DXVECTOR3 *center);
 };
 ZUN_ASSERT_SIZE(Player, 0xb7e78);
 
