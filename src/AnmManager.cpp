@@ -1,3 +1,8 @@
+#define D3DXMatrixIdentity D3DXMatrixIdentity_DontUseHeaderDecl
+#include <d3dx8math.h>
+#undef D3DXMatrixIdentity
+struct D3DXMATRIX;
+extern D3DXMATRIX *__fastcall D3DXMatrixIdentity(D3DXMATRIX *pOut);
 // AnmManager module for th07 (Perfect Cherry Blossom).
 //
 // Sprite / animation / texture manager. All function addresses below were
