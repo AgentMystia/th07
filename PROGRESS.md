@@ -2,6 +2,63 @@
 
 最后更新：2026-06-15
 
+## ★Session 2026-06-15 (夜间长程): ScreenEffect 新模块 + AsciiManager 新模块 + FileSystem 精修★
+
+### ScreenEffect（第 14 模块，13 函数，平均 **89.55%**，4×100%）
+orig 7.9KB / 13 函数。从无到有完整实现。
+| 函数 | match% |
+|---|---|
+| DrawFadeOut | **100%** |
+| DrawFlickerFade | **100%** |
+| AddedCallback | **100%** |
+| Clear | 97.54% |
+| SetViewport | 97.00% |
+| DrawFadeIn | 98.06% |
+| DeletedCallback | 86.00% |
+| ShakeScreen | 82.50% |
+| RegisterChain | 81.55% |
+| CalcFadeIn | 83.45% |
+| CalcFadeOut | 83.24% |
+| DrawSquare | 79.82% |
+| CalcFlickerFade | 75.35% |
+
+### AsciiManager（第 15 模块，16 函数，平均 **69.95%**，8 函数 ≥80%）
+orig 32.9KB / 16 函数（含 StageMenu 委托）。核心函数已高匹配。
+| 函数 | match% |
+|---|---|
+| AddFormatText | **99.78%** |
+| CutChain | **97.00%** |
+| AddedCallback | 90.19% |
+| InitializeVms | 88.34% |
+| CreatePopup1 | 87.11% |
+| CreatePopup2 | 87.25% |
+| OnDrawMenus | 86.81% |
+| OnUpdate | 86.44% |
+| AddString | 84.26% |
+| DeletedCallback | 80.00% |
+| OnDrawPopups | 69.40% |
+| InitializeMenuVms | 61.11% |
+| RegisterChain | 58.05% |
+| AsciiManager (ctor) | 39.51% |
+| DrawStrings | 2.64% (待大函数逆向) |
+| DrawPopups | 1.34% (待大函数逆向) |
+
+### FileSystem 精修（RawWriteFile 64% → **99.03%**）
+移除 `result` 局部变量 + early-return 风格，完美匹配 orig 的 `OR EAX,-1`/`MOV EAX,-2`/`XOR EAX,EAX` 控制流。FileSystem 平均 **95.6%**。
+
+### mapping.csv 修复
+第 119 行坏行（ValidateReplayData 和 SoundPlayer::SoundPlayer 被合并）拆分为正确的两行。纯文本修改，不触发 orig 重导出。
+
+### 3 大 codegen 发现（本 session）
+1. **objdiff 最优模式 = 直接绝对地址 cast**：`(*(T**)0xADDR)` 或 `(*reinterpret_cast<T*>(0xADDR))`（直接对象）。让 MSVC 生成 `mov reg,[addr]` 匹配 orig 的 `mov reg,[DAT_addr]`。通过 g_Supervisor 结构体偏移访问会多一层间接（先取 g_Supervisor 再 +off），不匹配。ScreenEffect Clear 从 67%→97% 仅靠此修正。
+2. **D3D 方法调用用 `(*(IDirect3DDevice8**)0x575958)->Method()`** 宏：每次调用重新读地址，不缓存到局部变量。MSVC COM thiscall 生成 `mov ecx,[addr]; mov edx,[ecx]; push ecx; call [edx+off]` 精确匹配 orig。
+3. **early-return 匹配 orig 控制流**：orig 的错误路径用 `OR EAX,-1`/`MOV EAX,-2`/`XOR EAX,EAX` 直接返回，不用 result 局部。C++ early-return 风格（每分支独立 return）完美匹配。RawWriteFile 64%→99% 仅靠此。
+
+### 仍待优化（非阻塞）
+- AsciiManager DrawStrings(0x440)/DrawPopups(0x7d9) 大函数：需完整逆向，含字符串渲染循环 + point label 颜色逻辑
+- Player ScoreGraze(71.69%)/CalcItemBoxCollision(61%)：浮点栈布局，orig 用大量 f32 临时 + 三层 copy，最难
+- SoundPlayer 平均 75.9%：BGMThread/ProcessSoundQueues 大函数
+
 ## ★Session 2026-06-15 (续): Player 精修 90.79%★
 
 Player 模块 9 函数从 agent 初稿平均 62.7% 反汇编级精修到 **平均 90.79%**。

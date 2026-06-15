@@ -50,7 +50,8 @@ struct AnmMgrStub
     void ReleaseAnm_44e4e0(i32 idx);
     void DrawNoRotation_44f770(void *vm);
     void SetActiveSprite_44e8e0(void *vm, i32 spriteIdx);
-    void SetAndExecuteScript_44ea20(void *vm, void *script); // PUSH script; PUSH vm; MOV ECX,this; CALL 0x44ea20
+    void SetAndExecuteScript_44ea20(void *vm, void *script);
+    void FlushSprites_44f5c0();
 };
 
 // AnmVm helpers (fastcall, arg in ECX).
@@ -491,9 +492,85 @@ void AsciiManager::AddFormatText(D3DXVECTOR3 *position, const char *fmt, ...)
 // ===========================================================================
 // AsciiManager::DrawStrings  (FUN_004020b0)  __thiscall
 // ===========================================================================
+#pragma var_order(guiString, stringPtr, i, text, charWidth, thisBase, labelVmBase, labelIdx, diffTmp, absTmp)
 void AsciiManager::DrawStrings()
 {
-    // TODO(th07): full port of FUN_004020b0.
+    u8 *thisBase = (u8 *)this;
+    i32 guiString = 1;
+    AsciiManagerString *stringPtr = this->strings;
+
+    // vm0.flags @ this+0x1c0 |= 1 (visible) and |= 0xc00 (anchor=TopLeft)
+    *(u32 *)(thisBase + 0x1c0) |= 1;
+    *(u32 *)(thisBase + 0x1c0) |= 0xc00;
+
+    for (i32 i = 0; i < this->numStrings; i++, stringPtr++)
+    {
+        // vm0.pos @ this+0x1c8 = string->position
+        *(D3DXVECTOR3 *)(thisBase + 0x1c8) = stringPtr->position;
+        // vm0.scale @ this+0x18/0x1c = string->scale
+        *(f32 *)(thisBase + 0x18) = stringPtr->scale.x;
+        *(f32 *)(thisBase + 0x1c) = stringPtr->scale.y;
+        f32 charWidth = (f32)this->charWidth * stringPtr->scale.x;
+
+        if (guiString != (i32)stringPtr->isGui)
+        {
+            guiString = (i32)stringPtr->isGui;
+            ANM_MGR->FlushSprites_44f5c0();
+            if (guiString == 0)
+            {
+                // Full-screen viewport (0,0,640,480)
+                *(u32 *)0x575a18 = 0;
+                *(u32 *)0x575a1c = 0;
+                *(u32 *)0x575a20 = 640;
+                *(u32 *)0x575a24 = 480;
+                (*(IDirect3DDevice8 **)0x575958)->SetViewport((D3DVIEWPORT8 *)0x575a18);
+            }
+            else
+            {
+                // Arcade-region viewport via GetArcadeRegionCoordinate calls
+                // (FUN_0048b8a0 returns the coordinate; 4 calls for X/Y/W/H)
+                extern i32 GetArcadeRegionCoordinate_48b8a0();
+                *(i32 *)0x575a18 = GetArcadeRegionCoordinate_48b8a0();
+                *(i32 *)0x575a1c = GetArcadeRegionCoordinate_48b8a0();
+                *(i32 *)0x575a20 = GetArcadeRegionCoordinate_48b8a0();
+                *(i32 *)0x575a24 = GetArcadeRegionCoordinate_48b8a0();
+                (*(IDirect3DDevice8 **)0x575958)->SetViewport((D3DVIEWPORT8 *)0x575a18);
+            }
+        }
+
+        u8 *text = (u8 *)stringPtr->text;
+        while (*text != 0)
+        {
+            if (*text == '\n')
+            {
+                *(f32 *)(thisBase + 0x1cc) = *(f32 *)0x498a80 * stringPtr->scale.y + *(f32 *)(thisBase + 0x1cc);
+                *(f32 *)(thisBase + 0x1c8) = stringPtr->position.x;
+            }
+            else if (*text == ' ')
+            {
+                *(f32 *)(thisBase + 0x1c8) = charWidth + *(f32 *)(thisBase + 0x1c8);
+            }
+            else
+            {
+                if (stringPtr->isSelected == 0)
+                {
+                    *(u32 *)(thisBase + 0x1e4) = (u32)((u8 *)ANM_MGR + 0x60 + (*text - 1) * 0x40);
+                    *(u32 *)(thisBase + 0x1b8) = stringPtr->color;
+                }
+                else
+                {
+                    *(u32 *)(thisBase + 0x1e4) = (u32)((u8 *)ANM_MGR + 0x60 + (*text + 0x7c) * 0x40);
+                    *(u32 *)(thisBase + 0x1b8) = 0xffffffff;
+                }
+                ANM_MGR->DrawNoRotation_44f770(thisBase);
+                *(f32 *)(thisBase + 0x1c8) = charWidth + *(f32 *)(thisBase + 0x1c8);
+            }
+            text++;
+        }
+    }
+
+    // Point-label color rendering loop (4 vms @ this+0xb7c + i*0x24c)
+    // TODO(th07): point-label color logic from decompile (the second for loop).
 }
 
 // ===========================================================================
