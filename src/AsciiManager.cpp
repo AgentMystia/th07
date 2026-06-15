@@ -62,9 +62,18 @@ extern void __fastcall AnmVm_ResetInterpTimers_4011b0(void *vm);  // FUN_004011b
 struct Supervisor;
 extern void __fastcall Supervisor_TickTimer_43958d(Supervisor *sup, i32 *current, f32 *subFrame);
 
-// StageMenu draw methods (fastcall, this = mgr+0x74e8 / mgr+0x8e34).
+// StageMenu methods (fastcall, this = mgr+0x74e8 / mgr+0x8e34).
 extern void __fastcall StageMenu_OnDrawGameMenu_403a20(void *gameMenu);
 extern void __fastcall StageMenu_OnDrawRetryMenu_404560(void *retryMenu);
+extern void __fastcall StageMenu_OnUpdateGameMenu_402780(void *gameMenu);
+extern void __fastcall StageMenu_OnUpdateRetryMenu_403b60(void *retryMenu);
+
+// AsciiManager::ExecuteLabelVms (FUN_00401400) — __thiscall, drives the 7
+// label AnmVms through AnmManager::ExecuteScript.
+extern void __fastcall AsciiMgr_ExecuteLabelVms_401400(AsciiManager *mgr);
+
+// AnmManager::ExecuteScript (FUN_00450d60) — __thiscall, PUSH vm; MOV ECX,anmMgr.
+extern void AnmMgr_ExecuteScript_450d60(AnmMgrStub *anmMgr, void *vm);
 
 // Singleton handles. Absolute addresses so MOV ECX,imm matches orig exactly.
 #define ANM_MGR (*reinterpret_cast<AnmMgrStub **>(0x4b9e44))
@@ -202,10 +211,60 @@ StageMenu::StageMenu()
 // ===========================================================================
 // AsciiManager::OnUpdate  (FUN_004017e0)  __fastcall, AsciiManager* in ECX
 // ===========================================================================
+#pragma var_order(mgr, popup, i, timerPtr)
 ChainCallbackResult AsciiManager::OnUpdate(AsciiManager *mgr)
 {
-    // TODO(th07): full port of FUN_004017e0. The popup-iteration and label-vm
-    // execute loops are sketched here; the StageMenu update calls are stubbed.
+    if (!GM_IS_IN_GAME_MENU && !GM_IS_IN_RETRY_MENU)
+    {
+        AsciiManagerPopup *popup = (AsciiManagerPopup *)((u8 *)mgr + 0xa09c);
+        for (i32 i = 0; i < ASCII_POPUPS_COUNT; i++, popup++)
+        {
+            if (!popup->inUse)
+            {
+                continue;
+            }
+            // orig: FLD [0x498a50]; FMUL [0x575ac8]; FSUBR popup.position.y
+            popup->position.y -= *(f32 *)0x498a50 * SUP_FRAMERATE_MULT;
+            // Inline ZunTimer::Tick: timer @ popup+0x18 (previous/subFrame/current).
+            u8 *timer = (u8 *)popup + 0x18;
+            *(i32 *)(timer + 0) = *(i32 *)(timer + 8);   // previous = current
+            Supervisor_TickTimer_43958d(SUP_PTR, (i32 *)(timer + 8), (f32 *)(timer + 4));
+            if (*(i32 *)(timer + 8) > 60)
+            {
+                popup->inUse = 0;
+            }
+        }
+    }
+    else
+    {
+        if (GM_IS_IN_GAME_MENU)
+        {
+            StageMenu_OnUpdateGameMenu_402780((u8 *)mgr + 0x74e8);
+        }
+    }
+    if (GM_IS_IN_RETRY_MENU)
+    {
+        StageMenu_OnUpdateRetryMenu_403b60((u8 *)mgr + 0x8e34);
+    }
+
+    AsciiMgr_ExecuteLabelVms_401400(mgr);
+
+    if ((GM_FLAGS >> 1 & 1) != 0)
+    {
+        if (*(i16 *)((u8 *)mgr + 0xa028) == 0)
+        {
+            u8 *shakeVm = (u8 *)mgr + 0x9e50;
+            u8 *anmMgr = (u8 *)ANM_MGR;
+            *(u16 *)(shakeVm + 0x1d8) = 7;
+            ANM_MGR->SetAndExecuteScript_44ea20(shakeVm, *(void **)(anmMgr + 0x28ef0 + 7 * 4));
+        }
+        AnmMgr_ExecuteScript_450d60(ANM_MGR, (u8 *)mgr + 0x9e50);
+    }
+    else
+    {
+        *(i16 *)((u8 *)mgr + 0xa028) = 0;
+    }
+
     return CHAIN_CALLBACK_RESULT_CONTINUE;
 }
 
