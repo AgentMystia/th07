@@ -46,14 +46,17 @@ DIFFABLE_STATIC(ChainElem, g_AsciiManagerOnDrawPopupsChain)
 // ---- AnmManager thiscall callee stubs (struct methods emit PUSH/MOV ECX/CALL) ----
 struct AnmMgrStub
 {
-    ZunResult LoadAnm_44df90(i32 idx, char *path, i32 offset); // PUSH offset; PUSH path; PUSH idx; MOV ECX,this; CALL 0x44df90
-    void ReleaseAnm_44e4e0(i32 idx);                            // PUSH idx; MOV ECX,this; CALL 0x44e4e0
-    void DrawNoRotation_44f770(void *vm);                       // PUSH vm; MOV ECX,this; CALL 0x44f770
+    ZunResult LoadAnm_44df90(i32 idx, char *path, i32 offset);
+    void ReleaseAnm_44e4e0(i32 idx);
+    void DrawNoRotation_44f770(void *vm);
+    void SetActiveSprite_44e8e0(void *vm, i32 spriteIdx);
+    void SetAndExecuteScript_44ea20(void *vm, void *script); // PUSH script; PUSH vm; MOV ECX,this; CALL 0x44ea20
 };
 
 // AnmVm helpers (fastcall, arg in ECX).
-extern void __fastcall AnmVm_Initialize_401170(void *vm);
-extern void __fastcall AnmVm_ResetInterpTimers_4011b0(void *vm);
+extern void __fastcall AnmVm_Initialize_401170(void *vm);   // FUN_00401170 (ctor)
+extern void __fastcall AnmVm_Initialize_4010f0(void *vm);   // FUN_004010f0 (Initialize)
+extern void __fastcall AnmVm_ResetInterpTimers_4011b0(void *vm);  // FUN_004011b0
 
 // Supervisor::TickTimer — __thiscall, ECX = &g_Supervisor @ 0x575950.
 struct Supervisor;
@@ -289,18 +292,85 @@ ZunResult AsciiManager::AddedCallback(AsciiManager *s)
 // ===========================================================================
 // AsciiManager::InitializeVms  (FUN_00401a00)  __thiscall
 // ===========================================================================
+#pragma var_order(base, vm1Ptr, anmMgr, tmpUnk74d4)
 void AsciiManager::InitializeVms()
 {
-    // TODO(th07): full port of FUN_00401a00. The memset priming and field
-    // initialization are stubbed pending AnmVm field offset verification.
+    u8 *base = (u8 *)this;
+
+    // 6 REP STOSD memsets (dword counts from orig: 0x93/0x93/0x1800/0x653/0x407/0x1c3e).
+    memset(base + 0x24c, 0, 0x93 * 4);    // vm1
+    memset(base, 0, 0x93 * 4);             // vm0
+    memset(base + 0x14bc, 0, 0x1800 * 4);  // strings
+    memset(base + 0x74e8, 0, 0x653 * 4);   // gameMenu
+    memset(base + 0x8e34, 0, 0x407 * 4);   // retryMenu
+    memset(base + 0xa09c, 0, 0x1c3e * 4);  // popups
+
+    this->numStrings = 0;
+    this->isGui = 0;
+    this->isSelected = 0;
+    this->nextPopupIndex1 = 0;
+    this->nextPopupIndex2 = 0;
+    *(u32 *)(base + 0x74e4) = 0;
+    this->color = 0xffffffff;
+    this->scale.x = 1.0f;
+    this->scale.y = 1.0f;
+
+    // vm1.flags @ base+0x40c (= vm1+0x1c0) |= 0xc00
+    *(u32 *)(base + 0x40c) |= 0xc00;
+    u8 *vm1Ptr = base + 0x24c;
+    AnmVm_Initialize_4010f0(vm1Ptr);
+    ANM_MGR->SetActiveSprite_44e8e0(vm1Ptr, 0);
+    AnmVm_Initialize_4010f0(base);
+    ANM_MGR->SetActiveSprite_44e8e0(base, 0x20);
+
+    // vm1.pos.z @ base+0x41c (= vm1+0x1d0) = 0.1f
+    *(f32 *)(base + 0x41c) = 0.1f;
+    this->isSelected = 0;
+    this->charWidth = 14;
+
+    // Dead store: copy u16 from unk74d4 into scoreLabelVm+0x172 (base+0x65e),
+    // then write unk74d4 back to itself.
+    {
+        u32 tmpUnk74d4 = *(u32 *)(base + 0x74d4);
+        *(u16 *)(base + 0x65e) = (u16)tmpUnk74d4;
+        *(u32 *)(base + 0x74d4) = tmpUnk74d4;
+    }
 }
 
 // ===========================================================================
 // AsciiManager::InitializeMenuVms  (FUN_00401ba0)  __thiscall
 // ===========================================================================
+#pragma var_order(scoreLabelVm, anmMgr, scoreDigitVm, grazeLabelVm, pointLabelVm0, pointLabelVm1, pointLabelVm2, pointLabelVm3)
 void AsciiManager::InitializeMenuVms()
 {
-    // TODO(th07): full port of FUN_00401ba0.
+    u8 *scoreLabelVm = (u8 *)this + 0x498;
+    u8 *anmMgr = (u8 *)ANM_MGR;
+    *(u16 *)(scoreLabelVm + 0x1d8) = 4;
+    ANM_MGR->SetAndExecuteScript_44ea20(scoreLabelVm, *(void **)(anmMgr + 0x28ef0 + 4 * 4));
+
+    u8 *scoreDigitVm = (u8 *)this + 0x6e4;
+    *(u16 *)(scoreDigitVm + 0x1d8) = 3;
+    ANM_MGR->SetAndExecuteScript_44ea20(scoreDigitVm, *(void **)(anmMgr + 0x28ef0 + 3 * 4));
+
+    u8 *grazeLabelVm = (u8 *)this + 0x930;
+    *(u16 *)(grazeLabelVm + 0x1d8) = 5;
+    ANM_MGR->SetAndExecuteScript_44ea20(grazeLabelVm, *(void **)(anmMgr + 0x28ef0 + 5 * 4));
+
+    u8 *pointLabelVm0 = (u8 *)this + 0xb7c;
+    *(u16 *)(pointLabelVm0 + 0x1d8) = 6;
+    ANM_MGR->SetAndExecuteScript_44ea20(pointLabelVm0, *(void **)(anmMgr + 0x28ef0 + 6 * 4));
+
+    u8 *pointLabelVm1 = (u8 *)this + 0xdc8;
+    *(u16 *)(pointLabelVm1 + 0x1d8) = 6;
+    ANM_MGR->SetAndExecuteScript_44ea20(pointLabelVm1, *(void **)(anmMgr + 0x28ef0 + 6 * 4));
+
+    u8 *pointLabelVm2 = (u8 *)this + 0x1014;
+    *(u16 *)(pointLabelVm2 + 0x1d8) = 6;
+    ANM_MGR->SetAndExecuteScript_44ea20(pointLabelVm2, *(void **)(anmMgr + 0x28ef0 + 6 * 4));
+
+    u8 *pointLabelVm3 = (u8 *)this + 0x1260;
+    *(u16 *)(pointLabelVm3 + 0x1d8) = 6;
+    ANM_MGR->SetAndExecuteScript_44ea20(pointLabelVm3, *(void **)(anmMgr + 0x28ef0 + 6 * 4));
 }
 
 // ===========================================================================
