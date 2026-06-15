@@ -255,10 +255,8 @@ struct Player
 };
 ZUN_ASSERT_SIZE(Player, 0xb7e78);
 
-// Chain element globals stored separately (verified in FUN_004429d0).
-extern ChainElem *g_Player_chainCalc;  // @ 0x00575934
-extern ChainElem *g_Player_chainDraw1; // @ 0x00575938
-extern ChainElem *g_Player_chainDraw2; // @ 0x0057593c
-
+// Chain element pointers live INSIDE g_Player at +0xb7e5c/+0xb7e60/+0xb7e64
+// (verified: g_Player@0x4bdad8 + 0xb7e5c = 0x575934 = orig DAT_00575934).
+// Accessed via raw offsets; not separate globals.
 DIFFABLE_EXTERN(Player, g_Player)
 }; // namespace th07

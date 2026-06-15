@@ -2,6 +2,32 @@
 
 最后更新：2026-06-15
 
+## ★Session 2026-06-15 (续): Player 精修 90.79%★
+
+Player 模块 9 函数从 agent 初稿平均 62.7% 反汇编级精修到 **平均 90.79%**。
+
+| 函数 | match% | 备注 |
+|---|---|---|
+| StartFireBulletTimer | **100%** | ZunTimer 重置 current/subFrame/previous 倒序 + cur 局部先读 |
+| OnDrawLowPrio | 99.50% | 保留 C++（extern Player_DrawBulletExplosions）|
+| RegisterChain | 99.15% | g_Chain 成员方法 + raw[0xb7e5c..] 字段（=DAT_00575934）+ 不缓存 calc/draw 局部 |
+| Die | 99.02% | stub struct thiscall（Effect/Sound/Game 方法）|
+| DeletedCallback | 98.47% | ANM_MGR 宏 + 直接 cmp（不缓存）+ #ifndef DIFFBUILD asm 重建 IMUL Gui 计数 |
+| CutChain | 96.84% | g_Chain.Cut + raw[0xb7e5c] 字段 |
+| AngleToPlayer | 91.36% | PI/2 全局 [0x498a9c] + atan2 extern "C" 符号 call（objdiff 容忍外部 call）|
+| ScoreGraze | 71.69% | 浮点栈布局差异（待 orig 临时变量结构重建）|
+| CalcItemBoxCollision | 61.08% | 浮点栈布局差异（orig 大量中间临时，最难）|
+
+### 5 大 codegen 发现（本 session）
+1. **objdiff build 不定义 DIFFBUILD**（AnmManager.cpp 用 `#ifndef DIFFBUILD`）→ 内联 asm 用 `#ifndef DIFFBUILD` 包裹（objdiff 走 asm，SDL/exe 走 C）。MSVC asm 项目可接受（ZunMath.hpp 无条件用 fsincos），SDL port 也是 MSVC（非 GCC）
+2. **跨模块 thiscall 用 stub struct 方法**：`struct EffectManagerSpawn { void SpawnEffect(...); };` + `((Stub*)0x12fe250)->method(args)` 生成 `PUSH args; MOV ECX,this; CALL`（精确 thiscall codegen）。extern "C" __fastcall 第二参数走 EDX 不匹配 orig stack
+3. **static inline 辅助函数 /Od 不内联**！返回引用的 `g_AnmManagerFiles()` 生成多余 call → 改宏 `#define ANM_MGR (...)` 强制展开
+4. **局部变量缓存 vs orig 重读**：orig 每次 `MOV reg,[全局]`，C++ 缓存到 [ebp-x] 不匹配 → 直接表达式或重读（RegisterChain calc/draw 不存局部、DeletedCallback optUnfocused 直接 cmp）
+5. **objdiff 对外部 CALL/reloc 宽容**：Die 99% / RegisterChain 99% 即使所有单例地址是 reloc（extern 变量）仍匹配；atan2 `call atan2_disp_0048bcaa`（extern 符号）匹配 orig `call 0x48bcaa` 无需 mapping.csv
+
+### 仍待优化（非阻塞，平均已 90.79%）
+- ScoreGraze/CalcItemBoxCollision 浮点栈布局：orig 用 f32 临时 + D3DXVECTOR3 + copy 三层，MSVC /Od 栈分配难精确重建。需逐变量模拟 orig 声明顺序
+
 ## ★Session 2026-06-15: Controller 验证 + GameManager 基础★
 
 ### Controller（第 13 模块，7 函数，平均 **98.0%**，5×100%）
