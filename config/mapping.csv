@@ -116,7 +116,8 @@ th07::ReplayManager::DeletedCallback,0x004439b0,0xe7,__fastcall,,ZunResult,Repla
 th07::ReplayManager::StopRecording,0x00443d30,0x6b,__cdecl,,void,(void)
 th07::ReplayManager::SaveReplay,0x00443da0,0x724,__fastcall,,void,char* replayPath,char* replayName
 th07::ReplayManager::RewriteReplay,0x004444d0,0x58a,__fastcall,,void,char* replayPath
-th07::ReplayManager::ValidateReplayData,0x004433b0,0x19f,__fastcall,,ZunResult,ReplayData* data,i32 fileSize (INLINED into ReadReplayFile in orig)th07::SoundPlayer::SoundPlayer,0x0044b560,0x294,__thiscall,,void,
+th07::ReplayManager::ValidateReplayData,0x004433b0,0x19f,__fastcall,,ZunResult,ReplayData* data,i32 fileSize
+th07::SoundPlayer::SoundPlayer,0x0044b560,0x294,__thiscall,,void,
 th07::SoundPlayer::Release,0x0044b830,0x3e8,__thiscall,,ZunResult,
 th07::SoundPlayer::GetWavFormatData,0x0044ba80,0x70,__fastcall,,WAVEFORMATEX*,u8* soundData,char* formatString,i32* formatSize,u32 fileSizeExcludingFormat
 th07::SoundPlayer::ReopenBgm,0x0044c1b0,0x60,__thiscall,,ZunResult,i32 slotIdx
