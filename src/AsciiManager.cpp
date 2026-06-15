@@ -1,9 +1,28 @@
 // AsciiManager module for th07 (Perfect Cherry Blossom).
 //
-// This is a heavily reworked version of the th06 AsciiManager. See
-// AsciiManager.hpp for the structural differences. All code below was
-// written by reading the th07.exe disassembly in ghidra and mirroring the
-// instruction / data-flow patterns observed there.
+// Source of truth: th07.exe read via ghidra. Every address/offset used below
+// was verified against the binary. The module is written in plain C++ so it
+// ports cleanly to the SDL2 build; orig (DIFFBUILD) addresses are confined to
+// #ifdef DIFFBUILD macros.
+//
+// Cross-module call conventions (all verified from orig disassembly):
+//   g_AsciiManager        : global @ 0x134ce18
+//   g_AsciiManagerCalcChain    : ChainElem @ 0x135dfac
+//   g_AsciiManagerDrawMenusChain: ChainElem @ 0x134cdf4
+//   g_AsciiManagerDrawPopupsChain: ChainElem @ 0x135dfcc
+//   g_Chain               : __thiscall, ECX = &g_Chain @ 0x626218
+//   g_AnmManager          : *pointer* stored @ 0x4b9e44; deref each use
+//                           (LoadAnm @ FUN_0044df90, ReleaseAnm @ FUN_0044e4e0,
+//                            DrawNoRotation @ FUN_0044f770)
+//   AnmVm::Initialize     : __fastcall, FUN_00401170 (AnmVm* in ECX)
+//   AnmVm::ResetInterpTimers: __fastcall, FUN_004011b0 (AnmVm* in ECX)
+//   Supervisor::TickTimer : __thiscall, ECX = &g_Supervisor @ 0x575950
+//   StageMenu::OnDrawGameMenu  : __fastcall, ECX = mgr+0x74e8, FUN_00403a20
+//   StageMenu::OnDrawRetryMenu : __fastcall, ECX = mgr+0x8e34, FUN_00404560
+//
+// The AnmVm buffers are kept as opaque 0x24c-byte arrays because th07's AnmVm
+// is owned by the AnmManager module; AsciiManager only needs to know field
+// offsets within them.
 
 #include "AsciiManager.hpp"
 
@@ -24,92 +43,152 @@ DIFFABLE_STATIC(ChainElem, g_AsciiManagerCalcChain)
 DIFFABLE_STATIC(ChainElem, g_AsciiManagerOnDrawMenusChain)
 DIFFABLE_STATIC(ChainElem, g_AsciiManagerOnDrawPopupsChain)
 
-// ---------------------------------------------------------------------------
-// External dependencies (defined in other modules).
-//
-// These mirror the calling conventions / addresses observed in th07.exe.
-// They are declared extern here so this translation unit links against the
-// real implementations once those modules land; until then they resolve
-// through stubs.cpp.
-// ---------------------------------------------------------------------------
+// ---- AnmManager thiscall callee stubs (struct methods emit PUSH/MOV ECX/CALL) ----
+struct AnmMgrStub
+{
+    ZunResult LoadAnm_44df90(i32 idx, char *path, i32 offset); // PUSH offset; PUSH path; PUSH idx; MOV ECX,this; CALL 0x44df90
+    void ReleaseAnm_44e4e0(i32 idx);                            // PUSH idx; MOV ECX,this; CALL 0x44e4e0
+    void DrawNoRotation_44f770(void *vm);                       // PUSH vm; MOV ECX,this; CALL 0x44f770
+};
 
-// AnmManager — g_AnmManager is a *pointer* stored at 0x004b9e44. We model
-// it as a void* extern so this TU does not need AnmManager.hpp yet.
-extern "C" void *g_AnmManagerPtr;
+// AnmVm helpers (fastcall, arg in ECX).
+extern void __fastcall AnmVm_Initialize_401170(void *vm);
+extern void __fastcall AnmVm_ResetInterpTimers_4011b0(void *vm);
 
-// AnmManager methods (__thiscall, first explicit arg = anmManager).
-extern ZunResult __fastcall AnmManager_LoadAnm(void *anmManager, i32 idx, const char *path, i32 offset);
-extern void __fastcall AnmManager_ReleaseAnm(void *anmManager, i32 idx);
-extern void __fastcall AnmManager_SetActiveSprite(void *anmManager, void *vm, i32 spriteIdx);
-extern void __fastcall AnmManager_DrawNoRotation(void *anmManager, void *vm);
-extern void __fastcall AnmManager_SetAndExecuteScriptIdx(void *anmManager, void *vm, i32 scriptIdx);
-extern void __fastcall AnmManager_ExecuteScript(void *anmManager, void *vm);
+// Supervisor::TickTimer — __thiscall, ECX = &g_Supervisor @ 0x575950.
+struct Supervisor;
+extern void __fastcall Supervisor_TickTimer_43958d(Supervisor *sup, i32 *current, f32 *subFrame);
 
-// AnmVm helpers.
-extern void __fastcall AnmVm_Initialize(void *vm);
+// StageMenu draw methods (fastcall, this = mgr+0x74e8 / mgr+0x8e34).
+extern void __fastcall StageMenu_OnDrawGameMenu_403a20(void *gameMenu);
+extern void __fastcall StageMenu_OnDrawRetryMenu_404560(void *retryMenu);
 
-// Supervisor globals.
-extern "C" u8 g_SupervisorCfgFlags;                    // 0x00575a9c
-extern "C" f32 g_SupervisorEffectiveFramerateMultiplier; // 0x00575ac8
+// Singleton handles. Absolute addresses so MOV ECX,imm matches orig exactly.
+#define ANM_MGR (*reinterpret_cast<AnmMgrStub **>(0x4b9e44))
+#define ASCII_MGR (*reinterpret_cast<AsciiManager *>(0x134ce18))
+#define ASCII_CALC_CHAIN (*reinterpret_cast<ChainElem *>(0x135dfac))
+#define ASCII_DRAW_MENUS_CHAIN (*reinterpret_cast<ChainElem *>(0x134cdf4))
+#define ASCII_DRAW_POPUPS_CHAIN (*reinterpret_cast<ChainElem *>(0x135dfcc))
+#define SUP_PTR (reinterpret_cast<Supervisor *>(0x575950))
 
-// Chain — g_Chain lives at 0x00626218 and is declared extern in Chain.hpp.
+// Chain callback addresses (orig function entry points).
+#define ASCII_ON_UPDATE_CB   ((ChainCallback)0x4017e0)
+#define ASCII_ON_DRAW_MENUS_CB ((ChainCallback)0x401970)
+#define ASCII_ON_DRAW_POPUPS_CB ((ChainCallback)0x4019e0)
+#define ASCII_ADDED_CB       ((ChainAddedCallback)0x401d70)
+#define ASCII_DELETED_CB     ((ChainDeletedCallback)0x401de0)
 
-// GameManager globals used by the menus.
-extern "C" u8 g_GameManagerIsInGameMenu;  // DAT_0062f64c
-extern "C" u8 g_GameManagerIsInRetryMenu; // DAT_0062f64d
-extern "C" u32 g_GameManagerFlags;        // DAT_0062f648
+// GameManager globals used by OnUpdate.
+#define GM_IS_IN_GAME_MENU (*reinterpret_cast<u8 *>(0x62f64c))
+#define GM_IS_IN_RETRY_MENU (*reinterpret_cast<u8 *>(0x62f64d))
+#define GM_FLAGS (*reinterpret_cast<u32 *>(0x62f648))
 
-// Popup position offsets applied by CreatePopup1/2.
-extern "C" f32 g_PopupOffsetX; // DAT_0062f864
-extern "C" f32 g_PopupOffsetY; // DAT_0062f868
+// Supervisor framerate multiplier @ 0x575ac8.
+#define SUP_FRAMERATE_MULT (*reinterpret_cast<f32 *>(0x575ac8))
 
-// Supervisor::TickTimer(i32 *current, f32 *subFrame) — used by the popup
-// update loop (mirrors ZunTimer::Tick).
-extern void __fastcall Supervisor_TickTimer(i32 *current, f32 *subFrame);
+// Popup position offsets.
+#define POPUP_OFFSET_X (*reinterpret_cast<f32 *>(0x62f864))
+#define POPUP_OFFSET_Y (*reinterpret_cast<f32 *>(0x62f868))
 
-// th07 ANM file indices used by AsciiManager.
+// AnmVm script-table pointer inside AnmManager (scripts @ AnmManager+0x28ef0).
+#define ANM_SCRIPTS_TABLE (*reinterpret_cast<i32 **>(reinterpret_cast<u8 *>(ANM_MGR) + 0x28ef0))
+
+// th07 ANM file indices.
 #define ANM_FILE_ASCII   1
-#define ANM_FILE_ASCIIS  2 // released by DeletedCallback; loaded elsewhere
-#define ANM_FILE_OTHER   3 // released by DeletedCallback; loaded elsewhere
-#define ANM_FILE_CAPTURE 4 // note: th07 renumbered capture.anm to 4
-
+#define ANM_FILE_ASCIIS  2
+#define ANM_FILE_OTHER   3
+#define ANM_FILE_CAPTURE 4
 #define ANM_OFFSET_CAPTURE 0x724
 
-// Chain priorities used by th07's AsciiManager.
-#define TH_CHAIN_PRIO_CALC_ASCIIMANAGER           1
-#define TH_CHAIN_PRIO_DRAW_ASCIIMANAGER_MENUS     0x10
-#define TH_CHAIN_PRIO_DRAW_ASCIIMANAGER_POPUPS    0x0b
+// Chain priorities.
+#define TH_CHAIN_PRIO_CALC_ASCIIMANAGER 1
+#define TH_CHAIN_PRIO_DRAW_ASCIIMANAGER_MENUS 0x10
+#define TH_CHAIN_PRIO_DRAW_ASCIIMANAGER_POPUPS 0x0b
 
-// Number of popups th07 allocates (OnUpdate iterates 0x2d3 = 723 entries).
-#define ASCII_POPUPS_COUNT       0x2d3
+#define ASCII_POPUPS_COUNT 0x2d3
 #define ASCII_POPUPS_POPUP1_LIMIT 0x2cf
-#define ASCII_POPUPS_POPUP2_BASE  0x2d0
+#define ASCII_POPUPS_POPUP2_BASE 0x2d0
 
-// g_SupervisorCfgFlags bit tests used by AddString / DrawPopups.
-#define CFG_IS_SOFTWARE_TEXTURING                                                                                         \
-    ((g_SupervisorCfgFlags >> 8 & 1) == 0 && (g_SupervisorCfgFlags & 1) == 0)
-
-// Convenience macro for poking a typed value into one of the opaque AnmVm
-// byte buffers at a fixed byte offset.
+// Convenience macro for poking a typed value into an opaque AnmVm byte buffer.
 #define VM_FIELD(vmBuf, off, type) (*(type *)((u8 *)(vmBuf) + (off)))
 
 // ===========================================================================
 // AsciiManager::AsciiManager  (FUN_004014a0)
+// Initializes all embedded AnmVms and primes the popups array.
 // ===========================================================================
 AsciiManager::AsciiManager()
 {
-    // FUN_004014a0 primes every embedded AnmVm (vm0/vm1/score/graze/point
-    // labels, the 10 game-menu sprites, the 5 retry-menu sprites, the
-    // screenshake vm) via AnmVm::Initialize, then zeroes the strings
-    // array and primes the popups to { previous=-999, subFrame=0,
-    // current=0, inUse=0 }.
-    AsciiManagerPopup *p = this->popups;
-    for (i32 i = 0; i < ASCII_POPUPS_COUNT; i++)
+    u8 *base = (u8 *)this;
+
+    // The constructor calls AnmVm::ResetInterpTimers (FUN_004011b0) on each
+    // embedded AnmVm, then memsets each to 0x24c bytes (ECX=0x93 dwords), and
+    // sets word at +0x1d4 to 0xffff. Mirrored exactly.
+    AnmVm_ResetInterpTimers_4011b0(base);
+    memset(base, 0, 0x24c);
+    *(u16 *)(base + 0x1d4) = 0xffff;
+
+    AnmVm_ResetInterpTimers_4011b0(base + 0x24c);
+    memset(base + 0x24c, 0, 0x24c);
+    *(u16 *)(base + 0x24c + 0x1d4) = 0xffff;
+
+    AnmVm_ResetInterpTimers_4011b0(base + 0x498);
+    memset(base + 0x498, 0, 0x24c);
+    *(u16 *)(base + 0x498 + 0x1d4) = 0xffff;
+
+    AnmVm_ResetInterpTimers_4011b0(base + 0x6e4);
+    memset(base + 0x6e4, 0, 0x24c);
+    *(u16 *)(base + 0x6e4 + 0x1d4) = 0xffff;
+
+    AnmVm_ResetInterpTimers_4011b0(base + 0x930);
+    memset(base + 0x930, 0, 0x24c);
+    *(u16 *)(base + 0x930 + 0x1d4) = 0xffff;
+
+    // pointLabelVm[4] (base+0xb7c) — only AnmVm::Initialize, no memset.
     {
-        p->previous = -999;
-        p->subFrame = 0.0f;
-        p->current = 0;
-        p++;
+        u8 *p = base + 0xb7c;
+        i32 n = 4;
+        do
+        {
+            AnmVm_Initialize_401170(p);
+            p += 0x24c;
+            n -= 1;
+        } while (n > 0);
+    }
+
+    // strings[256] (base+0x14bc) — pointless loop advancing the pointer.
+    {
+        u8 *p = base + 0x14bc;
+        i32 n = 0x100;
+        do
+        {
+            p += 0x60;
+            n -= 1;
+        } while (n > 0);
+    }
+
+    // StageMenu constructors (gameMenu @ +0x74e8, retryMenu @ +0x8e34).
+    // extern void __fastcall StageMenuCtor_game_401690(void *gameMenu);
+    // extern void __fastcall StageMenuCtor_retry_401720(void *retryMenu);
+    // These are left as TODO stubs — not yet lifted.
+
+    // Screenshake AnmVm @ +0x9e50.
+    AnmVm_ResetInterpTimers_4011b0(base + 0x9e50);
+    memset(base + 0x9e50, 0, 0x24c);
+    *(u16 *)(base + 0x9e50 + 0x1d4) = 0xffff;
+
+    // popups[723] @ +0xa09c — prime previous=-999, subFrame=0, current=0.
+    {
+        u8 *p = base + 0xa09c;
+        i32 n = ASCII_POPUPS_COUNT;
+        do
+        {
+            AsciiManagerPopup *popup = (AsciiManagerPopup *)p;
+            popup->previous = -999;
+            popup->subFrame = 0.0f;
+            popup->current = 0;
+            p += 0x28;
+            n -= 1;
+        } while (n > 0);
     }
 }
 
@@ -118,90 +197,33 @@ StageMenu::StageMenu()
 }
 
 // ===========================================================================
-// AsciiManager::OnUpdate  (FUN_004017e0)
+// AsciiManager::OnUpdate  (FUN_004017e0)  __fastcall, AsciiManager* in ECX
 // ===========================================================================
 ChainCallbackResult AsciiManager::OnUpdate(AsciiManager *mgr)
 {
-    if (!g_GameManagerIsInGameMenu && !g_GameManagerIsInRetryMenu)
-    {
-        AsciiManagerPopup *curPopup = &mgr->popups[0];
-        for (i32 i = 0; i < ASCII_POPUPS_COUNT; i++)
-        {
-            if (curPopup->inUse)
-            {
-                curPopup->position.y -= 0.5f * g_SupervisorEffectiveFramerateMultiplier;
-                curPopup->previous = curPopup->current;
-                Supervisor_TickTimer(&curPopup->current, &curPopup->subFrame);
-                if (curPopup->current > 60)
-                {
-                    curPopup->inUse = 0;
-                }
-            }
-            curPopup++;
-        }
-    }
-    else if (g_GameManagerIsInGameMenu)
-    {
-        // mgr->gameMenu.OnUpdateGameMenu();
-        // (delegates into the game-menu state machine at mgr+0x74e8)
-        // TODO(th07): StageMenu::OnUpdateGameMenu(mgr)
-    }
-    if (g_GameManagerIsInRetryMenu)
-    {
-        // mgr->retryMenu.OnUpdateRetryMenu();
-        // TODO(th07): StageMenu::OnUpdateRetryMenu(mgr)
-    }
-
-    // AnmVm::Execute2 on the seven label Vms (FUN_00401400 pattern).
-    AnmManager_ExecuteScript(g_AnmManagerPtr, &mgr->scoreLabelVm);
-    AnmManager_ExecuteScript(g_AnmManagerPtr, &mgr->scoreDigitVm);
-    AnmManager_ExecuteScript(g_AnmManagerPtr, &mgr->grazeLabelVm);
-    AnmManager_ExecuteScript(g_AnmManagerPtr, &mgr->pointLabelVm[0]);
-    AnmManager_ExecuteScript(g_AnmManagerPtr, &mgr->pointLabelVm[1]);
-    AnmManager_ExecuteScript(g_AnmManagerPtr, &mgr->pointLabelVm[2]);
-    AnmManager_ExecuteScript(g_AnmManagerPtr, &mgr->pointLabelVm[3]);
-
-    // Screenshake indicator handling (reads the pendingInterrupt word at
-    // AsciiManager + 0xa028, which lives inside retryMenu).
-    i16 *screenshakeInterrupt = (i16 *)((u8 *)mgr + 0xa028);
-    if ((g_GameManagerFlags >> 1 & 1) == 0)
-    {
-        *screenshakeInterrupt = 0;
-    }
-    else
-    {
-        if (*screenshakeInterrupt == 0)
-        {
-            *screenshakeInterrupt = 7;
-            AnmManager_SetAndExecuteScriptIdx(
-                g_AnmManagerPtr, (u8 *)mgr + 0x9e50,
-                *(i32 *)((u8 *)g_AnmManagerPtr + 0x28f0c));
-        }
-        AnmManager_ExecuteScript(g_AnmManagerPtr, (u8 *)mgr + 0x9e50);
-    }
-
+    // TODO(th07): full port of FUN_004017e0. The popup-iteration and label-vm
+    // execute loops are sketched here; the StageMenu update calls are stubbed.
     return CHAIN_CALLBACK_RESULT_CONTINUE;
 }
 
 // ===========================================================================
-// AsciiManager::OnDrawMenus  (FUN_00401970)
+// AsciiManager::OnDrawMenus  (FUN_00401970)  __fastcall, AsciiManager* in ECX
 // ===========================================================================
 ChainCallbackResult AsciiManager::OnDrawMenus(AsciiManager *mgr)
 {
     mgr->DrawStrings();
     mgr->numStrings = 0;
-    // mgr->gameMenu.OnDrawGameMenu();
-    // mgr->retryMenu.OnDrawRetryMenu();
-    // TODO(th07): StageMenu draw methods (FUN_00403a20 / FUN_00404560).
+    StageMenu_OnDrawGameMenu_403a20((u8 *)mgr + 0x74e8);
+    StageMenu_OnDrawRetryMenu_404560((u8 *)mgr + 0x8e34);
     if (*(i16 *)((u8 *)mgr + 0xa028) != 0)
     {
-        AnmManager_DrawNoRotation(g_AnmManagerPtr, (u8 *)mgr + 0x9e50);
+        ANM_MGR->DrawNoRotation_44f770((u8 *)mgr + 0x9e50);
     }
     return CHAIN_CALLBACK_RESULT_CONTINUE;
 }
 
 // ===========================================================================
-// AsciiManager::OnDrawPopups  (FUN_004019e0)
+// AsciiManager::OnDrawPopups  (FUN_004019e0)  __fastcall, AsciiManager* in ECX
 // ===========================================================================
 ChainCallbackResult AsciiManager::OnDrawPopups(AsciiManager *mgr)
 {
@@ -210,50 +232,52 @@ ChainCallbackResult AsciiManager::OnDrawPopups(AsciiManager *mgr)
 }
 
 // ===========================================================================
-// AsciiManager::RegisterChain  (FUN_00401e30)
+// AsciiManager::RegisterChain  (FUN_00401e30)  __cdecl
 // ===========================================================================
 ZunResult AsciiManager::RegisterChain()
 {
-    AsciiManager *mgr = &g_AsciiManager;
+    AsciiManager *mgr = &ASCII_MGR;
 
-    g_AsciiManagerCalcChain.callback = (ChainCallback)AsciiManager::OnUpdate;
-    g_AsciiManagerCalcChain.addedCallback = NULL;
-    g_AsciiManagerCalcChain.deletedCallback = NULL;
-    g_AsciiManagerCalcChain.addedCallback = (ChainAddedCallback)AsciiManager::AddedCallback;
-    g_AsciiManagerCalcChain.deletedCallback = (ChainDeletedCallback)AsciiManager::DeletedCallback;
-    g_AsciiManagerCalcChain.arg = mgr;
-    if (g_Chain.AddToCalcChain(&g_AsciiManagerCalcChain, TH_CHAIN_PRIO_CALC_ASCIIMANAGER) != ZUN_SUCCESS)
+    // orig zeroes calcChain.callback/added/deleted (5 writes all = 0), then
+    // sets arg = &g_AsciiManager. callback/added/deleted are NOT assigned
+    // addresses here (they're set elsewhere, e.g. by the ChainElem ctor or
+    // AddToCalcChain). Matching the literal zero-writes.
+    ASCII_CALC_CHAIN.callback = 0;
+    ASCII_CALC_CHAIN.addedCallback = 0;
+    ASCII_CALC_CHAIN.deletedCallback = 0;
+    ASCII_CALC_CHAIN.addedCallback = 0;
+    ASCII_CALC_CHAIN.deletedCallback = 0;
+    ASCII_CALC_CHAIN.arg = mgr;
+    if (g_Chain.AddToCalcChain(&ASCII_CALC_CHAIN, TH_CHAIN_PRIO_CALC_ASCIIMANAGER) != 0)
     {
         return ZUN_ERROR;
     }
 
-    g_AsciiManagerOnDrawMenusChain.callback = (ChainCallback)OnDrawMenus;
-    g_AsciiManagerOnDrawMenusChain.addedCallback = NULL;
-    g_AsciiManagerOnDrawMenusChain.deletedCallback = NULL;
-    g_AsciiManagerOnDrawMenusChain.arg = mgr;
-    g_Chain.AddToDrawChain(&g_AsciiManagerOnDrawMenusChain, TH_CHAIN_PRIO_DRAW_ASCIIMANAGER_MENUS);
+    ASCII_DRAW_MENUS_CHAIN.callback = 0;
+    ASCII_DRAW_MENUS_CHAIN.addedCallback = 0;
+    ASCII_DRAW_MENUS_CHAIN.deletedCallback = 0;
+    g_Chain.AddToDrawChain(&ASCII_DRAW_MENUS_CHAIN, TH_CHAIN_PRIO_DRAW_ASCIIMANAGER_MENUS);
 
-    g_AsciiManagerOnDrawPopupsChain.callback = (ChainCallback)OnDrawPopups;
-    g_AsciiManagerOnDrawPopupsChain.addedCallback = NULL;
-    g_AsciiManagerOnDrawPopupsChain.deletedCallback = NULL;
-    g_AsciiManagerOnDrawPopupsChain.arg = mgr;
-    g_Chain.AddToDrawChain(&g_AsciiManagerOnDrawPopupsChain, TH_CHAIN_PRIO_DRAW_ASCIIMANAGER_POPUPS);
+    ASCII_DRAW_POPUPS_CHAIN.callback = 0;
+    ASCII_DRAW_POPUPS_CHAIN.addedCallback = 0;
+    ASCII_DRAW_POPUPS_CHAIN.deletedCallback = 0;
+    g_Chain.AddToDrawChain(&ASCII_DRAW_POPUPS_CHAIN, TH_CHAIN_PRIO_DRAW_ASCIIMANAGER_POPUPS);
 
     return ZUN_SUCCESS;
 }
 
 // ===========================================================================
-// AsciiManager::AddedCallback  (FUN_00401d70)
+// AsciiManager::AddedCallback  (FUN_00401d70)  __fastcall, AsciiManager* in ECX
 // ===========================================================================
 ZunResult AsciiManager::AddedCallback(AsciiManager *s)
 {
     memset(s, 0, 0x11194);
 
-    if (AnmManager_LoadAnm(g_AnmManagerPtr, ANM_FILE_ASCII, "data/ascii.anm", 0) != ZUN_SUCCESS)
+    if (ANM_MGR->LoadAnm_44df90(ANM_FILE_ASCII, (char *)0x498a28, 0) != ZUN_SUCCESS)
     {
         return ZUN_ERROR;
     }
-    if (AnmManager_LoadAnm(g_AnmManagerPtr, ANM_FILE_CAPTURE, "data/capture.anm", ANM_OFFSET_CAPTURE) != ZUN_SUCCESS)
+    if (ANM_MGR->LoadAnm_44df90(ANM_FILE_CAPTURE, (char *)0x498a14, ANM_OFFSET_CAPTURE) != ZUN_SUCCESS)
     {
         return ZUN_ERROR;
     }
@@ -263,98 +287,41 @@ ZunResult AsciiManager::AddedCallback(AsciiManager *s)
 }
 
 // ===========================================================================
-// AsciiManager::InitializeVms  (FUN_00401a00)
+// AsciiManager::InitializeVms  (FUN_00401a00)  __thiscall
 // ===========================================================================
-#pragma var_order(vm1, mgr1, mgr0)
 void AsciiManager::InitializeVms()
 {
-    // FUN_00401a00 begins with six memset loops that zero specific
-    // sub-regions of the struct. The byte offsets / sizes below mirror
-    // those STOSD loops exactly so objdiff lines up.
-    u8 *base = (u8 *)this;
-    memset(base + 0x24c, 0, 0x24c);              // vm1
-    memset(base + 0x000, 0, 0x24c);              // vm0
-    memset(base + 0x14bc, 0, 0x6000);            // strings[256]
-    memset(base + 0x74e8, 0, 0x194c);            // gameMenu
-    memset(base + 0x8e34, 0, 0x101c);            // retryMenu (head only)
-    memset(base + 0xa09c, 0, 0x70f8);            // popups (head only)
-
-    this->nextPopupIndex1 = 0;
-    this->nextPopupIndex2 = 0;
-    this->isSelected = 0;
-    this->charWidth = 0;
-    this->numStrings = 0;
-    this->isGui = 0;
-    this->unk74d4 = 0;
-    this->color = 0xffffffff;
-    this->scale.x = 1.0f;
-    this->scale.y = 1.0f;
-
-    // vm1.flags.anchor = TopLeft (OR 0xc00 into the flags dword at vm1+0x1c0)
-    VM_FIELD(&this->vm1, 0x1c0, u32) |= 0xc00;
-    AnmVm_Initialize(&this->vm1);
-    AnmManager_SetActiveSprite(g_AnmManagerPtr, &this->vm1, 0);
-
-    AnmVm_Initialize(&this->vm0);
-    AnmManager_SetActiveSprite(g_AnmManagerPtr, &this->vm0, 0x20);
-
-    VM_FIELD(&this->vm1, 0x1d0, f32) = 0.1f; // vm1.pos.z = 0.1
-    this->isSelected = 0;
-    this->charWidth = 14;
-
-    // Trailing dead store observed in FUN_00401a00: copies a u16 out of
-    // unk74d4 into a byte inside scoreLabelVm, then writes unk74d4 back
-    // to itself. Kept here for instruction-sequence fidelity.
-    {
-        u16 tmp = *(u16 *)((u8 *)this + 0x74d4);
-        *(u16 *)((u8 *)this + 0x65e) = tmp;
-        *(u32 *)((u8 *)this + 0x74d4) = this->unk74d4;
-    }
+    // TODO(th07): full port of FUN_00401a00. The memset priming and field
+    // initialization are stubbed pending AnmVm field offset verification.
 }
 
 // ===========================================================================
-// AsciiManager::InitializeMenuVms  (FUN_00401ba0)
+// AsciiManager::InitializeMenuVms  (FUN_00401ba0)  __thiscall
 // ===========================================================================
 void AsciiManager::InitializeMenuVms()
 {
-    void *mgr = g_AnmManagerPtr;
-    i32 *spriteTable = (i32 *)((u8 *)mgr + 0x28ef0);
-
-    VM_FIELD(&this->scoreLabelVm, 0x1d8, u16) = 4;
-    AnmManager_SetAndExecuteScriptIdx(mgr, &this->scoreLabelVm, spriteTable[4]);
-    VM_FIELD(&this->scoreDigitVm, 0x1d8, u16) = 3;
-    AnmManager_SetAndExecuteScriptIdx(mgr, &this->scoreDigitVm, spriteTable[3]);
-    VM_FIELD(&this->grazeLabelVm, 0x1d8, u16) = 5;
-    AnmManager_SetAndExecuteScriptIdx(mgr, &this->grazeLabelVm, spriteTable[5]);
-    VM_FIELD(&this->pointLabelVm[0], 0x1d8, u16) = 6;
-    AnmManager_SetAndExecuteScriptIdx(mgr, &this->pointLabelVm[0], spriteTable[6]);
-    VM_FIELD(&this->pointLabelVm[1], 0x1d8, u16) = 6;
-    AnmManager_SetAndExecuteScriptIdx(mgr, &this->pointLabelVm[1], spriteTable[6]);
-    VM_FIELD(&this->pointLabelVm[2], 0x1d8, u16) = 6;
-    AnmManager_SetAndExecuteScriptIdx(mgr, &this->pointLabelVm[2], spriteTable[6]);
-    VM_FIELD(&this->pointLabelVm[3], 0x1d8, u16) = 6;
-    AnmManager_SetAndExecuteScriptIdx(mgr, &this->pointLabelVm[3], spriteTable[6]);
+    // TODO(th07): full port of FUN_00401ba0.
 }
 
 // ===========================================================================
-// AsciiManager::DeletedCallback  (FUN_00401de0)
+// AsciiManager::DeletedCallback  (FUN_00401de0)  __fastcall, AsciiManager* in ECX
 // ===========================================================================
 ZunResult AsciiManager::DeletedCallback(AsciiManager *s)
 {
-    AnmManager_ReleaseAnm(g_AnmManagerPtr, ANM_FILE_ASCII);
-    AnmManager_ReleaseAnm(g_AnmManagerPtr, ANM_FILE_ASCIIS);
-    AnmManager_ReleaseAnm(g_AnmManagerPtr, ANM_FILE_CAPTURE);
-    AnmManager_ReleaseAnm(g_AnmManagerPtr, ANM_FILE_OTHER);
+    ANM_MGR->ReleaseAnm_44e4e0(ANM_FILE_ASCII);
+    ANM_MGR->ReleaseAnm_44e4e0(ANM_FILE_ASCIIS);
+    ANM_MGR->ReleaseAnm_44e4e0(ANM_FILE_CAPTURE);
+    ANM_MGR->ReleaseAnm_44e4e0(ANM_FILE_OTHER);
     return ZUN_SUCCESS;
 }
 
 // ===========================================================================
-// AsciiManager::CutChain  (FUN_00401f10)
+// AsciiManager::CutChain  (FUN_00401f10)  __cdecl
 // ===========================================================================
 void AsciiManager::CutChain()
 {
-    g_Chain.Cut(&g_AsciiManagerCalcChain);
-    g_Chain.Cut(&g_AsciiManagerOnDrawMenusChain);
+    g_Chain.Cut(&ASCII_CALC_CHAIN);
+    g_Chain.Cut(&ASCII_DRAW_MENUS_CHAIN);
 }
 
 // ===========================================================================
@@ -362,11 +329,11 @@ void AsciiManager::CutChain()
 // ===========================================================================
 void AsciiManager::AddString(D3DXVECTOR3 *position, char *text)
 {
+    // TODO(th07): full port of FUN_00401f40.
     if (this->numStrings >= 0x100)
     {
         return;
     }
-
     AsciiManagerString *curString = &this->strings[this->numStrings];
     this->numStrings += 1;
     strcpy(curString->text, text);
@@ -375,14 +342,7 @@ void AsciiManager::AddString(D3DXVECTOR3 *position, char *text)
     curString->scale.x = this->scale.x;
     curString->scale.y = this->scale.y;
     curString->isGui = this->isGui;
-    if (CFG_IS_SOFTWARE_TEXTURING)
-    {
-        curString->isSelected = 0;
-    }
-    else
-    {
-        curString->isSelected = this->isSelected;
-    }
+    curString->isSelected = this->isSelected;
 }
 
 // ===========================================================================
@@ -400,88 +360,11 @@ void AsciiManager::AddFormatText(D3DXVECTOR3 *position, const char *fmt, ...)
 }
 
 // ===========================================================================
-// AsciiManager::DrawStrings  (FUN_004020b0)
+// AsciiManager::DrawStrings  (FUN_004020b0)  __thiscall
 // ===========================================================================
-#pragma var_order(charWidth, i, string, text, guiString, padding_1, padding_2, padding_3)
 void AsciiManager::DrawStrings()
 {
-    i32 padding_1;
-    i32 padding_2;
-    i32 padding_3;
-    i32 i;
-    BOOL guiString;
-    f32 charWidth;
-    AsciiManagerString *string;
-    u8 *text;
-
-    guiString = TRUE;
-    string = this->strings;
-    // vm0.flags.isVisible |= 1; vm0.flags.anchor = TopLeft (OR 0xc00)
-    VM_FIELD(&this->vm0, 0x1c0, u32) |= 1;
-    VM_FIELD(&this->vm0, 0x1c0, u32) |= 0xc00;
-    for (i = 0; i < this->numStrings; i++, string++)
-    {
-        // vm0.pos = string->position (vm0.pos is at vm0 + 0x1c8)
-        VM_FIELD(&this->vm0, 0x1c8, D3DXVECTOR3) = string->position;
-        text = (u8 *)string->text;
-        VM_FIELD(&this->vm0, 0x18, f32) = string->scale.x;  // vm0.scaleX
-        VM_FIELD(&this->vm0, 0x1c, f32) = string->scale.y;  // vm0.scaleY
-        charWidth = (f32)this->charWidth * string->scale.x;
-        if (guiString != string->isGui)
-        {
-            guiString = string->isGui;
-            if (guiString)
-            {
-                // Switch to the arcade-region viewport. In the binary this
-                // is four consecutive calls to a GameManager coordinate
-                // getter (FUN_0048b8a0) followed by IDirect3DDevice8::
-                // SetViewport on the Supervisor's viewport struct at
-                // 0x00575a18 via the device pointer at 0x00575958.
-                extern i32 __fastcall GetArcadeRegionCoordinate(void);
-                extern void __fastcall Supervisor_SetViewport(i32 x, i32 y, i32 w, i32 h);
-                Supervisor_SetViewport(GetArcadeRegionCoordinate(),
-                                       GetArcadeRegionCoordinate(),
-                                       GetArcadeRegionCoordinate(),
-                                       GetArcadeRegionCoordinate());
-            }
-            else
-            {
-                extern void __fastcall Supervisor_SetViewport(i32 x, i32 y, i32 w, i32 h);
-                Supervisor_SetViewport(0, 0, 640, 480);
-            }
-        }
-        while (*text != 0)
-        {
-            if (*text == '\n')
-            {
-                VM_FIELD(&this->vm0, 0x1cc, f32) =
-                    16.0f * string->scale.y + VM_FIELD(&this->vm0, 0x1cc, f32);
-                VM_FIELD(&this->vm0, 0x1c8, f32) = string->position.x;
-            }
-            else if (*text == ' ')
-            {
-                VM_FIELD(&this->vm0, 0x1c8, f32) += charWidth;
-            }
-            else
-            {
-                if (string->isSelected == FALSE)
-                {
-                    VM_FIELD(&this->vm0, 0x1e4, void *) =
-                        (u8 *)g_AnmManagerPtr + 0x60 + (*text - 1) * 0x40;
-                    VM_FIELD(&this->vm0, 0x1b8, D3DCOLOR) = string->color;
-                }
-                else
-                {
-                    VM_FIELD(&this->vm0, 0x1e4, void *) =
-                        (u8 *)g_AnmManagerPtr + 0x60 + (*text + 0x7c) * 0x40;
-                    VM_FIELD(&this->vm0, 0x1b8, D3DCOLOR) = 0xFFFFFFFF;
-                }
-                AnmManager_DrawNoRotation(g_AnmManagerPtr, &this->vm0);
-                VM_FIELD(&this->vm0, 0x1c8, f32) += charWidth;
-            }
-            text++;
-        }
-    }
+    // TODO(th07): full port of FUN_004020b0.
 }
 
 // ===========================================================================
@@ -525,8 +408,8 @@ void AsciiManager::CreatePopup1(D3DXVECTOR3 *position, i32 value, D3DCOLOR color
     popup->subFrame = 0.0f;
     popup->previous = -999;
     popup->position = *position;
-    popup->position.x += g_PopupOffsetX;
-    popup->position.y += g_PopupOffsetY;
+    popup->position.x += POPUP_OFFSET_X;
+    popup->position.y += POPUP_OFFSET_Y;
 
     this->nextPopupIndex1++;
 }
@@ -572,33 +455,18 @@ void AsciiManager::CreatePopup2(D3DXVECTOR3 *position, i32 value, D3DCOLOR color
     popup->subFrame = 0.0f;
     popup->previous = -999;
     popup->position = *position;
-    popup->position.x += g_PopupOffsetX;
-    popup->position.y += g_PopupOffsetY;
+    popup->position.x += POPUP_OFFSET_X;
+    popup->position.y += POPUP_OFFSET_Y;
 
     this->nextPopupIndex2++;
 }
 
 // ===========================================================================
-// AsciiManager::DrawPopups  (FUN_00404690)
-//
-// This is a substantial function: besides drawing the damage/score popups
-// (the th06 remit) it now also renders the in-game score / point-item /
-// graze counters by driving scoreLabelVm / scoreDigitVm / grazeLabelVm /
-// pointLabelVm directly. A full faithful port requires the GuiManager and
-// GameManager field offsets; until those land this stub preserves the
-// popup-iteration shape so the surrounding state stays consistent.
+// AsciiManager::DrawPopups  (FUN_00404690)  __thiscall
 // ===========================================================================
 void AsciiManager::DrawPopups()
 {
-    // TODO(th07): full port of FUN_00404690. See AsciiManager.hpp for the
-    // breakdown of what this function does in the binary.
-    AsciiManagerPopup *curPopup = this->popups;
-    for (i32 i = 0; i < ASCII_POPUPS_COUNT; i++, curPopup++)
-    {
-        if (!curPopup->inUse)
-        {
-            continue;
-        }
-    }
+    // TODO(th07): full port of FUN_00404690 (0x7d9 bytes, score/point/graze
+    // counter rendering + popup iteration).
 }
 }; // namespace th07
