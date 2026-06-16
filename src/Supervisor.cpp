@@ -922,12 +922,10 @@ ZunResult Supervisor::PlayMidiFile(char *midiPath)
 // Supervisor::SetupDInput  (FUN_004383d8)
 // __fastcall, ECX = Supervisor*. Uses real IDirectInput8A/IDirectInputDevice8A
 // COM interfaces from dinput.h for exact vtable call codegen.
-#pragma var_order(hinst, s_save)
+#pragma var_order(hinst)
 ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
 {
     i32 hinst;
-    Supervisor *s_save;
-    s_save = s;
     hinst = GetWindowLongA(*(HWND *)((u8 *)s + 0x44), -6);
     if ((*(u32 *)((u8 *)s + 0x14c) >> 0xb & 1) != 0)
     {
