@@ -248,3 +248,5 @@ th07::BombData::MarisaABombCalc2,0x40d4c0,0x4e0,__fastcall,,void,Player*
 th07::BombData::MarisaABombDraw2,0x40d9a0,0xe0,__fastcall,,void,Player*
 th07::BombData::SakuyaABombCalc2,0x40da80,0x800,__fastcall,,void,Player*
 th07::BombData::SakuyaABombDraw2,0x40e280,0x1d0,__fastcall,,void,Player*
+th07::ItemManager::OnUpdate,0x432990,0x10c9,__fastcall,,void,ItemManager*
+th07::ItemManager::RegisterChain,0x432eda,0x38,__fastcall,,void,ItemManager*
