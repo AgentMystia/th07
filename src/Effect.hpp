@@ -61,7 +61,6 @@ struct Effect
     D3DXVECTOR3 pos1;          // +0x24c  current world position (th06 pos1)
     D3DXVECTOR3 unk_258;       // +0x258  initial velocity
                                //         (th07 SpawnParticlesWithVelocity writes here)
-    u8 pad2[0x264 - 0x258 - 0xc];
     D3DXVECTOR3 velocity;      // +0x264  (th06 unk_11c)
     D3DXVECTOR3 acceleration;  // +0x270  (th06 unk_128)
     u8 pad3[0x288 - 0x278 - 0xc];

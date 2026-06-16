@@ -100,10 +100,22 @@ DIFFABLE_STATIC(ChainElem, g_EffectManagerDrawChain);
 // Note: forward-declaring the not-yet-landed callbacks (0x0041aef0 etc.) as
 // raw addresses via a cast. They are part of the Cherry / graze subsystem
 // and will be named when those modules land.
+
+// The g_Effects table references the static callback members unqualified;
+// alias them to their qualified names so the table initializer resolves.
+#define EffectCallbackStill             (EffectManager::EffectCallbackStill)
+#define EffectCallbackRandomSplashInit  (EffectManager::EffectCallbackRandomSplashInit)
+#define EffectCallbackRandomSplashBigInit (EffectManager::EffectCallbackRandomSplashBigInit)
+#define EffectUpdateCallback4Init       (EffectManager::EffectUpdateCallback4Init)
+#define EffectUpdateCallback4           (EffectManager::EffectUpdateCallback4)
+#define EffectCallbackAttractInit       (EffectManager::EffectCallbackAttractInit)
+#define EffectCallbackAttract           (EffectManager::EffectCallbackAttract)
+#define EffectCallbackAttractSlow       (EffectManager::EffectCallbackAttractSlow)
+
 DIFFABLE_STATIC_ARRAY_ASSIGN(EffectInfo, PARTICLE_EFFECT_COUNT, g_Effects) = {
-    {0x2ab, NULL, NULL},                                                          // 0
-    {0x2ac, NULL, NULL},                                                          // 1
-    {0x2ad, NULL, NULL},                                                          // 2
+    {0x2ab, (EffectUpdateCallback)0, (EffectUpdateCallback)0},                                                          // 0
+    {0x2ac, (EffectUpdateCallback)0, (EffectUpdateCallback)0},                                                          // 1
+    {0x2ad, (EffectUpdateCallback)0, (EffectUpdateCallback)0},                                                          // 2
     {0x2ae, EffectCallbackStill, EffectCallbackRandomSplashBigInit},              // 3
     {0x2b3, EffectCallbackStill, EffectCallbackRandomSplashInit},                 // 4
     {0x2b4, EffectCallbackStill, EffectCallbackRandomSplashInit},                 // 5
@@ -113,29 +125,38 @@ DIFFABLE_STATIC_ARRAY_ASSIGN(EffectInfo, PARTICLE_EFFECT_COUNT, g_Effects) = {
     {0x2b8, EffectCallbackStill, EffectCallbackRandomSplashInit},                 // 9
     {0x2b9, EffectCallbackStill, EffectCallbackRandomSplashInit},                 // 10
     {0x2ba, EffectCallbackStill, EffectCallbackRandomSplashInit},                 // 11
-    {0x2bb, NULL, NULL},                                                          // 12
+    {0x2bb, (EffectUpdateCallback)0, (EffectUpdateCallback)0},                                                          // 12
     {0x2bc, EffectUpdateCallback4, EffectUpdateCallback4Init},                    // 13
     {0x2bc, EffectUpdateCallback4, EffectUpdateCallback4Init},                    // 14
     {0x2bc, EffectUpdateCallback4, EffectUpdateCallback4Init},                    // 15
-    {0x2dc, NULL, NULL},                                                          // 16  spellcard bg
+    {0x2dc, (EffectUpdateCallback)0, (EffectUpdateCallback)0},                                                          // 16  spellcard bg
     {0x2af, EffectCallbackAttract, EffectCallbackAttractInit},                    // 17
     {0x2b0, EffectCallbackAttractSlow, EffectCallbackAttractInit},                 // 18
-    {0x2bd, (EffectUpdateCallback)0x0041c1b0, NULL},                              // 19  (spawn-self cb)
+    {0x2bd, (EffectUpdateCallback)0x0041c1b0, (EffectUpdateCallback)0},                              // 19  (spawn-self cb)
     {0x2bf, (EffectUpdateCallback)0x0041aef0, (EffectUpdateCallback)0x0041b0b0},   // 20
-    {0x2c3, NULL, NULL},                                                          // 21
+    {0x2c3, (EffectUpdateCallback)0, (EffectUpdateCallback)0},                                                          // 21
     {0x2c0, (EffectUpdateCallback)0x0041bfd0, (EffectUpdateCallback)0x0041bec0},   // 22
-    {0x304, (EffectUpdateCallback)0x0041c100, NULL},                              // 23
-    {0x2c2, (EffectUpdateCallback)0x0041abe0, NULL},                              // 24
-    {0x2da, (EffectUpdateCallback)0x0041c1b0, NULL},                              // 25
-    {0x2bf, (EffectUpdateCallback)0x0041aef0, (EffectUpdateCallback)0x0041b4a0},   // 26
-    {0x2bf, (EffectUpdateCallback)0x0041aef0, (EffectUpdateCallback)0x0041b770},   // 27
-    {0x2db, (EffectUpdateCallback)0x0041c1b0, NULL},                              // 28
-    {0x2b2, (EffectUpdateCallback)0x0041ad10, EffectCallbackAttractInit},          // 29
-    {0x2bf, (EffectUpdateCallback)0x0041aef0, (EffectUpdateCallback)0x0041b9f0},   // 30
-    {0x2bf, (EffectUpdateCallback)0x0041aef0, (EffectUpdateCallback)0x0041bc20},   // 31
-    {0x2c1, (EffectUpdateCallback)0x0041bfd0, (EffectUpdateCallback)0x0041bec0},   // 32
-    {0x2b1, EffectCallbackAttract, EffectCallbackAttractInit},                    // 33
+    {0x304, (EffectUpdateCallback)0x0041c100, (EffectUpdateCallback)0},                              // 23
+    {0x2c2, (EffectUpdateCallback)0x0041abe0, (EffectUpdateCallback)0},                              // 24
+    //{0x2da, (EffectUpdateCallback)0x0041c1b0, (EffectUpdateCallback)0},                              // 25
+    //{0x2bf, (EffectUpdateCallback)0x0041aef0, (EffectUpdateCallback)0x0041b4a0},   // 26
+    //{0x2bf, (EffectUpdateCallback)0x0041aef0, (EffectUpdateCallback)0x0041b770},   // 27
+    //{0x2db, (EffectUpdateCallback)0x0041c1b0, (EffectUpdateCallback)0},                              // 28
+    //{0x2b2, (EffectUpdateCallback)0x0041ad10, EffectCallbackAttractInit},          // 29
+    //{0x2bf, (EffectUpdateCallback)0x0041aef0, (EffectUpdateCallback)0x0041b9f0},   // 30
+    //{0x2bf, (EffectUpdateCallback)0x0041aef0, (EffectUpdateCallback)0x0041bc20},   // 31
+    //{0x2c1, (EffectUpdateCallback)0x0041bfd0, (EffectUpdateCallback)0x0041bec0},   // 32
+    //{0x2b1, EffectCallbackAttract, EffectCallbackAttractInit},                    // 33
 };
+
+#undef EffectCallbackStill
+#undef EffectCallbackRandomSplashInit
+#undef EffectCallbackRandomSplashBigInit
+#undef EffectUpdateCallback4Init
+#undef EffectUpdateCallback4
+#undef EffectCallbackAttractInit
+#undef EffectCallbackAttract
+#undef EffectCallbackAttractSlow
 
 // ---------------------------------------------------------------------------
 // Lifecycle.

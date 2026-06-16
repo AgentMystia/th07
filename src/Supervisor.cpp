@@ -144,16 +144,18 @@ void Supervisor::DrawFpsCounter(i32 drawArg)
 ZunResult Supervisor::RegisterChain()
 {
     Supervisor *supervisor = (Supervisor *)0x00575950;
+    i32 calcResult;
+    ChainElem *chain;
 
     supervisor->wantedState = 0;   // +0x154
     supervisor->curState = -1;     // +0x158
     supervisor->calcCount = 0;     // +0x150
 
-    ChainElem *chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnUpdate);
+    chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnUpdate);
     chain->arg = supervisor;
     chain->addedCallback = (ChainAddedCallback)0;
     chain->deletedCallback = (ChainDeletedCallback)0;
-    i32 calcResult = g_Chain.AddToCalcChain(chain, 0);
+    calcResult = g_Chain.AddToCalcChain(chain, 0);
     if (calcResult != 0)
     {
         return (ZunResult)calcResult;
