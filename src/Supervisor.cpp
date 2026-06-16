@@ -757,7 +757,11 @@ ZunResult Supervisor::PlayAudio(i32 channel, char *path)
 // =====================================================================
 ZunResult Supervisor::PlayMidiFile(char *midiPath)
 {
-    MidiOutput *midi; // orig: function-scope local (allocates +0x4 in frame).
+    // Orig allocates locals in this order: this[ebp-0x110], midi[ebp-0x10c],
+    // buf[ebp-0x108]. Declaring midi before buf (both function-scope) makes
+    // MSVC place midi adjacent to this and grow the frame to 0x120.
+    MidiOutput *midi;
+    char buf[0x100];
     if (MUSIC_MODE == MUSIC_MIDI)
     {
         // orig: check global != 0 first, THEN cache to local [ebp-0x10c].
@@ -775,7 +779,6 @@ ZunResult Supervisor::PlayMidiFile(char *midiPath)
         {
             return ZUN_ERROR;
         }
-        char buf[0x100];
         char *p = midiPath;
         char *d = buf;
         char c;
