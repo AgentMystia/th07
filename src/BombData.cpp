@@ -38,6 +38,10 @@ namespace th07
 // ---- helper externs (absolute-VA stubs; objdiff matches orig relocs) ----
 extern "C" void __fastcall Supervisor_BombPreDraw();             // FUN_004083f0
 extern "C" f32 __fastcall ZunAngleNormalize(i32 angle, i32 base); // FUN_00431930 (returns st0)
+// ZunMath cos/sin wrappers — orig passes angle in st0 (float arg, no ECX).
+// Declared __fastcall with one f32 so MSVC does `fld [arg]; call`.
+extern "C" f32 __fastcall ZunCos(f32 a);  // FUN_0048bbf0
+extern "C" f32 __fastcall ZunSin(f32 a);  // FUN_0048bb40
 // AnmManager::Draw3(this=[0x4b9e44], AnmVm*) @ 0x0044f9a0 (__thiscall).
 // We model it as a stub-method-on-global so MSVC emits ECX=[0x4b9e44];
 // PUSH AnmVm; CALL.
@@ -160,6 +164,68 @@ void __fastcall BombData::MarisaABombDraw(Player *p)
     }
 }
 
+// =====================================================================
+// MarisaBBombDraw  (FUN_0040a6b0)  -- 272 bytes
+// Loops 3 entries (stride 0x24c); AnmVm @ player+i*0x24c+0x16c04; the single
+// source pos is @ player+0xb7e4c (MarisaB laser origin, shared by all 3).
+// =====================================================================
+void __fastcall BombData::MarisaBBombDraw(Player *p)
+{
+    Supervisor_BombPreDraw();
+    for (i32 i = 0; i < 3; i++)
+    {
+        u8 *anm = reinterpret_cast<u8 *>(p) + i * 0x24c + 0x16c04;
+        f32 *entryDelta = reinterpret_cast<f32 *>(anm + 0x230);
+        f32 *src = reinterpret_cast<f32 *>(reinterpret_cast<u8 *>(p) + 0xb7e4c);
+        f32 z = src[2] + entryDelta[2];
+        f32 y = src[1] + entryDelta[1];
+        f32 x = src[0] + entryDelta[0];
+        i32 *pos = reinterpret_cast<i32 *>(anm + 0x1c8);
+        pos[0] = *(i32 *)&x;
+        pos[1] = *(i32 *)&y;
+        pos[2] = *(i32 *)&z;
+        *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+        *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+        *(i32 *)(anm + 0x1d0) = 0;
+        ANM_MGR->Draw3(reinterpret_cast<i32 *>(anm));
+    }
+}
+
+// =====================================================================
+// YoumuABombDraw  (FUN_0040c160)  -- 384 bytes
+// Loops 4 entries (anm ptr advances by 0x24c each iteration). Computes an
+// angle from the loop index, copies player pos into the AnmVm, nudges X/Y by
+// cos/sin(angle)*sprite-scale, sets angle+flags, nudges by focus offset, draws.
+// rdata floats: 0x498ce8 (step), 0x498a8c, 0x498a64, 0x498ce4 (angle base),
+// 0x498a70 (scale divisor).
+// =====================================================================
+void __fastcall BombData::YoumuABombDraw(Player *p)
+{
+    Supervisor_BombPreDraw();
+    u8 *anm = reinterpret_cast<u8 *>(p) + 0x16c04;
+    for (i32 i = 0; i < 4; i++)
+    {
+        f32 ang = ((f32)i * *reinterpret_cast<f32 *>(0x498ce8)) / *reinterpret_cast<f32 *>(0x498a8c)
+                  - *reinterpret_cast<f32 *>(0x498a64) + *reinterpret_cast<f32 *>(0x498ce4);
+        f32 *pos = reinterpret_cast<f32 *>(p) + (0x930 / 4); // player posCenter
+        *(f32 *)(anm + 0x1c8) = pos[0];
+        *(f32 *)(anm + 0x1cc) = pos[1];
+        *(f32 *)(anm + 0x1d0) = pos[2];
+        f32 c = ZunCos(ang);
+        *(f32 *)(anm + 0x1c8) += c * *reinterpret_cast<f32 *>(*(i32 *)(anm + 0x1e4) + 0x2c) * *reinterpret_cast<f32 *>(anm + 0x1c) / *reinterpret_cast<f32 *>(0x498a70);
+        f32 s = ZunSin(ang);
+        *(f32 *)(anm + 0x1cc) += s * *reinterpret_cast<f32 *>(*(i32 *)(anm + 0x1e4) + 0x2c) * *reinterpret_cast<f32 *>(anm + 0x1c) / *reinterpret_cast<f32 *>(0x498a70);
+        f32 na = ZunAngleNormalize(*(i32 *)&ang, 0x3fc90fdb);
+        *(f32 *)(anm + 0x8) = na;
+        *(i32 *)(anm + 0x1c0) |= 4;
+        *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+        *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+        *(i32 *)(anm + 0x1d0) = 0;
+        ANM_MGR->Draw3(reinterpret_cast<i32 *>(anm));
+        anm += 0x24c;
+    }
+}
+
 // --- Remaining callbacks: stubs (not yet ported — large calc bodies) ---
 void __fastcall BombData::ReimuCBombCalc(Player *) {}
 void __fastcall BombData::ReimuCBombDraw(Player *) {}
@@ -167,7 +233,6 @@ void __fastcall BombData::ReimuABombCalc(Player *) {}
 void __fastcall BombData::ReimuABombDraw(Player *) {}
 void __fastcall BombData::MarisaABombCalc(Player *) {}
 void __fastcall BombData::MarisaBBombCalc(Player *) {}
-void __fastcall BombData::MarisaBBombDraw(Player *) {}
 void __fastcall BombData::SakuyaABombCalc(Player *) {}
 void __fastcall BombData::SakuyaABombDraw(Player *) {}
 void __fastcall BombData::SakuyaBBombCalc(Player *) {}
@@ -175,7 +240,6 @@ void __fastcall BombData::SakuyaBBombDraw(Player *) {}
 void __fastcall BombData::ReimuBBombCalc(Player *) {}
 void __fastcall BombData::ReimuBBombDraw(Player *) {}
 void __fastcall BombData::YoumuABombCalc(Player *) {}
-void __fastcall BombData::YoumuABombDraw(Player *) {}
 void __fastcall BombData::ReimuABombCalc2(Player *) {}
 void __fastcall BombData::YoumuBBombCalc(Player *) {}
 void __fastcall BombData::MarisaABombCalc2(Player *) {}
