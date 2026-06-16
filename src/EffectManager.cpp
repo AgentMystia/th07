@@ -644,53 +644,57 @@ ChainCallbackResult __fastcall EffectManager::OnUpdate(EffectManager *mgr)
     return CHAIN_CALLBACK_RESULT_CONTINUE;
 }
 
-// OnDraw: walk the three visible draw buckets and render. FUN_0041ca10.
-// __fastcall (mgr in ECX).
-//
-// Note: bucket 0 (the plain, no-offset bucket whose head lives at
-// sentinel2.next / +0x490e0) is intentionally not drawn — those effects are
-// drawn elsewhere (they share the no-offset Draw3 path with bucket 2 but are
-// consumed by a different renderer in th07). The binary's three loops walk
-// sentinel1.next, sentinel3.next, and sentinel4.next.
+// OnDraw (FUN_0041cb80): walk bucket-1 draw list, alternate alpha coloring.
 ChainCallbackResult __fastcall EffectManager::OnDraw(EffectManager *mgr)
 {
-    Effect *effect;
-
-    // bucket 1 (drawListBucket == 1 or 3): additive Draw3 with a screen
-    // offset applied to the AnmVm pos.
-    for (effect = mgr->sentinel1.next; effect != NULL; effect = effect->next)
+    u8 *mgrBytes = (u8 *)mgr;
+    Effect *cur = *(Effect **)(mgrBytes + 0x490e0);
+    i32 alternator = 0;
+    if (*(u8 *)0x00575a8c != 0)
     {
-        effect->vmPos = effect->pos1;
-        effect->vmPos.x += g_EffectDrawOffsetX;
-        effect->vmPos.y += g_EffectDrawOffsetY;
-        Anm_Draw3(g_AnmManager, &effect->vm);
+        while (cur != 0)
+        {
+            alternator = alternator + 1;
+            if (!(*(u8 *)0x00575a8c == 1 && (alternator & 1) == 0))
+            {
+                if (*(i8 *)((u8 *)cur + 0x2cd) == 0x14)
+                {
+                    u32 r = (u32)(*(f32 *)(mgrBytes + 0xc) * (f32)*(u8 *)((u8 *)cur + 0x1ba));
+                    if (r > 0xff) r = 0xff;
+                    *(u8 *)((u8 *)cur + 0x1ba) = (u8)r;
+                    u32 g = (u32)(*(f32 *)(mgrBytes + 0x10) * (f32)*(u8 *)((u8 *)cur + 0x1b9));
+                    if (g > 0xff) g = 0xff;
+                    *(u8 *)((u8 *)cur + 0x1b9) = (u8)g;
+                    u32 b = (u32)(*(f32 *)(mgrBytes + 0x14) * (f32)*(u8 *)((u8 *)cur + 0x1b8));
+                    if (b > 0xff) b = 0xff;
+                    *(u8 *)((u8 *)cur + 0x1b8) = (u8)b;
+                    u32 a = (u32)(*(f32 *)(mgrBytes + 0x18) * (f32)*(u8 *)((u8 *)cur + 0x1bb));
+                    if (a > 0xff) a = 0xff;
+                    *(u8 *)((u8 *)cur + 0x1bb) = (u8)a;
+                }
+                *(D3DXVECTOR3 *)((u8 *)cur + 0x1c8) = *(D3DXVECTOR3 *)((u8 *)cur + 0x24c);
+                if (*(i8 *)((u8 *)cur + 0x2d0) == 1)
+                {
+                    Anm_Draw3NoOffset(g_AnmManager, &cur->vm);
+                }
+                else
+                {
+                    Anm_Draw3(g_AnmManager, &cur->vm);
+                }
+                if (*(i8 *)((u8 *)cur + 0x2cd) == 0x14)
+                {
+                    *(u8 *)((u8 *)cur + 0x1ba) = (u8)(i32)(*(f32 *)(mgrBytes + 0xc));
+                    *(u8 *)((u8 *)cur + 0x1b9) = (u8)(i32)(*(f32 *)(mgrBytes + 0x10));
+                    *(u8 *)((u8 *)cur + 0x1b8) = (u8)(i32)(*(f32 *)(mgrBytes + 0x14));
+                    *(u8 *)((u8 *)cur + 0x1bb) = (u8)(i32)(*(f32 *)(mgrBytes + 0x18));
+                }
+            }
+            cur = *(Effect **)((u8 *)cur + 0x2d4);
+        }
     }
-
-    // bucket 2 (drawListBucket == 2): plain Draw3 variant, no offset.
-    for (effect = mgr->sentinel3.next; effect != NULL; effect = effect->next)
-    {
-        effect->vmPos = effect->pos1;
-        Anm_Draw3NoOffset(g_AnmManager, &effect->vm);
-    }
-
-    // bucket 4 (drawListBucket == 0 with flag-bit-4): additive Draw3 with
-    // screen offset.
-    for (effect = mgr->sentinel4.next; effect != NULL; effect = effect->next)
-    {
-        effect->vmPos = effect->pos1;
-        effect->vmPos.x += g_EffectDrawOffsetX;
-        effect->vmPos.y += g_EffectDrawOffsetY;
-        Anm_Draw3(g_AnmManager, &effect->vm);
-    }
-
     return CHAIN_CALLBACK_RESULT_CONTINUE;
 }
 
-// AddedCallback: reset + load the stage's eff0X.anm file(s). FUN_0041cde0.
-// __fastcall (mgr in ECX). th07 splits stage 4 into eff04.anm + eff04b.anm,
-// adds brand-new eff06/07/08.anm files, and tracks how many anm files were
-// loaded (g_EffectAnmFileCount) plus an ordinal base for their anm ids
-// (g_EffectAnmBaseIdx, used by the music manager to remap eff ids).
 ZunResult __fastcall EffectManager::AddedCallback(EffectManager *mgr)
 {
     mgr->Reset();
