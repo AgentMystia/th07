@@ -41,7 +41,14 @@ namespace th07
 struct AnmManager
 {
     u8 pad[0x28ef0];
-    void *scriptOffsets[1]; // sized by anm count; indexed by anmIdx
+    void *scriptOffsets[1];
+    // __thiscall methods (ECX=this=g_AnmManager). Member decls so MSVC emits
+    // mov ecx,[g_AnmManager]; push args; call matching orig.
+    void __fastcall SetAndExecuteScriptIdx(void *anmVm, i32 scriptOffset);
+    i32 __fastcall ExecuteScript(void *anmVm);
+    void __fastcall Draw3(void *anmVm);
+    void __fastcall Draw3NoOffset(void *anmVm);
+    void ReleaseAnm(i32 fileId);  // stack arg (not __fastcall)
 };
 extern AnmManager *g_AnmManager;
 
@@ -797,7 +804,7 @@ ZunResult __fastcall EffectManager::AddedCallback(EffectManager *mgr)
 // unconditionally calls ReleaseAnm on ids 0x11..0x14).
 ZunResult __fastcall EffectManager::DeletedCallback(EffectManager *mgr)
 {
-    Anm_ReleaseAnm(ANM_FILE_EFFECTS);
+    g_AnmManager->ReleaseAnm(ANM_FILE_EFFECTS);
     Anm_ReleaseAnm(ANM_FILE_EFFECTS + 1);
     Anm_ReleaseAnm(ANM_FILE_EFFECTS + 2);
     Anm_ReleaseAnm(ANM_FILE_EFFECTS + 3);
