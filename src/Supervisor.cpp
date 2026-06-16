@@ -464,7 +464,7 @@ ZunResult Supervisor::RegisterChain()
 // Supervisor::ReadMidiFile  (FUN_0043a05f)
 // __fastcall arg: u32 midiFileIdx. ECX unused.
 // =====================================================================
-ZunResult __fastcall Supervisor_ReadMidiFile(u32 midiFileIdx)
+ZunResult Supervisor::ReadMidiFile(u32 midiFileIdx)
 {
     if (MUSIC_MODE == MUSIC_MIDI)
     {
@@ -489,11 +489,6 @@ ZunResult __fastcall Supervisor_ReadMidiFile(u32 midiFileIdx)
         }
     }
     return ZUN_SUCCESS;
-}
-
-ZunResult Supervisor::ReadMidiFile(u32 idx)
-{
-    return Supervisor_ReadMidiFile(idx);
 }
 
 #pragma optimize("s", off)
