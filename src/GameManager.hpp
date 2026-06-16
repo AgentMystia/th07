@@ -151,7 +151,7 @@ DIFFABLE_EXTERN_ARRAY(u8, 0x38, g_PlayerInitTemplate)
 
 // Opaque cross-module singletons reached by DeletedCallback (stub externs for
 // codegen; real types land when those modules are reversed).
-extern void *g_Supervisor;       // @ 0x00575950 (chain/midi/accumulator owner)
+// g_Supervisor declared in Supervisor.hpp
 extern u8   g_SupervisorState;   // @ 0x00575a87 (==2 -> MIDI teardown in DeletedCallback)
 extern u32  g_SupervisorRedrawFlag; // @ 0x00575ae4
 extern void *g_SupervisorSound;  // @ 0x004ba0d8 (sound-queue side; ECX for ProcessQueue)

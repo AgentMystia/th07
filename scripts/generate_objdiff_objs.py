@@ -16,7 +16,11 @@ def demangle_msvc(sym):
         # underscore, then split on the last @ and remove everything that comes afterwards
         end_of_sym = sym.rfind(b"@")
         if end_of_sym == -1:
-            # Not an stdcall, let's just not demangle it.
+            # Not an stdcall. Check if it's a _DAT_ or _FUN_ symbol (cdecl data/func ref).
+            # Strip the leading underscore to match orig delinked obj naming.
+            if sym[1:5] in (b"DAT_", b"FUN_", b"PTR_"):
+                return sym[1:]
+            # Otherwise, don't demangle.
             return sym
         else:
             return sym[1:end_of_sym]
@@ -91,7 +95,8 @@ def rename_symbols(filename):
     with open(str(filename), "rb") as f:
         obj.unpack(f.read(), 0)
 
-    # We filter to only the symbols with the namespace=filename, and we scrape everything but the function name
+    # Demangle ALL symbols: function definitions (filtered by namespace) AND
+    # cross-module CALL references (demangled to match orig delinked obj names).
     seen = {}
     for sym_obj in obj.symbols:
         sym = sym_obj.get_name(obj.string_table)
@@ -100,14 +105,22 @@ def rename_symbols(filename):
         seen[sym] = True
 
         demangled_sym = demangle_msvc(sym)
-        if not any(
+        
+        # Check if this symbol belongs to this module's namespace
+        in_namespace = any(
             sym_prefix(demangled_sym, val.encode("utf8"))
             for val in ns_to_obj[filename.stem]
-        ):
-            continue
-
-        offset = obj.string_table.append(demangled_sym)
-        sym_obj.name = b"\0\0\0\0" + struct.pack("I", offset)
+        )
+        
+        if in_namespace:
+            # This is a function definition in our module -- rename it
+            offset = obj.string_table.append(demangled_sym)
+            sym_obj.name = b"\0\0\0\0" + struct.pack("I", offset)
+        elif sym != demangled_sym:
+            # This is a mangled cross-module reference -- demangle it so it
+            # matches the orig delinked obj's demangled symbol names
+            offset = obj.string_table.append(demangled_sym)
+            sym_obj.name = b"\0\0\0\0" + struct.pack("I", offset)
 
     if not reimpl_folder.exists():
         reimpl_folder.mkdir(parents=True, exist_ok=True)

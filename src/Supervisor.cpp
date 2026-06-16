@@ -22,6 +22,7 @@
 
 #include "Supervisor.hpp"
 #include "AsciiManager.hpp"
+#include "GameManager.hpp"
 
 #include "Chain.hpp"
 #include "GameErrorContext.hpp"
@@ -52,7 +53,7 @@ extern const char TH_SCENE_FMT[];          // "scene %d -> %d\r\n"
 // ---- cross-module stubs (full impls land when those modules reverse) ----
 // Declared as extern C so MSVC emits a reloc CALL that objdiff tolerates.
 // Forward-declared GameManager methods (avoids GameManager.hpp g_Supervisor conflict).
-struct GameManager { static ZunResult RegisterChain(); static void CutChain(); };
+// GameManager declared in GameManager.hpp
 // MainMenu/MusicRoom/Ending/ReplayManager via extern C.
 extern "C" u16 __fastcall Controller_GetInput();                  // FUN_00430b50
 extern "C" void __fastcall DebugPrint_th(const char *fmt, ...);         // FUN_0045e4f0
@@ -134,16 +135,91 @@ extern "C" char g_DAT_62f648[];   // displayOpts
 extern "C" char g_DAT_62f85c[];   // some counter
 
 
-// DAT_ extern declarations matching orig delinked obj reloc names.
-extern "C" char DAT_00575a68[];   // config struct
+
+// DAT_ extern variables matching orig delinked obj reloc symbol names.
+// These are declared as extern "C" char arrays so MSVC generates dir32 relocs.
+// The demangle script strips the leading underscore, producing DAT_00575a68 etc.
+extern "C" char DAT_00575a68[];   // config struct base
+extern "C" char DAT_00575a9c[];   // cfg opts
+extern "C" char DAT_00624210[];
+extern "C" char DAT_00496f14[];
+extern "C" char DAT_00496ee4[];
+extern "C" char DAT_00496c20[];
+extern "C" char DAT_00496e88[];
+extern "C" char DAT_00496ebc[];
+extern "C" char DAT_00496e64[];
+extern "C" char DAT_00496e48[];
+extern "C" char DAT_00496e20[];
+extern "C" char DAT_00496dfc[];
+extern "C" char DAT_00496dd0[];
+extern "C" char DAT_00496da8[];
+extern "C" char DAT_00496d8c[];
+extern "C" char DAT_00496d6c[];
+extern "C" char DAT_00496d4c[];
+extern "C" char DAT_00496d24[];
+extern "C" char DAT_00496cec[];
+extern "C" char DAT_00496cd0[];
+extern "C" char DAT_00496cb0[];
+extern "C" char DAT_00496c98[];
+extern "C" char DAT_00496c78[];
+extern "C" char DAT_0049ee40_dup[];
+extern "C" char DAT_004b9e44[];   // g_AnmManager ptr
+extern "C" char DAT_00575c0c[];   // byte flag
+extern "C" char DAT_00575bbc[];   // QPC flag
+extern "C" char DAT_00575a8b[];   // frameskipConfig
 extern "C" char DAT_00575a87[];   // musicMode
 extern "C" char DAT_00575acc[];   // midiOutput ptr
-extern "C" char DAT_00575a9c[];   // cfg opts
 extern "C" char DAT_004ba0d8[];   // SoundPlayer singleton
-extern "C" char DAT_00575c0c[];   // byte flag
-extern "C" char DAT_004980d0[];   // "dummy" string
-extern "C" char DAT_00496c1e[];   // empty string
-extern "C" char DAT_004b9e44[];   // g_AnmManager
+extern "C" char DAT_00575a84[];   // config lifeCount
+extern "C" char DAT_00575a85[];   // config bombCount
+extern "C" char DAT_00575a86[];   // config colorMode
+extern "C" char DAT_00575a88[];   // config playSounds
+extern "C" char DAT_00575a89[];   // config defaultDifficulty
+extern "C" char DAT_00575a8a[];   // config windowed
+extern "C" char DAT_00575a8b_dup[]; // config frameskip (same as 0x575a8b)
+extern "C" char DAT_00575a8c[];   // config playModeA
+extern "C" char DAT_00575a8d[];   // config playModeB
+extern "C" char DAT_00575a8e[];   // config chara
+extern "C" char DAT_00575a7c[];   // config version
+extern "C" char DAT_00575a80[];   // config padXAxis
+extern "C" char DAT_00575a82[];   // config padYAxis
+extern "C" char DAT_00575abc[];   // joystick present flag
+extern "C" char DAT_004b9e64[];   // config size check
+extern "C" char DAT_0049ee40[];   // default keymap
+extern "C" char DAT_0049ee44[];
+extern "C" char DAT_0049ee48[];
+extern "C" char DAT_0049ee4c[];
+extern "C" char DAT_0049ee50[];
+extern "C" char DAT_00575c10[];
+extern "C" char DAT_00575c14[];
+extern "C" char DAT_00575c1c[];
+extern "C" char DAT_004bda94[];
+extern "C" char DAT_0062627d[];
+extern "C" char DAT_00626280[];
+extern "C" char DAT_0062f648[];
+extern "C" char DAT_0062f85c[];
+extern "C" char DAT_0062f52c[];
+extern "C" char DAT_004b9e4c[];
+extern "C" char DAT_004b9e54[];
+extern "C" char DAT_004b9e5c[];
+extern "C" char DAT_004b9e60[];
+extern "C" char DAT_00575950[];
+extern "C" char DAT_00575958[];
+extern "C" char DAT_00575aa8[];
+extern "C" char DAT_00575ab8[];
+extern "C" char DAT_00575ad0[];
+extern "C" char DAT_00575ad4[];
+extern "C" char DAT_00575ad8[];
+extern "C" char DAT_00575bf8[];
+extern "C" char DAT_00624210[];
+extern "C" char DAT_0135e1f0[];
+extern "C" char DAT_0135e2a0[];
+extern "C" char DAT_0135e2a4[];
+extern "C" char DAT_0135e298[];
+extern "C" char DAT_0135dfec[];
+extern "C" char DAT_013542d8[];
+extern "C" char DAT_0134ce18[];
+
 
 extern "C" void *memset(void *, int, size_t);
 extern "C" void *memcpy(void *, const void *, size_t);
@@ -1554,7 +1630,7 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     buf = Supervisor_ReadConfigBuffer(configPath, 1);
     if (buf == 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496f14);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496f14);
     }
     else
     {
@@ -1567,8 +1643,8 @@ ZunResult Supervisor::LoadConfig(char *configPath)
             CloseHandle(f1);
             if (hdr1_0 != 0x5641575a || hdr1_1 != 1 || hdr1_2 != 0x700)
             {
-                GameErrorContext_LogFmt3((void *)0x00624210, (char *)0x00496ee4, configPath);
-                GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c20);
+                GameErrorContext_LogFmt3((void *)&DAT_00624210, (char *)&DAT_00496ee4, configPath);
+                GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496c20);
                 return ZUN_ERROR;
             }
         }
@@ -1576,11 +1652,11 @@ ZunResult Supervisor::LoadConfig(char *configPath)
             *(u8 *)((DAT_00575a68 + 0x1f)) < 3 && *(u8 *)((DAT_00575a68 + 0x21)) < 6 && *(u8 *)((DAT_00575a68 + 0x20)) < 2 &&
             *(u8 *)((DAT_00575a68 + 0x22)) < 2 && *(u8 *)((DAT_00575a68 + 0x23)) < 3 && *(u8 *)((DAT_00575a68 + 0x24)) < 3 &&
             *(u8 *)((DAT_00575a68 + 0x25)) < 2 && *(u8 *)((DAT_00575a68 + 0x26)) < 2 &&
-            *(u32 *)((DAT_00575a68 + 0x14)) == 0x70002 && *(u32 *)0x004b9e64 == 0x38)
+            *(u32 *)((DAT_00575a68 + 0x14)) == 0x70002 && *(u32 *)&DAT_004b9e64 == 0x38)
         {
             goto apply_opts;
         }
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496e88);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496e88);
     }
     // Defaults.
     *(u8 *)(DAT_00575a68 + 0x1c) = 2;
@@ -1593,7 +1669,7 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     if (f2 == (HANDLE)-1)
     {
         *(u8 *)((DAT_00575a68 + 0x1f)) = 2;
-        Supervisor_LogStr1((char *)0x00496ebc);
+        Supervisor_LogStr1((char *)&DAT_00496ebc);
     }
     else
     {
@@ -1601,8 +1677,8 @@ ZunResult Supervisor::LoadConfig(char *configPath)
         CloseHandle(f2);
         if (hdr2_0 != 0x5641575a || hdr2_1 != 1 || hdr2_2 != 0x700)
         {
-            GameErrorContext_LogFmt3((void *)0x00624210, (char *)0x00496ee4, configPath);
-            GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c20);
+            GameErrorContext_LogFmt3((void *)&DAT_00624210, (char *)&DAT_00496ee4, configPath);
+            GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496c20);
             return ZUN_ERROR;
         }
         *(u8 *)((DAT_00575a68 + 0x1f)) = 1;
@@ -1612,82 +1688,82 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     *(u8 *)((DAT_00575a68 + 0x22)) = 0;
     *(u8 *)((DAT_00575a68 + 0x23)) = 0;
     // Default keymap copy: orig inlines movsd x4 + movsw (18 bytes).
-    memcpy((void *)DAT_00575a68, (void *)0x0049ee40, 0x12);
+    memcpy((void *)DAT_00575a68, (void *)&DAT_0049ee40, 0x12);
     *(u8 *)((DAT_00575a68 + 0x24)) = 2;
     *(u8 *)((DAT_00575a68 + 0x25)) = 0;
     *(u8 *)((DAT_00575a68 + 0x26)) = 1;
 apply_opts:
     *(u32 *)((DAT_00575a68 + 0x34)) |= 1;
-    *(u32 *)0x0049ee40 = *(u32 *)DAT_00575a68;
-    *(u32 *)0x0049ee44 = *(u32 *)((DAT_00575a68 + 0x4));
-    *(u32 *)0x0049ee48 = *(u32 *)((DAT_00575a68 + 0x8));
-    *(u32 *)0x0049ee4c = *(u32 *)((DAT_00575a68 + 0xc));
-    *(u32 *)0x0049ee50 = *(u32 *)((DAT_00575a68 + 0x10));
+    *(u32 *)&DAT_0049ee40 = *(u32 *)DAT_00575a68;
+    *(u32 *)&DAT_0049ee44 = *(u32 *)((DAT_00575a68 + 0x4));
+    *(u32 *)&DAT_0049ee48 = *(u32 *)((DAT_00575a68 + 0x8));
+    *(u32 *)&DAT_0049ee4c = *(u32 *)((DAT_00575a68 + 0xc));
+    *(u32 *)&DAT_0049ee50 = *(u32 *)((DAT_00575a68 + 0x10));
     if ((*(u32 *)((u8 *)this + 0x14c) >> 1 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496e64);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496e64);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 10 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496e48);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496e48);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 2 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496e20);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496e20);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 3 & 1) != 0 || (*(u32 *)((u8 *)this + 0x14c) >> 4 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496dfc);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496dfc);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 4 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496dd0);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496dd0);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 5 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496da8);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496da8);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 6 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496d8c);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496d8c);
     }
     *(u32 *)((u8 *)this + 0x16c) = 0;
     *(u32 *)((u8 *)this + 0x14c) = *(u32 *)((u8 *)this + 0x14c) & 0xffffff7f;
     if ((*(u32 *)((u8 *)this + 0x14c) >> 8 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496d6c);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496d6c);
     }
     if (*(i8 *)((u8 *)this + 0x13a) != 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496d4c);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496d4c);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 9 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496d24);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496d24);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 0xb & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496cec);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496cec);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 0xc & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496cd0);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496cd0);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 0xd & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496cb0);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496cb0);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 0xe & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c98);
+        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496c98);
         *(u32 *)((DAT_00575a68 + 0x54)) = 1;
     }
     if (Supervisor_ValidateSize(0x38) == 0)
     {
         return ZUN_SUCCESS;
     }
-    GameErrorContext_LogFmt3((void *)0x00624210, (char *)0x00496c78, configPath);
-    GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c20);
+    GameErrorContext_LogFmt3((void *)&DAT_00624210, (char *)&DAT_00496c78, configPath);
+    GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496c20);
     return ZUN_ERROR;
 }
 #pragma optimize("s", off)
