@@ -380,7 +380,7 @@ i32 __fastcall EffectManager::EffectUpdateCallback4(Effect *effect)
 // SpawnParticles: round-robin over the first 400 effect slots, filling `count`
 // of them. FUN_0041c1c0. __thiscall with 4 stack params (RET 0x10).
 #pragma var_order(effect, idx, anmIdx, anmManager, timerPtr)
-Effect *__fastcall EffectManager::SpawnParticles(i32 effectIdx, D3DXVECTOR3 *pos, i32 count, ZunColor color)
+Effect *EffectManager::SpawnParticles(i32 effectIdx, D3DXVECTOR3 *pos, i32 count, ZunColor color)
 {
     i32 idx;
     Effect *effect;
@@ -453,7 +453,7 @@ Effect *__fastcall EffectManager::SpawnParticles(i32 effectIdx, D3DXVECTOR3 *pos
 // SpawnParticlesWithVelocity: like SpawnParticles but seeds the initial
 // velocity at +0x258. FUN_0041c400. __thiscall with 5 stack params (RET 0x14).
 #pragma var_order(effect, idx, anmIdx, anmManager, timerPtr)
-Effect *__fastcall EffectManager::SpawnParticlesWithVelocity(i32 effectIdx, D3DXVECTOR3 *pos, D3DXVECTOR3 *velocity,
+Effect *EffectManager::SpawnParticlesWithVelocity(i32 effectIdx, D3DXVECTOR3 *pos, D3DXVECTOR3 *velocity,
                                                              i32 count, ZunColor color)
 {
     i32 idx;
@@ -529,7 +529,7 @@ Effect *__fastcall EffectManager::SpawnParticlesWithVelocity(i32 effectIdx, D3DX
 // FUN_0041c610. __thiscall with 5 stack params (RET 0x14). `unused` (4th
 // stack arg) is read by the binary but discarded.
 #pragma var_order(effect, anmIdx, anmManager, timerPtr)
-Effect *__fastcall EffectManager::SpawnParticleAt(i32 effectIdx, D3DXVECTOR3 *pos, i32 slot, i32 unused,
+Effect *EffectManager::SpawnParticleAt(i32 effectIdx, D3DXVECTOR3 *pos, i32 slot, i32 unused,
                                                   ZunColor color)
 {
     Effect *effect;

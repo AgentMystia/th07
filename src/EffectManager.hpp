@@ -128,10 +128,10 @@ struct EffectManager
 
     void Reset();
 
-    Effect *__fastcall SpawnParticles(i32 effectIdx, D3DXVECTOR3 *pos, i32 count, ZunColor color);
-    Effect *__fastcall SpawnParticlesWithVelocity(i32 effectIdx, D3DXVECTOR3 *pos, D3DXVECTOR3 *velocity,
+    Effect *SpawnParticles(i32 effectIdx, D3DXVECTOR3 *pos, i32 count, ZunColor color);
+    Effect *SpawnParticlesWithVelocity(i32 effectIdx, D3DXVECTOR3 *pos, D3DXVECTOR3 *velocity,
                                                   i32 count, ZunColor color);
-    Effect *__fastcall SpawnParticleAt(i32 effectIdx, D3DXVECTOR3 *pos, i32 slot, i32 unused, ZunColor color);
+    Effect *SpawnParticleAt(i32 effectIdx, D3DXVECTOR3 *pos, i32 slot, i32 unused, ZunColor color);
 };
 ZUN_ASSERT_SIZE(EffectManager, 0x496a8);
 
