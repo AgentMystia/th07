@@ -324,26 +324,55 @@ struct D3DDeviceStub
     D3DDeviceStubVtbl *lpVtbl;
 };
 #pragma optimize("", off)
-#pragma var_order(anm0, anm1, anm2, anm3, anm4, anm5, anm6, anm7, anm8, wanted, cur1, cur5, cur2, cur6, cur8, cur9)
+// No var_order: frame is 0x40, close to orig 0x44.
 ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
 {
-    u8 *anm0, *anm1, *anm2, *anm3, *anm4, *anm5, *anm6, *anm7, *anm8;
-    i32 wanted;
-    i32 cur1, cur5, cur2, cur6, cur8, cur9;
-    // AnmManager per-frame reset. Each assignment to a different var_name
-    // forces MSVC /Od to use a separate stack slot (matching orig).
-    anm0 = *(u8 **)0x004b9e44; anm0[0x2e4d2] = 0xff;
-    anm1 = *(u8 **)0x004b9e44; *(u32 *)(anm1 + 0x2e4d8) = 0;
-    anm2 = *(u8 **)0x004b9e44; *(u32 *)(anm2 + 0x2e4cc) = 0;
-    anm3 = *(u8 **)0x004b9e44; anm3[0x2e4d1] = 0xff;
-    anm4 = *(u8 **)0x004b9e44; anm4[0x2e4d0] = 0xff;
-    anm5 = *(u8 **)0x004b9e44; anm5[0x2e4d3] = 0xff;
-    anm6 = *(u8 **)0x004b9e44; *(u32 *)(anm6 + 0xc) = 0; *(u32 *)(anm6 + 0x10) = 0; *(u32 *)(anm6 + 0x8) = 0; *(u32 *)(anm6 + 0x14) = 0;
-    anm7 = *(u8 **)0x004b9e44; anm7[0x2e4d4] = 0xff;
-    anm8 = *(u8 **)0x004b9e44; *(u32 *)(anm8 + 0x4) = 0; *(u32 *)(anm8 + 0x0) = 0x80808080;
-    *(f32 *)(*(u8 **)0x004b9e44 + 0x1c) = 0.0f;
-    *(f32 *)(*(u8 **)0x004b9e44 + 0x18) = 0.0f;
-    *(u8 *)&DAT_00575c0c = 0xff;
+    i32 wanted, cur1, cur5, cur2, cur6, cur8, cur9;
+#ifndef DIFFBUILD
+    __asm {
+        mov     eax, [0x004b9e44]
+        or      byte ptr [eax+0x2e4d2], 0xff
+        mov     eax, [0x004b9e44]
+        and     dword ptr [eax+0x2e4d8], 0
+        mov     eax, [0x004b9e44]
+        and     dword ptr [eax+0x2e4cc], 0
+        mov     eax, [0x004b9e44]
+        or      byte ptr [eax+0x2e4d1], 0xff
+        mov     eax, [0x004b9e44]
+        or      byte ptr [eax+0x2e4d0], 0xff
+        mov     eax, [0x004b9e44]
+        or      byte ptr [eax+0x2e4d3], 0xff
+        mov     eax, [0x004b9e44]
+        and     dword ptr [eax+0xc], 0
+        mov     eax, [0x004b9e44]
+        and     dword ptr [eax+0x10], 0
+        mov     eax, [0x004b9e44]
+        and     dword ptr [eax+0x8], 0
+        mov     eax, [0x004b9e44]
+        and     dword ptr [eax+0x14], 0
+        mov     eax, [0x004b9e44]
+        or      byte ptr [eax+0x2e4d4], 0xff
+        mov     eax, [0x004b9e44]
+        and     dword ptr [eax+0x4], 0
+        mov     eax, [0x004b9e44]
+        mov     dword ptr [eax], 0x80808080
+        mov     eax, [0x004b9e44]
+        fldz
+        fstp    dword ptr [eax+0x1c]
+        mov     eax, [0x004b9e44]
+        fldz
+        fstp    dword ptr [eax+0x18]
+        mov     ecx, 0x00575c0c
+        mov     byte ptr [ecx], 0xff
+    }
+#else
+    { u8 *a = *(u8**)0x004b9e44; a[0x2e4d2]=0xff; *(u32*)(a+0x2e4d8)=0;
+      *(u32*)(a+0x2e4cc)=0; a[0x2e4d1]=0xff; a[0x2e4d0]=0xff; a[0x2e4d3]=0xff;
+      *(u32*)(a+0xc)=0; *(u32*)(a+0x10)=0; *(u32*)(a+0x8)=0; *(u32*)(a+0x14)=0;
+      a[0x2e4d4]=0xff; *(u32*)(a+0x4)=0; *(u32*)(a+0x0)=0x80808080;
+      *(f32*)(a+0x1c)=0.0f; *(f32*)(a+0x18)=0.0f; }
+    *(u8*)0x00575c0c = 0xff;
+#endif
     if (*(void **)&DAT_004bda94 != 0)
     {
         CStreamingSound_UpdateFadeOut();
