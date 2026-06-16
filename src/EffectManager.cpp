@@ -288,15 +288,20 @@ i32 __fastcall EffectManager::EffectCallbackAttract(Effect *effect)
 
 // EffectCallbackAttractSlow: same as Attract but /240 instead of /60.
 // FUN_0041ac30. Matches th06's EffectCallbackAttractSlow.
+extern "C" u8 g_EffectConst240[4];   // DAT_00498b50 = 240.0f
 i32 __fastcall EffectManager::EffectCallbackAttractSlow(Effect *effect)
 {
     f32 t;
+    f32 *base = (f32 *)((u8 *)effect + 0x2b8);
 
-    t = 256.0f - ((f32)effect->timer.current + effect->timer.subFrame) * 256.0f / 240.0f;
+    t = *(f32 *)g_EffectConst256 -
+        ((f32)*(i32 *)((u8 *)base + 0x8) + *(f32 *)((u8 *)base + 0x4)) *
+        *(f32 *)g_EffectConst256 / *(f32 *)g_EffectConst240;
 
-    effect->pos1.x = t * effect->pos2.x + effect->position.x;
-    effect->pos1.y = t * effect->pos2.y + effect->position.y;
-    effect->pos1.z = t * effect->pos2.z + effect->position.z;
+    f32 *anchor = (f32 *)((u8 *)effect + 0x294);
+    *(f32 *)((u8 *)effect + 0x248) = t * *(f32 *)((u8 *)anchor + 0x8) + *(f32 *)((u8 *)effect + 0x27c);
+    *(f32 *)((u8 *)effect + 0x244) = t * *(f32 *)((u8 *)anchor + 0x4) + *(f32 *)((u8 *)effect + 0x278);
+    *(f32 *)((u8 *)effect + 0x240) = t * *(f32 *)((u8 *)anchor + 0x0) + *(f32 *)((u8 *)effect + 0x274);
 
     return EFFECT_CALLBACK_RESULT_DONE;
 }
