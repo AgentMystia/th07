@@ -911,13 +911,16 @@ ZunResult Supervisor::PlayAudio(i32 channel, char *path)
 // orig caches midiOutput singleton into a local ([ebp-0x4]) before the three
 // thiscall calls; WAV path uses the "dummy" rdata string as name arg.
 // =====================================================================
+#pragma var_order(midi)
 ZunResult Supervisor::StopAudio(i32 channel)
 {
+    MidiOutput *midi;
     if (MUSIC_MODE == MUSIC_MIDI)
     {
-        MidiOutput *midi = MIDI_OUTPUT_PTR; // orig caches to local
-        if (midi != 0)
+        // orig: check MIDI_OUTPUT_PTR != 0 FIRST, then cache to local.
+        if (MIDI_OUTPUT_PTR != 0)
         {
+            midi = MIDI_OUTPUT_PTR;
             midi->StopPlayback();
             midi->ParseFile(channel);
             midi->Play();
