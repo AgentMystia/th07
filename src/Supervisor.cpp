@@ -1164,26 +1164,19 @@ ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
 // the thbgm.dat header ("ZAV\1" + 0x700), range-checks config fields, applies
 // config to the global config block @ 0x575a68, and logs warnings for each set
 // "display option" bit in cfg.opts (+0x14c).
-// Globals verified from disasm: config struct @ 0x575a68 (0x38 bytes),
-// DAT_004b9e64 (must be 0x38), DAT_0049ee40..50 (5 dwords = default keymap),
-// DAT_00575abc (joystick present flag).
-// =====================================================================
+// Uses #pragma var_order to force MSVC to lay out locals in the exact order
+// the orig binary uses (frame 0x38).
+#pragma var_order(buf, f1, read1, hdr1_2, hdr1_1, hdr1_0, f2, read2, hdr2_2, hdr2_1, hdr2_0, _pad1, _pad2)
 ZunResult Supervisor::LoadConfig(char *configPath)
 {
-    // Orig frame=0x38 + push esi,edi. Local layout (verified from disasm):
-    //   [ebp-0x38]=this, [ebp-0x34..0x2c]=hdr2[3], [ebp-0x24]=read2,
-    //   [ebp-0x20]=f2, [ebp-0x1c..0x14]=hdr1[3], [ebp-0xc]=read1,
-    //   [ebp-0x8]=f1, [ebp-0x4]=buf.
-    // Declare all locals at function scope in this order so MSVC lays them
-    // out identically.
-    i32 hdr2[3];
+    i32 hdr2_0, hdr2_1, hdr2_2;
+    i32 _pad1, _pad2;
     u32 read2;
     HANDLE f2;
-    i32 hdr1[3];
+    i32 hdr1_0, hdr1_1, hdr1_2;
     u32 read1;
     HANDLE f1;
     void *buf;
-    char _pad4[4]; // match orig frame 0x38 (MSVC allocates this above this)
     // Zero config struct: rep stosd of 0xe dwords.
     memset((void *)0x00575a68, 0, 0xe * 4);
     buf = Supervisor_ReadConfigBuffer(configPath, 1);
@@ -1198,9 +1191,9 @@ ZunResult Supervisor::LoadConfig(char *configPath)
         f1 = CreateFileA("./thbgm.dat", 0x80000000, 1, 0, 3, 0x8000080, 0);
         if (f1 != (HANDLE)-1)
         {
-            ReadFile(f1, hdr1, 0x10, (DWORD *)&read1, 0);
+            ReadFile(f1, &hdr1_0, 0x10, (DWORD *)&read1, 0);
             CloseHandle(f1);
-            if (hdr1[0] != 0x5641575a || hdr1[1] != 1 || hdr1[2] != 0x700)
+            if (hdr1_0 != 0x5641575a || hdr1_1 != 1 || hdr1_2 != 0x700)
             {
                 GameErrorContext_LogFmt3((void *)0x00624210, (char *)0x00496ee4, configPath);
                 GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c20);
@@ -1232,9 +1225,9 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     }
     else
     {
-        ReadFile(f2, hdr2, 0x10, (DWORD *)&read2, 0);
+        ReadFile(f2, &hdr2_0, 0x10, (DWORD *)&read2, 0);
         CloseHandle(f2);
-        if (hdr2[0] != 0x5641575a || hdr2[1] != 1 || hdr2[2] != 0x700)
+        if (hdr2_0 != 0x5641575a || hdr2_1 != 1 || hdr2_2 != 0x700)
         {
             GameErrorContext_LogFmt3((void *)0x00624210, (char *)0x00496ee4, configPath);
             GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c20);
@@ -1317,8 +1310,7 @@ apply_opts:
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c98);
         *(u32 *)0x00575abc = 1;
     }
-    i32 r = Supervisor_ValidateSize(0x38);
-    if (r == 0)
+    if (Supervisor_ValidateSize(0x38) == 0)
     {
         return ZUN_SUCCESS;
     }
@@ -1326,7 +1318,6 @@ apply_opts:
     GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c20);
     return ZUN_ERROR;
 }
-
 #pragma optimize("s", off)
 #pragma optimize("s", on)
 
