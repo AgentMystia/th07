@@ -918,30 +918,8 @@ ZunResult Supervisor::PlayMidiFile(char *midiPath)
 #pragma optimize("s", on)
 
 // Supervisor::SetupDInput  (FUN_004383d8)
-// __fastcall, ECX = Supervisor*. DirectInput8 + keyboard + (optional) joystick
-// init. COM thiscall DInput vtable calls are emitted via stub structs so MSVC
-// generates the `mov ecx,[iface]; mov edx,[ecx]; call [edx+off]` pattern.
-// Globals (verified): dinputIface@+0xc, keyboard@+0x10, controller@+0x14,
-// hwnd@+0x44, cfg.opts@+0x14c (bit 0xb = NO_DIRECTINPUT_PAD), controllerCaps
-// size @ 0x575968. Strings: 0x497208/1d8/1a4/17c/15c, GUIDs 0x490408/8d674/8d46c,
-// IID 0x4904a8.
-// =====================================================================
-struct DInputStub
-{
-    // IDirectInput8A vtable offsets used by orig.
-    i32 CreateDevice(void *rguid, void **out, void *unk);     // +0xc
-    i32 Release();                                            // +0x8
-    i32 EnumDevices(u32 devtype, void *cb, void *ref, u32 flags); // +0x10
-};
-struct DInputDevStub
-{
-    i32 SetDataFormat(void *fmt);                             // +0xc
-    i32 SetCooperativeLevel(HWND hwnd, u32 flags);            // +0x10
-    i32 Acquire();                                            // +0x1c
-    i32 EnumObjects(void *cb, void *ref, u32 flags);          // +0x2c
-    i32 SetProperty(void *prop, void *data);                  // +0x34
-    i32 Release();                                            // +0x8
-};
+// __fastcall, ECX = Supervisor*. Uses real IDirectInput8A/IDirectInputDevice8A
+// COM interfaces from dinput.h for exact vtable call codegen.
 #pragma var_order(hinst, s_save)
 ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
 {
@@ -959,56 +937,58 @@ ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00497208);
         return ZUN_ERROR;
     }
-    if ((*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->CreateDevice((void *)0x00490408, (void **)((u8 *)s + 0x10), 0) < 0)
+    // Use real COM interface so MSVC generates the exact orig vtable call pattern:
+    //   mov ecx,[this+0xc]; mov eax,[ecx]; push ecx; call [eax+offset]
+    if ((*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc))->CreateDevice(*(const GUID *)0x00490408, (LPDIRECTINPUTDEVICE8A *)((u8 *)s + 0x10), 0) < 0)
     {
-        if (*(void **)((u8 *)s + 0xc) != 0)
+        if (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc) != 0)
         {
-            (*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->Release();
+            (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc))->Release();
             *(void **)((u8 *)s + 0xc) = 0;
         }
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00497208);
         return ZUN_ERROR;
     }
-    if ((*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->SetDataFormat((void *)0x0048d674) < 0)
+    if ((*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10))->SetDataFormat((LPCDIDATAFORMAT)0x0048d674) < 0)
     {
-        if (*(void **)((u8 *)s + 0x10) != 0)
+        if (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10) != 0)
         {
-            (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->Release();
+            (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10))->Release();
             *(void **)((u8 *)s + 0x10) = 0;
         }
-        if (*(void **)((u8 *)s + 0xc) != 0)
+        if (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc) != 0)
         {
-            (*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->Release();
+            (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc))->Release();
             *(void **)((u8 *)s + 0xc) = 0;
         }
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x004971d8);
         return ZUN_ERROR;
     }
-    if ((*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->SetCooperativeLevel(*(HWND *)((u8 *)s + 0x44), 0x16) < 0)
+    if ((*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10))->SetCooperativeLevel(*(HWND *)((u8 *)s + 0x44), 0x16) < 0)
     {
-        if (*(void **)((u8 *)s + 0x10) != 0)
+        if (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10) != 0)
         {
-            (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->Release();
+            (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10))->Release();
             *(void **)((u8 *)s + 0x10) = 0;
         }
-        if (*(void **)((u8 *)s + 0xc) != 0)
+        if (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc) != 0)
         {
-            (*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->Release();
+            (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc))->Release();
             *(void **)((u8 *)s + 0xc) = 0;
         }
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x004971a4);
         return ZUN_ERROR;
     }
-    (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->Acquire();
+    (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10))->Acquire();
     GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x0049717c);
-    (*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->EnumDevices(4, (void *)Supervisor_EnumKeybdCallback, 0, 1);
+    (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc))->EnumDevices(4, (LPDIENUMDEVICESCALLBACKA)Supervisor_EnumKeybdCallback, 0, 1);
     if (*(void **)((u8 *)s + 0x14) != 0)
     {
-        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x14))->EnumObjects((void *)0x0048d46c, 0, 0);
-        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x14))->SetCooperativeLevel(*(HWND *)((u8 *)s + 0x44), 0x10);
+        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x14))->EnumObjects((LPDIENUMDEVICEOBJECTSCALLBACK)0x0048d46c, 0, 0);
+        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x14))->SetCooperativeLevel(*(HWND *)((u8 *)s + 0x44), 0x10);
         *(u32 *)0x00575968 = 0x2c;
-        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x14))->SetDataFormat((void *)0x00575968);
-        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x14))->SetProperty((void *)Supervisor_EnumJoysCallback, 0);
+        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x14))->SetDataFormat((LPCDIDATAFORMAT)0x00575968);
+        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x14))->SetProperty(*(const GUID *)(void *)&Supervisor_EnumJoysCallback, 0);
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x0049715c);
     }
     return ZUN_SUCCESS;
@@ -1059,25 +1039,25 @@ ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
     Supervisor_Cleanup3();
     if (*(void **)((u8 *)s + 0x10) != 0)
     {
-        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->Acquire();
+        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10))->Acquire();
     }
     if (*(void **)((u8 *)s + 0x10) != 0)
     {
-        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->Release();
+        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10))->Release();
         *(void **)((u8 *)s + 0x10) = 0;
     }
     if (*(void **)((u8 *)s + 0x14) != 0)
     {
-        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x14))->Acquire();
+        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x14))->Acquire();
     }
     if (*(void **)((u8 *)s + 0x14) != 0)
     {
-        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x14))->Release();
+        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x14))->Release();
         *(void **)((u8 *)s + 0x14) = 0;
     }
     if (*(void **)((u8 *)s + 0xc) != 0)
     {
-        (*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->Release();
+        (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc))->Release();
         *(void **)((u8 *)s + 0xc) = 0;
     }
     gm = *(void **)0x00626278;
