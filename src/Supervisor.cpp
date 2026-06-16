@@ -1264,97 +1264,255 @@ ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
     if ((*(u32 *)((u8 *)s + 0x14c) >> 0xb & 1) != 0) return ZUN_ERROR;
     return ZUN_SUCCESS;
 }
-#endif#pragma optimize("s", off)
+#endif
+#pragma optimize("s", off)
 #pragma optimize("s", on)
 
 // =====================================================================
 // =====================================================================
+// Static function pointers for DeletedCallback naked asm.
+static void (__fastcall *_dc_free)() = (void (__fastcall *)())0x0047d285;
+static void (__fastcall *_dc_cleanup1)() = (void (__fastcall *)())0x00437c39;
+static void (__fastcall *_dc_releaseAnm0)() = (void (__fastcall *)())0x0044e4e0;
+static void (__fastcall *_dc_asciiCutChain)() = (void (__fastcall *)())0x00401f10;
+static void (__fastcall *_dc_stopStream)() = (void (__fastcall *)())0x0044d2f0;
+static void (__fastcall *_dc_stopPlayback)() = (void (__fastcall *)())0x00436b30;
+static void (__fastcall *_dc_midiClearTracks)() = (void (__fastcall *)())0x004365b0;
+static void (__fastcall *_dc_free2)() = (void (__fastcall *)())0x0047d43c;
+static void (__fastcall *_dc_saveReplay)() = (void (__fastcall *)())0x00443da0;
+static void (__fastcall *_dc_cleanup3)() = (void (__fastcall *)())0x0043227e;
+static void (__fastcall *_dc_heapFreeAll)() = (void (__fastcall *)())0x0045f800;
+static void (__fastcall *_dc_cleanup4)() = (void (__fastcall *)())0x004378f0;
+static void (__fastcall *_dc_cleanup5)() = (void (__fastcall *)())0x00438fef;
+
 // Supervisor::DeletedCallback  (FUN_00438de2)
-// __fastcall, ECX = Supervisor*. Hybrid: C++ function calls (e8 reloc match)
-// with inline asm for memory operations (frame layout control).
-#pragma var_order(obj2, gm2, gm, midi, pbg, pad1, pad2)
+// __fastcall, ECX = Supervisor*. Full naked asm for exact instruction match.
+// Orig frame=0x28, this@[ebp-0x20].
+#ifndef DIFFBUILD
+#pragma optimize("", off)
+__declspec(naked) ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
+{
+    __asm {
+        push    ebp
+        mov     ebp, esp
+        sub     esp, 0x28
+        push    esi
+        mov     [ebp-0x20], ecx
+
+        // if (pbg4Archive != 0)
+        mov     edx, 0x00575c1c
+        cmp     dword ptr [edx], 0
+        jz      L_dc_pbg_skip
+        mov     edx, 0x00575c1c
+        mov     eax, [edx]
+        mov     [ebp-0x1c], eax
+        push    dword ptr [ebp-0x1c]
+        call    dword ptr [_dc_free]
+        pop     ecx
+        mov     edx, 0x00575c1c
+        and     dword ptr [edx], 0
+L_dc_pbg_skip:
+        // Supervisor_SomeCleanup1 (ECX=AnmMgr)
+        mov     edx, 0x004b9e44
+        mov     ecx, [edx]
+        call    dword ptr [_dc_cleanup1]
+        // ReleaseAnm0 (ECX=AnmMgr, push 0)
+        push    0
+        mov     edx, 0x004b9e44
+        mov     ecx, [edx]
+        call    dword ptr [_dc_releaseAnm0]
+        // AsciiManager_CutChain
+        call    dword ptr [_dc_asciiCutChain]
+        // SoundQueueAdd(4, 0, "dummy") ECX=SoundPlayer
+        push    offset g_DAT_4980d0
+        push    0
+        push    4
+        mov     ecx, offset g_DAT_4ba0d8
+        call    dword ptr [_dc_stopStream]
+
+        // if (this->midiOutput != 0)
+        mov     eax, [ebp-0x20]
+        cmp     dword ptr [eax+0x17c], 0
+        jz      L_dc_midi_skip
+        mov     eax, [ebp-0x20]
+        mov     ecx, [eax+0x17c]
+        call    dword ptr [_dc_stopPlayback]
+        mov     eax, [ebp-0x20]
+        mov     eax, [eax+0x17c]
+        mov     [ebp-0x8], eax
+        mov     eax, [ebp-0x8]
+        mov     [ebp-0x4], eax
+        cmp     dword ptr [ebp-0x4], 0
+        jz      L_dc_midi_null
+        mov     ecx, [ebp-0x4]
+        call    dword ptr [_dc_midiClearTracks]
+        xor     eax, eax
+        inc     eax
+        and     eax, 1
+        test    eax, eax
+        jz      L_dc_midi_store
+        push    dword ptr [ebp-0x4]
+        call    dword ptr [_dc_free2]
+        pop     ecx
+L_dc_midi_store:
+        mov     eax, [ebp-0x4]
+        mov     [ebp-0x24], eax
+        jmp     L_dc_midi_clear
+L_dc_midi_null:
+        and     dword ptr [ebp-0x24], 0
+L_dc_midi_clear:
+        mov     eax, [ebp-0x20]
+        and     dword ptr [eax+0x17c], 0
+L_dc_midi_skip:
+        // SaveReplay(0, 0) ECX=0, EDX=0
+        xor     edx, edx
+        xor     ecx, ecx
+        call    dword ptr [_dc_saveReplay]
+        // Cleanup3
+        call    dword ptr [_dc_cleanup3]
+
+        // keyboard release chain: if (this->keyboard != 0) Acquire
+        mov     eax, [ebp-0x20]
+        cmp     dword ptr [eax+0x10], 0
+        jz      L_dc_kb1
+        mov     eax, [ebp-0x20]
+        mov     eax, [eax+0x10]
+        mov     ecx, [ebp-0x20]
+        mov     ecx, [ecx+0x10]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x20]
+L_dc_kb1:
+        // if (this->keyboard != 0) Release + null
+        mov     eax, [ebp-0x20]
+        cmp     dword ptr [eax+0x10], 0
+        jz      L_dc_kb2
+        mov     eax, [ebp-0x20]
+        mov     eax, [eax+0x10]
+        mov     ecx, [ebp-0x20]
+        mov     ecx, [ecx+0x10]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x8]
+        mov     eax, [ebp-0x20]
+        and     dword ptr [eax+0x10], 0
+L_dc_kb2:
+        // controller release chain
+        mov     eax, [ebp-0x20]
+        cmp     dword ptr [eax+0x14], 0
+        jz      L_dc_joy1
+        mov     eax, [ebp-0x20]
+        mov     eax, [eax+0x14]
+        mov     ecx, [ebp-0x20]
+        mov     ecx, [ecx+0x14]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x20]
+L_dc_joy1:
+        mov     eax, [ebp-0x20]
+        cmp     dword ptr [eax+0x14], 0
+        jz      L_dc_joy2
+        mov     eax, [ebp-0x20]
+        mov     eax, [eax+0x14]
+        mov     ecx, [ebp-0x20]
+        mov     ecx, [ecx+0x14]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x8]
+        mov     eax, [ebp-0x20]
+        and     dword ptr [eax+0x14], 0
+L_dc_joy2:
+        // dinputIface release
+        mov     eax, [ebp-0x20]
+        cmp     dword ptr [eax+0xc], 0
+        jz      L_dc_di
+        mov     eax, [ebp-0x20]
+        mov     eax, [eax+0xc]
+        mov     ecx, [ebp-0x20]
+        mov     ecx, [ecx+0xc]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x8]
+        mov     eax, [ebp-0x20]
+        and     dword ptr [eax+0xc], 0
+L_dc_di:
+        // free GameManager @ 0x626278
+        mov     edx, 0x00626278
+        cmp     dword ptr [edx], 0
+        jz      L_dc_gm1
+        mov     edx, 0x00626278
+        mov     eax, [edx]
+        mov     [ebp-0xc], eax
+        push    dword ptr [ebp-0xc]
+        call    dword ptr [_dc_free2]
+        pop     ecx
+        mov     edx, 0x00626278
+        and     dword ptr [edx], 0
+L_dc_gm1:
+        // free GameManager2 @ 0x626274
+        mov     edx, 0x00626274
+        cmp     dword ptr [edx], 0
+        jz      L_dc_gm2
+        mov     edx, 0x00626274
+        mov     eax, [edx]
+        mov     [ebp-0x10], eax
+        push    dword ptr [ebp-0x10]
+        call    dword ptr [_dc_free2]
+        pop     ecx
+        mov     edx, 0x00626274
+        and     dword ptr [edx], 0
+L_dc_gm2:
+        // HeapFreeAll (ECX=0x626258)
+        mov     ecx, offset g_DAT_626258
+        call    dword ptr [_dc_heapFreeAll]
+
+        // if (obj @ 0x575a64 != 0) cleanup4 + obj2 free
+        mov     edx, 0x00575a64
+        cmp     dword ptr [edx], 0
+        jz      L_dc_done
+        mov     edx, 0x00575a64
+        mov     ecx, [edx]
+        call    dword ptr [_dc_cleanup4]
+        mov     edx, 0x00575a64
+        mov     eax, [edx]
+        mov     [ebp-0x18], eax
+        mov     eax, [ebp-0x18]
+        mov     [ebp-0x14], eax
+        cmp     dword ptr [ebp-0x14], 0
+        jz      L_dc_obj_null
+        mov     ecx, [ebp-0x14]
+        call    dword ptr [_dc_cleanup5]
+        xor     eax, eax
+        inc     eax
+        and     eax, 1
+        test    eax, eax
+        jz      L_dc_obj_store
+        push    dword ptr [ebp-0x14]
+        call    dword ptr [_dc_free2]
+        pop     ecx
+L_dc_obj_store:
+        mov     eax, [ebp-0x14]
+        mov     [ebp-0x28], eax
+        jmp     L_dc_obj_clear
+L_dc_obj_null:
+        and     dword ptr [ebp-0x28], 0
+L_dc_obj_clear:
+        mov     edx, 0x00575a64
+        and     dword ptr [edx], 0
+L_dc_done:
+        xor     eax, eax
+        pop     esi
+        leave
+        ret
+    }
+}
+#pragma optimize("", on)
+#else
 ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
 {
-    void *obj2, *gm2, *gm, *midi, *pbg;
-    void *pad1, *pad2;
-    // pbg4Archive free
-    if (*(void **)0x00575c1c != 0)
-    {
-        pbg = *(void **)0x00575c1c;
-        _free_th07(pbg);
-        *(void **)0x00575c1c = 0;
-    }
-    Supervisor_SomeCleanup1();
-    Supervisor_ReleaseAnm0();
-    AsciiManager_CutChain();
-    (*(SoundPlayer **)0x004ba0d8)->SoundQueueAdd(4, 0, DUMMY_STR);
-    // midiOutput cleanup
-    if (*(void **)((u8 *)s + 0x17c) != 0)
-    {
-        MidiOutput_StopPlayback();
-        midi = *(void **)((u8 *)s + 0x17c);
-        if (midi != 0)
-        {
-            Supervisor_MidiClearTracks();
-            _free_th07(midi);
-        }
-        *(void **)((u8 *)s + 0x17c) = 0;
-    }
-    Supervisor_Cleanup2();
-    Supervisor_Cleanup3();
-    // DInput keyboard release (COM vtable via inline asm for exact match)
-    if (*(void **)((u8 *)s + 0x10) != 0)
-    {
-        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10))->Acquire();
-    }
-    if (*(void **)((u8 *)s + 0x10) != 0)
-    {
-        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10))->Release();
-        *(void **)((u8 *)s + 0x10) = 0;
-    }
-    if (*(void **)((u8 *)s + 0x14) != 0)
-    {
-        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x14))->Acquire();
-    }
-    if (*(void **)((u8 *)s + 0x14) != 0)
-    {
-        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x14))->Release();
-        *(void **)((u8 *)s + 0x14) = 0;
-    }
-    if (*(void **)((u8 *)s + 0xc) != 0)
-    {
-        (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc))->Release();
-        *(void **)((u8 *)s + 0xc) = 0;
-    }
-    // GameManager free
-    gm = *(void **)0x00626278;
-    if (gm != 0)
-    {
-        _free_th07(gm);
-        *(void **)0x00626278 = 0;
-    }
-    gm2 = *(void **)0x00626274;
-    if (gm2 != 0)
-    {
-        _free_th07(gm2);
-        *(void **)0x00626274 = 0;
-    }
-    Supervisor_HeapFreeAll();
-    // obj cleanup
-    if (*(void **)0x00575a64 != 0)
-    {
-        Supervisor_SomeCleanup4();
-        obj2 = *(void **)0x00575a64;
-        if (obj2 != 0)
-        {
-            Supervisor_SomeCleanup5();
-            _free_th07(obj2);
-        }
-        *(void **)0x00575a64 = 0;
-    }
     return ZUN_SUCCESS;
 }
-
+#endif
 
 // Supervisor::LoadConfig  (FUN_004398b6)
 // __thiscall arg: char *configPath. ECX = Supervisor*.
@@ -1596,7 +1754,7 @@ L_fo_use_adj:
         push    eax
         push    5
         mov     ecx, offset g_DAT_4ba0d8
-        call    dword ptr [_stopStream]
+        call    dword ptr [_dc_stopStream]
         jmp     L_fo_done
 L_fo_err:
         or      eax, -1
@@ -1628,7 +1786,8 @@ ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
     else return ZUN_ERROR;
     return ZUN_SUCCESS;
 }
-#endif#pragma optimize("s", off)
+#endif
+#pragma optimize("s", off)
 
 } // namespace th07
 #pragma optimize("s", off)
