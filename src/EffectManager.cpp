@@ -424,7 +424,7 @@ Effect *EffectManager::SpawnParticles(i32 effectIdx, D3DXVECTOR3 *pos, i32 count
         anmIdx = g_Effects[effectIdx].anmIdx;
         anmManager = g_AnmManager;
         effect->anmScriptIndex = (u16)anmIdx;
-        Anm_SetAndExecuteScriptIdx(anmManager, &effect->vm, (i32)anmManager->scriptOffsets[anmIdx]);
+        anmManager->SetAndExecuteScriptIdx(&effect->vm, (i32)anmManager->scriptOffsets[anmIdx]);
 
         effect->flags |= 0x1000;
         effect->color = color;
@@ -498,7 +498,7 @@ Effect *EffectManager::SpawnParticlesWithVelocity(i32 effectIdx, D3DXVECTOR3 *po
         anmIdx = g_Effects[effectIdx].anmIdx;
         anmManager = g_AnmManager;
         effect->anmScriptIndex = (u16)anmIdx;
-        Anm_SetAndExecuteScriptIdx(anmManager, &effect->vm, (i32)anmManager->scriptOffsets[anmIdx]);
+        anmManager->SetAndExecuteScriptIdx(&effect->vm, (i32)anmManager->scriptOffsets[anmIdx]);
 
         effect->color = color;
         effect->updateCallback = g_Effects[effectIdx].updateCallback;
@@ -554,7 +554,7 @@ Effect *EffectManager::SpawnParticleAt(i32 effectIdx, D3DXVECTOR3 *pos, i32 slot
     anmIdx = g_Effects[effectIdx].anmIdx;
     anmManager = g_AnmManager;
     effect->anmScriptIndex = (u16)anmIdx;
-    Anm_SetAndExecuteScriptIdx(anmManager, &effect->vm, (i32)anmManager->scriptOffsets[anmIdx]);
+    anmManager->SetAndExecuteScriptIdx(&effect->vm, (i32)anmManager->scriptOffsets[anmIdx]);
 
     effect->flags |= 0x1000;
     effect->color = color;
@@ -613,7 +613,7 @@ ChainCallbackResult __fastcall EffectManager::OnUpdate(EffectManager *mgr)
             continue;
         }
 
-        if (Anm_ExecuteScript(g_AnmManager, &effect->vm) != 0)
+        if (g_AnmManager->ExecuteScript(&effect->vm) != 0)
         {
             effect->inUseFlag = 0;
             continue;
@@ -695,11 +695,11 @@ ChainCallbackResult __fastcall EffectManager::OnDraw(EffectManager *mgr)
                 *(D3DXVECTOR3 *)((u8 *)cur + 0x1c8) = *(D3DXVECTOR3 *)((u8 *)cur + 0x24c);
                 if (*(i8 *)((u8 *)cur + 0x2d0) == 1)
                 {
-                    Anm_Draw3NoOffset(g_AnmManager, &cur->vm);
+                    g_AnmManager->Draw3NoOffset(&cur->vm);
                 }
                 else
                 {
-                    Anm_Draw3(g_AnmManager, &cur->vm);
+                    g_AnmManager->Draw3(&cur->vm);
                 }
                 if (*(i8 *)((u8 *)cur + 0x2cd) == 0x14)
                 {
