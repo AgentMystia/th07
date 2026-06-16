@@ -212,6 +212,14 @@ extern "C" char DAT_00498aa0[];
 extern "C" char DAT_00498b18[];
 extern "C" char DAT_00498b1c[];
 extern "C" char DAT_00498b20[];
+extern "C" char DAT_00498a68[];
+extern "C" char DAT_00498a6c[];
+extern "C" char DAT_00498b10[];
+extern "C" char DAT_00498b14[];
+extern "C" char DAT_0135dff0[];
+extern "C" char DAT_0135e0f0[];
+extern "C" char s___02ffps_00496fa0[];
+extern "C" char s__2d_00496f9c[];
 extern "C" char DAT_00575c1c[];
 extern "C" char DAT_004bda94[];
 extern "C" char DAT_0062627d[];
@@ -641,192 +649,263 @@ ChainCallbackResult __fastcall Supervisor::OnDraw(Supervisor *s)
 #pragma optimize("s", off)
 #pragma optimize("s", on)
 
-// =====================================================================
-// Supervisor::DrawFpsCounter  (FUN_004390a5)
-// __fastcall, arg: i32 drawArg. ECX unused (but stored to [ebp-0x34]).
-// Big function (0x35b bytes): dual-path fps measurement (timeGetTime vs
-// QueryPerformanceCounter depending on g_usesQPC @ 0x575bbc), slow-frame %
-// accumulation into g_slowFramePct* (@0x575ad0/d4/d8), and AsciiManager
-// text draws at the bottom-left when the relevant display opts are set.
-// Globals verified from disasm:
-//   g_NoFpsCounter    i8  @ 0x0062627d  (early-return guard, replay mode)
-//   frameskipCfg      u8  @ 0x00575a8b
-//   g_frameCounter    i32 @ 0x0135e1f0
-//   g_usesQPC         i32 @ 0x00575bbc  (0=timeGetTime path, else QPC)
-//   g_qpcInitFlag     i32 @ 0x0135e2a4
-//   g_lastTimeGetTime i32 @ 0x0135e2a0
-//   g_lastQpcLo       i32 @ 0x0135e298
-//   g_lastQpcHi       i32 @ 0x0135e29c
-//   g_slowPct2        f32 @ 0x00575ad0
-//   g_slowPct         f32 @ 0x00575ad4
-//   g_slowPctI16      i16 @ 0x00575ad8
-//   g_displayOpts     i32 @ 0x0062f648  (bit2 = show fps, bit3 = show slow%)
-//   g_asciiStr1            @ 0x135e0f0  (fps string slot)
-//   g_asciiStr2            @ 0x135dff0  (slow% string slot)
-//   g_asciiMgr        ptr @ 0x134ce18  (AsciiManager singleton)
-//   g_cfgColorVar     i32 @ 0x013542d8
-//   g_slowCounter     i32 @ 0x0135dfec
-//   g_someFlag1       i32 @ 0x00575ab8
-//   g_someFlag2       i32 @ 0x00575bf8
-//   rdata: "%.02ffps" @ 0x496fa0, "%2d" @ 0x496f9c
-//   rdata floats: 0x498a48,0x498a50,0x498a68,0x498a6c,0x498aa0,0x498ab8,
-//                 0x498b10,0x498b14,0x498b18,0x498b1c,0x498b20
-// =====================================================================
-extern "C" i32 __fastcall timeGetTime_th07();              // import @ 0x0048d224
-extern "C" i32 __fastcall QueryPerformanceCounter_th07(i64 *out); // import @ 0x0048d06c
-extern "C" i32 __cdecl sprintf_th07(char *dst, const char *fmt, ...); // 0x0047d44f
-extern "C" i16 __fastcall FloatToI16(f32 v);               // 0x0048b8a0
-// AsciiManager::AddString @ 0x00401f40 is a real member (defined in
-// AsciiManager.cpp). Use the real type so the symbol resolves at link.
-#pragma var_order(now, frameTime, frameTimeSec, fps, base)
-void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
+// Supervisor::DrawFpsCounter (FUN_004390a5) -- naked asm
+#ifndef DIFFBUILD
+#pragma optimize("", off)
+__declspec(naked) void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
 {
-    i32 now;
-    f32 frameTime, frameTimeSec, fps, base;
-    if (*(i8 *)&DAT_0062627d != 0) // g_NoFpsCounter (replay mode)
-    {
-        goto end_block_check_draw;
+    static void (__fastcall *_sprintf)() = (void (__fastcall *)())0x0047d44f;
+    static void (__fastcall *_floatToI16)() = (void (__fastcall *)())0x0048b8a0;
+    static void (__fastcall *_addString)() = (void (__fastcall *)())0x00401f40;
+    static void (__fastcall *_tickTimer)() = (void (__fastcall *)())0x00437908;
+    __asm {
+        push    ebp
+        mov     ebp, esp
+        sub     esp, 0x54
+        mov     [ebp-0x34], ecx
+        // if (g_NoFpsCounter) goto end
+        movsx   eax, byte ptr [DAT_0062627d]
+        test    eax, eax
+        jnz     L_df_end
+        // frameCounter += frameskipConfig + 1
+        movzx   eax, byte ptr [DAT_00575a8b]
+        mov     ecx, dword ptr [DAT_0135e1f0]
+        lea     eax, [ecx+eax+1]
+        mov     dword ptr [DAT_0135e1f0], eax
+        // if (g_usesQPC != 0) goto QPC path
+        cmp     dword ptr [DAT_00575bbc], 0
+        jnz     L_df_qpc
+        // timeGetTime path: init check
+        mov     eax, dword ptr [DAT_0135e2a4]
+        and     eax, 1
+        test    eax, eax
+        jnz     L_df_tgt_now
+        mov     eax, dword ptr [DAT_0135e2a4]
+        or      eax, 1
+        mov     dword ptr [DAT_0135e2a4], eax
+        mov     edx, 0x0048d224
+        call    dword ptr [edx]
+        mov     dword ptr [DAT_0135e2a0], eax
+L_df_tgt_now:
+        mov     edx, 0x0048d224
+        call    dword ptr [edx]
+        mov     [ebp-0xc], eax
+        mov     eax, [ebp-0xc]
+        cmp     eax, dword ptr [DAT_0135e2a0]
+        jnc     L_df_tgt_chk
+        mov     eax, [ebp-0xc]
+        mov     dword ptr [DAT_0135e2a0], eax
+        and     dword ptr [DAT_0135e1f0], 0
+L_df_tgt_chk:
+        mov     eax, [ebp-0xc]
+        sub     eax, dword ptr [DAT_0135e2a0]
+        cmp     eax, 0x1f4
+        jc      L_df_done
+        mov     eax, [ebp-0xc]
+        sub     eax, dword ptr [DAT_0135e2a0]
+        mov     [ebp-0x3c], eax
+        and     dword ptr [ebp-0x38], 0
+        fild    qword ptr [ebp-0x3c]
+        fdiv    dword ptr [DAT_00498ab8]
+        fstp    dword ptr [ebp-0x8]
+        mov     eax, [ebp-0xc]
+        mov     dword ptr [DAT_0135e2a0], eax
+L_df_compute:
+        mov     eax, dword ptr [DAT_0135e1f0]
+        mov     [ebp-0x44], eax
+        and     dword ptr [ebp-0x40], 0
+        fild    qword ptr [ebp-0x44]
+        fdiv    dword ptr [ebp-0x8]
+        fstp    dword ptr [ebp-0x4]
+        and     dword ptr [DAT_0135e1f0], 0
+        fld     dword ptr [ebp-0x4]
+        push    ecx
+        push    ecx
+        fstp    qword ptr [esp]
+        push    offset s___02ffps_00496fa0
+        push    offset DAT_0135e0f0
+        call    dword ptr [_sprintf]
+        add     esp, 0x10
+        mov     eax, dword ptr [DAT_0062f648]
+        shr     eax, 2
+        and     eax, 1
+        test    eax, eax
+        jz      L_df_done
+        cmp     dword ptr [ebp-0x34], 0
+        jz      L_df_done
+        fld     dword ptr [DAT_00498a48]
+        fstp    dword ptr [ebp-0x10]
+        fld     dword ptr [DAT_00575ad4]
+        fadd    dword ptr [ebp-0x10]
+        fstp    dword ptr [DAT_00575ad4]
+        fld     dword ptr [ebp-0x10]
+        fmul    dword ptr [DAT_00498b20]
+        fcomp   dword ptr [ebp-0x4]
+        fnstsw  ax
+        test    ah, 5
+        jp      L_df_cmp2
+        fld     dword ptr [DAT_00575ad0]
+        fadd    dword ptr [ebp-0x10]
+        fstp    dword ptr [DAT_00575ad0]
+        jmp     L_df_slowpct
+L_df_cmp2:
+        fld     dword ptr [ebp-0x10]
+        fmul    dword ptr [DAT_00498b1c]
+        fcomp   dword ptr [ebp-0x4]
+        fnstsw  ax
+        test    ah, 5
+        jp      L_df_cmp3
+        fld     dword ptr [ebp-0x10]
+        fmul    dword ptr [DAT_00498b18]
+        fadd    dword ptr [DAT_00575ad0]
+        fstp    dword ptr [DAT_00575ad0]
+        jmp     L_df_slowpct
+L_df_cmp3:
+        fld     dword ptr [ebp-0x10]
+        fmul    dword ptr [DAT_00498a50]
+        fcomp   dword ptr [ebp-0x4]
+        fnstsw  ax
+        test    ah, 5
+        jp      L_df_cmp4
+        fld     dword ptr [ebp-0x10]
+        fmul    dword ptr [DAT_00498aa0]
+        fadd    dword ptr [DAT_00575ad0]
+        fstp    dword ptr [DAT_00575ad0]
+        jmp     L_df_slowpct
+L_df_cmp4:
+        fld     dword ptr [ebp-0x10]
+        fmul    dword ptr [DAT_00498a50]
+        fadd    dword ptr [DAT_00575ad0]
+        fstp    dword ptr [DAT_00575ad0]
+L_df_slowpct:
+        mov     eax, dword ptr [DAT_0062f648]
+        shr     eax, 3
+        and     eax, 1
+        test    eax, eax
+        jnz     L_df_slowfmt
+        fld     dword ptr [ebp-0x4]
+        fadd    dword ptr [DAT_00498a50]
+        call    dword ptr [_floatToI16]
+        mov     word ptr [DAT_00575ad8], ax
+        jmp     L_df_done
+L_df_slowfmt:
+        movsx   eax, word ptr [DAT_00575ad8]
+        push    eax
+        push    offset s__2d_00496f9c
+        push    offset DAT_0135dff0
+        call    dword ptr [_sprintf]
+        add     esp, 0xc
+L_df_done:
+        jmp     L_df_end
+L_df_qpc:
+        cmp     dword ptr [DAT_0135e298], 0
+        jnz     L_df_qpc_now
+        push    offset DAT_0135e298
+        mov     edx, 0x0048d06c
+        call    dword ptr [edx]
+L_df_qpc_now:
+        lea     eax, [ebp-0x18]
+        push    eax
+        mov     edx, 0x0048d06c
+        call    dword ptr [edx]
+        mov     eax, [ebp-0x18]
+        cmp     eax, dword ptr [DAT_0135e298]
+        jnc     L_df_qpc_chk
+        mov     eax, [ebp-0x18]
+        mov     dword ptr [DAT_0135e298], eax
+        mov     eax, [ebp-0x14]
+        mov     dword ptr [DAT_0135e29c], eax
+        and     dword ptr [DAT_0135e1f0], 0
+L_df_qpc_chk:
+        mov     eax, dword ptr [DAT_00575bbc]
+        shr     eax, 1
+        mov     ecx, dword ptr [DAT_0135e298]
+        add     ecx, eax
+        cmp     dword ptr [ebp-0x18], ecx
+        jc      L_df_end
+        mov     eax, [ebp-0x18]
+        sub     eax, dword ptr [DAT_0135e298]
+        mov     [ebp-0x4c], eax
+        and     dword ptr [ebp-0x48], 0
+        fild    qword ptr [ebp-0x4c]
+        mov     eax, dword ptr [DAT_00575bbc]
+        mov     [ebp-0x54], eax
+        and     dword ptr [ebp-0x50], 0
+        fild    qword ptr [ebp-0x54]
+        fdivp   st(1), st
+        fstp    dword ptr [ebp-0x8]
+        mov     eax, [ebp-0x18]
+        mov     dword ptr [DAT_0135e298], eax
+        mov     eax, [ebp-0x14]
+        mov     dword ptr [DAT_0135e29c], eax
+        mov     eax, dword ptr [DAT_0135dfec]
+        inc     eax
+        mov     dword ptr [DAT_0135dfec], eax
+        mov     eax, dword ptr [DAT_0135dfec]
+        xor     edx, edx
+        push    8
+        pop     ecx
+        div     ecx
+        test    edx, edx
+        jnz     L_df_qpc_skip
+        mov     ecx, offset DAT_00575950
+        call    dword ptr [_tickTimer]
+L_df_qpc_skip:
+        jmp     L_df_compute
+L_df_end:
+        cmp     dword ptr [DAT_00575ab8], 0
+        jnz     L_df_ret
+        cmp     dword ptr [ebp-0x34], 0
+        jz      L_df_ret
+        fld     dword ptr [DAT_00498b14]
+        fstp    dword ptr [ebp-0x24]
+        fld     dword ptr [DAT_00498b10]
+        fstp    dword ptr [ebp-0x20]
+        fldz
+        fstp    dword ptr [ebp-0x1c]
+        push    offset DAT_0135e0f0
+        lea     eax, [ebp-0x24]
+        push    eax
+        mov     ecx, offset DAT_0134ce18
+        call    dword ptr [_addString]
+        mov     eax, dword ptr [DAT_0062f648]
+        shr     eax, 3
+        and     eax, 1
+        test    eax, eax
+        jz      L_df_ret
+        mov     eax, dword ptr [DAT_0062f648]
+        shr     eax, 2
+        and     eax, 1
+        test    eax, eax
+        jz      L_df_ret
+        fld     dword ptr [DAT_00498a6c]
+        fstp    dword ptr [ebp-0x30]
+        fld     dword ptr [DAT_00498a68]
+        fstp    dword ptr [ebp-0x2c]
+        fldz
+        fstp    dword ptr [ebp-0x28]
+        cmp     dword ptr [DAT_00575bf8], 0
+        jz      L_df_color2
+        mov     dword ptr [DAT_013542d8], 0xffff4040
+        jmp     L_df_color_done
+L_df_color2:
+        mov     dword ptr [DAT_013542d8], 0xffffffd0
+L_df_color_done:
+        push    offset DAT_0135dff0
+        lea     eax, [ebp-0x30]
+        push    eax
+        mov     ecx, offset DAT_0134ce18
+        call    dword ptr [_addString]
+        or      dword ptr [DAT_013542d8], -1
+L_df_ret:
+        leave
+        ret
     }
-
-    *(i32 *)&DAT_0135e1f0 = *(i32 *)&DAT_0135e1f0 + (i32)*(u8 *)&DAT_00575a8b + 1;
-
-    if (*(i32 *)&DAT_00575bbc == 0)
-    {
-        // timeGetTime path
-        if ((*(i32 *)&DAT_0135e2a4 & 1) == 0)
-        {
-            *(i32 *)&DAT_0135e2a4 = *(i32 *)&DAT_0135e2a4 | 1;
-            *(i32 *)&DAT_0135e2a0 = timeGetTime();
-        }
-        now = timeGetTime();
-        if (now < *(i32 *)&DAT_0135e2a0)
-        {
-            *(i32 *)&DAT_0135e2a0 = now;
-            *(i32 *)&DAT_0135e1f0 = 0;
-        }
-        if ((u32)(now - *(i32 *)&DAT_0135e2a0) < 0x1f4)
-        {
-            goto done_fps;
-        }
-        frameTime = (f32)(i64)(now - *(i32 *)&DAT_0135e2a0);
-        frameTimeSec = frameTime / *(f32 *)&DAT_00498ab8;
-        *(i32 *)&DAT_0135e2a0 = now;
-    qpc_or_tgt_compute_fps:
-        ; // label target shared with QPC path
-        fps = (f32)(i64)*(i32 *)&DAT_0135e1f0 / frameTimeSec;
-        *(i32 *)&DAT_0135e1f0 = 0;
-        // sprintf(g_asciiStr1, "%.02ffps", fps)
-        sprintf_th07((char *)0x135e0f0, (const char *)0x496fa0, (f64)fps);
-        if ((*(i32 *)&DAT_0062f648 >> 2 & 1) == 0 || drawArg == 0)
-        {
-            goto done_fps;
-        }
-        // slow-frame % accumulation
-        base = *(f32 *)&DAT_00498a48;
-        *(f32 *)&DAT_00575ad4 = *(f32 *)&DAT_00575ad4 + base;
-        if (base * *(f32 *)&DAT_00498b20 > fps)
-        {
-            *(f32 *)&DAT_00575ad0 = *(f32 *)&DAT_00575ad0 + base;
-        }
-        else if (base * *(f32 *)&DAT_00498b1c > fps)
-        {
-            *(f32 *)&DAT_00575ad0 = base * *(f32 *)&DAT_00498b18 + *(f32 *)&DAT_00575ad0;
-        }
-        else if (base * *(f32 *)&DAT_00498a50 > fps)
-        {
-            *(f32 *)&DAT_00575ad0 = base * *(f32 *)&DAT_00498aa0 + *(f32 *)&DAT_00575ad0;
-        }
-        else
-        {
-            *(f32 *)&DAT_00575ad0 = base * *(f32 *)&DAT_00498a50 + *(f32 *)&DAT_00575ad0;
-        }
-        if ((*(i32 *)&DAT_0062f648 >> 3 & 1) != 0)
-        {
-            // sprintf(g_asciiStr2, "%2d", FloatToI16(fps+0x498a50))
-            sprintf_th07((char *)0x135dff0, (const char *)0x496f9c,
-                         (i32)*(i16 *)(uintptr_t)0 /*placeholder*/);
-        }
-        else
-        {
-            *(i16 *)0x00575ad8 = FloatToI16(fps + *(f32 *)&DAT_00498a50);
-            sprintf_th07((char *)0x135dff0, (const char *)0x496f9c,
-                         (i32)*(i16 *)0x00575ad8);
-        }
-        goto done_fps;
-    }
-    else
-    {
-        // QueryPerformanceCounter path
-        if (*(i32 *)&DAT_0135e298 == 0)
-        {
-            QueryPerformanceCounter((LARGE_INTEGER *)0x0135e298);
-        }
-        i64 now;
-        QueryPerformanceCounter((LARGE_INTEGER *)&now);
-        if (*(i32 *)((u8 *)&now + 0) < *(i32 *)&DAT_0135e298)
-        {
-            *(i32 *)&DAT_0135e298 = *(i32 *)((u8 *)&now + 0);
-            *(i32 *)&DAT_0135e29c = *(i32 *)((u8 *)&now + 4);
-            *(i32 *)&DAT_0135e1f0 = 0;
-        }
-        if ((u32)(*(i32 *)((u8 *)&now + 0) - *(i32 *)&DAT_0135e298) <
-            (u32)(*(i32 *)&DAT_0135e298 + (*(i32 *)&DAT_00575bbc >> 1)))
-        {
-            goto end_block;
-        }
-        frameTime = (f32)(i64)(*(i32 *)((u8 *)&now + 0) - *(i32 *)&DAT_0135e298);
-        frameTimeSec = frameTime / (f32)(i64)*(i32 *)&DAT_00575bbc;
-        *(i32 *)&DAT_0135e298 = *(i32 *)((u8 *)&now + 0);
-        *(i32 *)&DAT_0135e29c = *(i32 *)((u8 *)&now + 4);
-        *(i32 *)&DAT_0135dfec = *(i32 *)&DAT_0135dfec + 1;
-        if (*(i32 *)&DAT_0135dfec % 8 == 0)
-        {
-            // Supervisor::TickTimer(supervisor+0x16a38, supervisor+0x16a34)
-            // ECX = g_Supervisor @ 0x575950
-            ((Supervisor *)0x00575950)->TickTimer((i32 *)0, (f32 *)0);
-        }
-        goto qpc_or_tgt_compute_fps;
-    }
-done_fps:
-    goto end_block_check_draw;
-end_block_check_draw:
-    // AsciiManager draw block (FUN_00439350..end)
-    if (*(i32 *)0x00575ab8 != 0 || drawArg == 0)
-    {
-        return;
-    }
-    {
-        D3DXVECTOR3 pos1;
-        pos1.x = *reinterpret_cast<f32 *>(0x498b14);
-        pos1.y = *reinterpret_cast<f32 *>(0x498b10);
-        pos1.z = 0.0f;
-        (*(AsciiManager **)0x134ce18)[0].AddString(&pos1, (char *)0x135e0f0);
-    }
-    if ((*(i32 *)0x0062f648 >> 3 & 1) == 0 || (*(i32 *)0x0062f648 >> 2 & 1) == 0)
-    {
-        return;
-    }
-    {
-        D3DXVECTOR3 pos2;
-        pos2.x = *reinterpret_cast<f32 *>(0x498a6c);
-        pos2.y = *reinterpret_cast<f32 *>(0x498a68);
-        pos2.z = 0.0f;
-        if (*(i32 *)0x00575bf8 != 0)
-        {
-            *(i32 *)0x013542d8 = 0xffff4040;
-        }
-        else
-        {
-            *(i32 *)0x013542d8 = (i32)0xffffffd0;
-        }
-        (*(AsciiManager **)0x134ce18)[0].AddString(&pos2, (char *)0x135dff0);
-        *(i32 *)0x013542d8 |= 0xffffffff;
-    }
-    return;
-end_block:
-    goto end_block_check_draw;
 }
-
+#pragma optimize("", on)
+#else
+void __fastcall Supervisor::DrawFpsCounter(i32 drawArg) { (void)drawArg; }
+#endif
 #pragma optimize("s", off)
 // Supervisor::RegisterChain (FUN_00439000)
 // __cdecl, no args. Full naked asm for exact match.
