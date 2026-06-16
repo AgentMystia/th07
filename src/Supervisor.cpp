@@ -540,9 +540,11 @@ extern "C" i32 __cdecl sprintf_th07(char *dst, const char *fmt, ...); // 0x0047d
 extern "C" i16 __fastcall FloatToI16(f32 v);               // 0x0048b8a0
 // AsciiManager::AddString @ 0x00401f40 is a real member (defined in
 // AsciiManager.cpp). Use the real type so the symbol resolves at link.
+#pragma var_order(now, frameTime, frameTimeSec, fps, base)
 void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
 {
-    // orig: movsx eax,[0x0062627d]; test eax,eax; jne end
+    i32 now;
+    f32 frameTime, frameTimeSec, fps, base;
     if (*(i8 *)0x0062627d != 0) // g_NoFpsCounter (replay mode)
     {
         goto end_block_check_draw;
@@ -558,7 +560,7 @@ void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
             *(i32 *)0x0135e2a4 = *(i32 *)0x0135e2a4 | 1;
             *(i32 *)0x0135e2a0 = timeGetTime();
         }
-        i32 now = timeGetTime();
+        now = timeGetTime();
         if (now < *(i32 *)0x0135e2a0)
         {
             *(i32 *)0x0135e2a0 = now;
@@ -568,12 +570,12 @@ void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
         {
             goto done_fps;
         }
-        f32 frameTime = (f32)(i64)(now - *(i32 *)0x0135e2a0);
-        f32 frameTimeSec = frameTime / *reinterpret_cast<f32 *>(0x498ab8);
+        frameTime = (f32)(i64)(now - *(i32 *)0x0135e2a0);
+        frameTimeSec = frameTime / *reinterpret_cast<f32 *>(0x498ab8);
         *(i32 *)0x0135e2a0 = now;
     qpc_or_tgt_compute_fps:
         ; // label target shared with QPC path
-        f32 fps = (f32)(i64)*(i32 *)0x0135e1f0 / frameTimeSec;
+        fps = (f32)(i64)*(i32 *)0x0135e1f0 / frameTimeSec;
         *(i32 *)0x0135e1f0 = 0;
         // sprintf(g_asciiStr1, "%.02ffps", fps)
         sprintf_th07((char *)0x135e0f0, (const char *)0x496fa0, (f64)fps);
@@ -582,7 +584,7 @@ void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
             goto done_fps;
         }
         // slow-frame % accumulation
-        f32 base = *reinterpret_cast<f32 *>(0x498a48);
+        base = *reinterpret_cast<f32 *>(0x498a48);
         *(f32 *)0x00575ad4 = *(f32 *)0x00575ad4 + base;
         if (base * *reinterpret_cast<f32 *>(0x498b20) > fps)
         {
@@ -634,8 +636,8 @@ void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
         {
             goto end_block;
         }
-        f32 frameTime = (f32)(i64)(*(i32 *)((u8 *)&now + 0) - *(i32 *)0x0135e298);
-        f32 frameTimeSec = frameTime / (f32)(i64)*(i32 *)0x00575bbc;
+        frameTime = (f32)(i64)(*(i32 *)((u8 *)&now + 0) - *(i32 *)0x0135e298);
+        frameTimeSec = frameTime / (f32)(i64)*(i32 *)0x00575bbc;
         *(i32 *)0x0135e298 = *(i32 *)((u8 *)&now + 0);
         *(i32 *)0x0135e29c = *(i32 *)((u8 *)&now + 4);
         *(i32 *)0x0135dfec = *(i32 *)0x0135dfec + 1;
