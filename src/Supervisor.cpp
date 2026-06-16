@@ -77,6 +77,22 @@ extern "C" i32 __fastcall GetPrivateProfileInt_th07(char *app, char *key, i32 de
 extern "C" void __fastcall Supervisor_D3DDiscard();               // FUN_0045c5d0 (D3DDevice reset)
 extern "C" void __fastcall Supervisor_ChainReleaseAll();          // FUN_00443da0 (ReplayManager release)
 extern "C" void __fastcall Supervisor_SomePulseFlag();            // FUN_00404fe0 (used by EffectManager)
+// SetupDInput externs
+extern "C" i32 __fastcall GetWindowLongA_th07(HWND hwnd, i32 idx); // wraps GetWindowLongA
+extern "C" i32 __fastcall DirectInput8Create_th07(i32 inst, u32 ver, void *iid, void **out, void *unk);
+extern "C" void __fastcall GameErrorContext_LogFmt2(void *ctx, char *fmt); // FUN_004315f0 (1 arg after ctx)
+extern "C" i32 __fastcall Supervisor_EnumKeybdCallback(void *ref, void *dev); // FUN_0043832f
+extern "C" i32 __fastcall Supervisor_EnumJoysCallback(void *ref, void *dev); // FUN_0043836e
+// DeletedCallback / cleanup externs
+extern "C" void __fastcall Supervisor_SomeCleanup1();        // FUN_00437c39
+extern "C" void __fastcall Supervisor_ReleaseAnm0();         // FUN_0044e4e0 wrapper
+extern "C" void __fastcall Supervisor_MidiClearTracks();     // FUN_004365b0 (MidiOutput dtor step)
+extern "C" void __fastcall Supervisor_Cleanup2();            // FUN_00443da0 (ReplayManager release)
+extern "C" void __fastcall Supervisor_Cleanup3();            // FUN_0043227e
+extern "C" void __fastcall Supervisor_HeapFreeAll();         // FUN_0045f800
+extern "C" void __fastcall Supervisor_SomeCleanup4();        // FUN_004378f0
+extern "C" void __fastcall Supervisor_SomeCleanup5();        // FUN_00438fef
+extern "C" void *_free_th07(void *p);                         // _free wrapper
 
 // ---- thiscall callee stubs (ECX = singleton pointer) ----
 struct MidiOutput
@@ -702,7 +718,8 @@ ZunResult Supervisor::PlayAudio(i32 channel, char *path)
     }
     // WAV path: copy path into local buffer, find '.', write ".wav".
     // Orig keeps two dst pointer locals (d and d2) plus a byte local; mirror
-    // that so the stack frame and copy loop match byte-for-byte.
+    // that so the stack frame and copy loop match byte-for-byte. The loop
+    // stores via `d` (not d2): d2 is a dead copy orig emits.
     char buf[0x100];
     char *p = path;
     char *d = buf;
@@ -711,9 +728,9 @@ ZunResult Supervisor::PlayAudio(i32 channel, char *path)
     do
     {
         c = *p;
-        *d2 = c;
+        *d = c;
         p++;
-        d2++;
+        d++;
     } while (c != 0);
     char *dot = strchr_th07(buf, '.');
     dot[1] = 'w';
@@ -752,14 +769,13 @@ ZunResult Supervisor::PlayMidiFile(char *midiPath)
         char buf[0x100];
         char *p = midiPath;
         char *d = buf;
-        char *d2 = d;
         char c;
         do
         {
             c = *p;
-            *d2 = c;
+            *d = c;
             p++;
-            d2++;
+            d++;
         } while (c != 0);
         char *dot = strchr_th07(buf, '.');
         dot[1] = 'w';
@@ -798,6 +814,194 @@ ZunResult Supervisor::StopAudio(i32 channel)
             SOUND_PLAYER_PTR->StopStream(4, 0, DUMMY_STR);
         }
         SOUND_PLAYER_PTR->StopStream(2, channel, DUMMY_STR);
+    }
+    return ZUN_SUCCESS;
+}
+
+#pragma optimize("s", off)
+#pragma optimize("s", on)
+
+// =====================================================================
+// Supervisor::SetupDInput  (FUN_004383d8)
+// __fastcall, ECX = Supervisor*. DirectInput8 + keyboard + (optional) joystick
+// init. COM thiscall DInput vtable calls are emitted via stub structs so MSVC
+// generates the `mov ecx,[iface]; mov edx,[ecx]; call [edx+off]` pattern.
+// Globals (verified): dinputIface@+0xc, keyboard@+0x10, controller@+0x14,
+// hwnd@+0x44, cfg.opts@+0x14c (bit 0xb = NO_DIRECTINPUT_PAD), controllerCaps
+// size @ 0x575968. Strings: 0x497208/1d8/1a4/17c/15c, GUIDs 0x490408/8d674/8d46c,
+// IID 0x4904a8.
+// =====================================================================
+struct DInputStub
+{
+    // IDirectInput8A vtable offsets used by orig.
+    i32 CreateDevice(void *rguid, void **out, void *unk);     // +0xc
+    i32 Release();                                            // +0x8
+    i32 EnumDevices(u32 devtype, void *cb, void *ref, u32 flags); // +0x10
+};
+struct DInputDevStub
+{
+    i32 SetDataFormat(void *fmt);                             // +0xc
+    i32 SetCooperativeLevel(HWND hwnd, u32 flags);            // +0x10
+    i32 Acquire();                                            // +0x1c
+    i32 EnumObjects(void *cb, void *ref, u32 flags);          // +0x2c
+    i32 SetProperty(void *prop, void *data);                  // +0x34
+    i32 Release();                                            // +0x8
+};
+ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
+{
+    i32 hinst = GetWindowLongA_th07(*(HWND *)((u8 *)s + 0x44), -6);
+    if ((*(u32 *)((u8 *)s + 0x14c) >> 0xb & 1) != 0)
+    {
+        return ZUN_ERROR;
+    }
+    i32 r = DirectInput8Create_th07(hinst, 0x800, (void *)0x004904a8, (void **)((u8 *)s + 0xc), 0);
+    if (r < 0)
+    {
+        *(void **)((u8 *)s + 0xc) = 0;
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00497208);
+        return ZUN_ERROR;
+    }
+    r = (*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->CreateDevice((void *)0x00490408, (void **)((u8 *)s + 0x10), 0);
+    if (r < 0)
+    {
+        if (*(void **)((u8 *)s + 0xc) != 0)
+        {
+            (*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->Release();
+            *(void **)((u8 *)s + 0xc) = 0;
+        }
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00497208);
+        return ZUN_ERROR;
+    }
+    r = (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->SetDataFormat((void *)0x0048d674);
+    if (r < 0)
+    {
+        if (*(void **)((u8 *)s + 0x10) != 0)
+        {
+            (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->Release();
+            *(void **)((u8 *)s + 0x10) = 0;
+        }
+        if (*(void **)((u8 *)s + 0xc) != 0)
+        {
+            (*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->Release();
+            *(void **)((u8 *)s + 0xc) = 0;
+        }
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x004971d8);
+        return ZUN_ERROR;
+    }
+    r = (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->SetCooperativeLevel(*(HWND *)((u8 *)s + 0x44), 0x16);
+    if (r < 0)
+    {
+        if (*(void **)((u8 *)s + 0x10) != 0)
+        {
+            (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->Release();
+            *(void **)((u8 *)s + 0x10) = 0;
+        }
+        if (*(void **)((u8 *)s + 0xc) != 0)
+        {
+            (*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->Release();
+            *(void **)((u8 *)s + 0xc) = 0;
+        }
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x004971a4);
+        return ZUN_ERROR;
+    }
+    (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->Acquire();
+    GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x0049717c);
+    (*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->EnumDevices(4, (void *)Supervisor_EnumKeybdCallback, 0, 1);
+    if (*(void **)((u8 *)s + 0x14) != 0)
+    {
+        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x14))->EnumObjects((void *)0x0048d46c, 0, 0);
+        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x14))->SetCooperativeLevel(*(HWND *)((u8 *)s + 0x44), 0x10);
+        *(u32 *)0x00575968 = 0x2c;
+        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x14))->SetDataFormat((void *)0x00575968);
+        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x14))->SetProperty((void *)Supervisor_EnumJoysCallback, 0);
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x0049715c);
+    }
+    return ZUN_SUCCESS;
+}
+
+#pragma optimize("s", off)
+#pragma optimize("s", on)
+
+// =====================================================================
+// Supervisor::DeletedCallback  (FUN_00438de2)
+// __fastcall, ECX = Supervisor*. Cleanup/teardown: free pbg4 archive, release
+// anm0, stop audio, release MidiOutput + DInput devices, free GameManager
+// memory, etc. Returns 0.
+// Globals: g_Pbg4Archive @ 0x575c1c, g_GameManager @ 0x626278, g_GameManager2
+// @ 0x626274, g_SomeObj @ 0x575a64.
+// =====================================================================
+ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
+{
+    void *pbg = *(void **)0x00575c1c;
+    if (pbg != 0)
+    {
+        _free_th07(pbg);
+        *(void **)0x00575c1c = 0;
+    }
+    Supervisor_SomeCleanup1();
+    Supervisor_ReleaseAnm0();
+    AsciiManager_CutChain();
+    (*(SoundPlayer **)0x004ba0d8)->StopStream(4, 0, DUMMY_STR);
+    if (*(void **)((u8 *)s + 0x17c) != 0)
+    {
+        MidiOutput_StopPlayback();
+        void *midi = *(void **)((u8 *)s + 0x17c);
+        if (midi != 0)
+        {
+            Supervisor_MidiClearTracks();
+            _free_th07(midi);
+        }
+        *(void **)((u8 *)s + 0x17c) = 0;
+    }
+    Supervisor_Cleanup2();
+    Supervisor_Cleanup3();
+    if (*(void **)((u8 *)s + 0x10) != 0)
+    {
+        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->Acquire();
+    }
+    if (*(void **)((u8 *)s + 0x10) != 0)
+    {
+        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->Release();
+        *(void **)((u8 *)s + 0x10) = 0;
+    }
+    if (*(void **)((u8 *)s + 0x14) != 0)
+    {
+        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x14))->Acquire();
+    }
+    if (*(void **)((u8 *)s + 0x14) != 0)
+    {
+        (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x14))->Release();
+        *(void **)((u8 *)s + 0x14) = 0;
+    }
+    if (*(void **)((u8 *)s + 0xc) != 0)
+    {
+        (*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->Release();
+        *(void **)((u8 *)s + 0xc) = 0;
+    }
+    void *gm = *(void **)0x00626278;
+    if (gm != 0)
+    {
+        _free_th07(gm);
+        *(void **)0x00626278 = 0;
+    }
+    void *gm2 = *(void **)0x00626274;
+    if (gm2 != 0)
+    {
+        _free_th07(gm2);
+        *(void **)0x00626274 = 0;
+    }
+    Supervisor_HeapFreeAll();
+    void *obj = *(void **)0x00575a64;
+    if (obj != 0)
+    {
+        Supervisor_SomeCleanup4();
+        void *obj2 = *(void **)0x00575a64;
+        if (obj2 != 0)
+        {
+            Supervisor_SomeCleanup5();
+            _free_th07(obj2);
+        }
+        *(void **)0x00575a64 = 0;
     }
     return ZUN_SUCCESS;
 }

@@ -204,7 +204,7 @@ struct Supervisor
     ZunResult SetupMidiPlayback();
     ZunResult FadeOutMusic(f32 fadeOutSeconds);
 
-    static ZunResult SetupDInput(Supervisor *s);
+    static ZunResult __fastcall SetupDInput(Supervisor *s);
 
     ZunResult LoadConfig(char *path);
 
