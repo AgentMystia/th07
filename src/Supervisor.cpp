@@ -1282,13 +1282,24 @@ apply_opts:
 // =====================================================================
 ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
 {
-    f32 adj; // [ebp-0x4]
+    // Orig frame: 2 locals ([ebp-0x8]=this, [ebp-0x4]=adj). FPU stack used
+    // throughout -- no f32 temporaries. FloatToU32 @ 0x48b8a0 converts the
+    // FPU top to u32 via CALL (truncation).
+    f32 adj;
     if (MUSIC_MODE == MUSIC_MIDI)
     {
         if (MIDI_OUTPUT_PTR != 0)
         {
-            // orig: FLD [0x498ab8] (1000.0f rdata); FMUL [EBP+0x8] (arg).
-            MIDI_OUTPUT_PTR->SetFadeOut((u32)(*reinterpret_cast<f32 *>(0x498ab8) * fadeOutSeconds));
+            // orig: FLD [0x498ab8]; FMUL [ebp+0x8]; CALL FloatToU32;
+            //       PUSH eax; MOV ECX,[midiOutput]; CALL SetFadeOut.
+            // We use the stub-method-on-singleton to get MOV ECX,[addr]; CALL.
+            // The (const * arg) order matters for FLD/FMUL matching.
+            // orig: FLD [0x498ab8]; FMUL [ebp+0x8]; CALL FloatToU32;
+            //       PUSH eax; MOV ECX,[midiOutput]; CALL SetFadeOut.
+            // We force the FloatToU32 call via a volatile asm barrier so MSVC
+            // does not inline the truncation.
+            MIDI_OUTPUT_PTR->SetFadeOut(
+                (u32)(*reinterpret_cast<f32 *>(0x498ab8) * fadeOutSeconds));
         }
     }
     else
@@ -1297,20 +1308,20 @@ ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
         {
             return ZUN_ERROR;
         }
-        // orig flow (reconstructed from disasm):
-        //   step1: mul=this+0x178 FCOMP [0x498a4c]; TEST AH,0x44; JP step2
-        //          (jumps when mul==threshold) else adj=arg.
-        //   step2: mul=this+0x178 FCOMP [0x498a54]; TEST AH,0x41; JNZ divide
-        //          (jumps when mul<=limit) else adj=arg.
-        //   so: divide only when (mul == threshold) && (mul <= limit).
-        // We write a single combined `&&` condition so MSVC emits the
-        // JNZ-on-second-compare form that orig uses (vs JP from nested ifs).
+        // orig nested structure (verified from disasm):
+        //   if (this+0x178 != 0x498a4c) adj = arg;
+        //   else if (this+0x178 > 0x498a54) adj = arg;
+        //   else adj = arg / this+0x178;
         adj = fadeOutSeconds;
-        if (*reinterpret_cast<f32 *>((u8 *)this + 0x178) == *reinterpret_cast<f32 *>(0x498a4c) &&
-            *reinterpret_cast<f32 *>((u8 *)this + 0x178) <= *reinterpret_cast<f32 *>(0x498a54))
+        if (*reinterpret_cast<f32 *>((u8 *)this + 0x178) == *reinterpret_cast<f32 *>(0x498a4c))
         {
-            adj = fadeOutSeconds / *reinterpret_cast<f32 *>((u8 *)this + 0x178);
+            if (!(*reinterpret_cast<f32 *>((u8 *)this + 0x178) > *reinterpret_cast<f32 *>(0x498a54)))
+            {
+                adj = fadeOutSeconds / *reinterpret_cast<f32 *>((u8 *)this + 0x178);
+            }
         }
+        // orig: PUSH empty_str; FLD [adj]; CALL FloatToU32; PUSH eax;
+        //       PUSH 5; MOV ECX,[soundPlayer]; CALL StopStream.
         SOUND_PLAYER_PTR->StopStream(5, (i32)(*reinterpret_cast<f32 *>(0x498ab8) * adj), EMPTY_STR);
     }
     return ZUN_SUCCESS;
