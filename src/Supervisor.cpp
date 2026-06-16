@@ -22,7 +22,6 @@
 
 #include "Supervisor.hpp"
 #include "AsciiManager.hpp"
-#include "GameManager.hpp"
 
 #include "Chain.hpp"
 #include "GameErrorContext.hpp"
@@ -52,7 +51,9 @@ extern const char TH_SCENE_FMT[];          // "scene %d -> %d\r\n"
 
 // ---- cross-module stubs (full impls land when those modules reverse) ----
 // Declared as extern C so MSVC emits a reloc CALL that objdiff tolerates.
-// GameManager/AsciiManager via hpp includes. MainMenu/MusicRoom/Ending/ReplayManager via extern.
+// Forward-declared GameManager methods (avoids GameManager.hpp g_Supervisor conflict).
+struct GameManager { static ZunResult RegisterChain(); static void CutChain(); };
+// MainMenu/MusicRoom/Ending/ReplayManager via extern C.
 extern "C" u16 __fastcall Controller_GetInput();                  // FUN_00430b50
 extern "C" void __fastcall DebugPrint_th(const char *fmt, ...);         // FUN_0045e4f0
 // GameManager::RegisterChain/CutChain declared in GameManager.hpp
