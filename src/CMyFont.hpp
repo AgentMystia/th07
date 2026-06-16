@@ -32,6 +32,7 @@
 #include <d3dx8.h>
 
 #include "diffbuild.hpp"
+#include "inttypes.hpp"
 #include "i18n.hpp"
 
 namespace th06
@@ -57,21 +58,23 @@ namespace th07
 
 class CMyFont
 {
-  private:
-    // th06 layout. NOT present in th07 binary — kept for source compatibility.
-    LPD3DXFONT m_lpFont;
-
   public:
-    CMyFont()
-    {
-        m_lpFont = NULL;
-    }
+    // th07 text-target layout (9 dwords = 0x24 bytes). Defined fully in CMyFont.cpp.
+    i32 format;
+    i32 width;
+    i32 height;
+    i32 imageSize;
+    i32 stride;
+    void *hdc;
+    void *prevObj;
+    void *hbitmap;
+    void *bits;
 
-    // th06 signatures. th07 has no equivalent; bodies are stubs so the class
-    // still links if anything references it during incremental porting.
-    virtual void Init(LPDIRECT3DDEVICE8 lpD3DDEV, int w, int h);
-    virtual void Print(char *str, int x, int y, D3DCOLOR color = 0xffffffff);
-    virtual void Clean();
+    CMyFont *__fastcall Reset();
+    i32 __fastcall Clean();
+    i32 __fastcall Init(i32 w, i32 h, i32 format);
+    i32 __fastcall InitWrapper(i32 w, i32 h, i32 format);
+    void __fastcall Print(i32 a, i32 b, i32 c, i32 d, i32 e, char *s);
 };
 
 } // namespace th07

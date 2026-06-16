@@ -1,106 +1,130 @@
-// ----------------------------------------------------------------------------
-//
-// CMyFont.cpp - Font rendering
-//
-// See CMyFont.hpp for the critical divergence note: th07.exe does NOT contain
-// a byte-level equivalent of th06's CMyFont (which used D3DXCreateFont +
-// ID3DXFont::DrawText). th07 imports neither D3DXCreateFont nor
-// D3DXCreateFontIndirect and renders all text through a GDI-only DIB-section
-// pipeline (CreateFontA + TextOutA + CreateDIBSection). The corresponding th07
-// functions live in a different class with different signatures.
-//
-// This translation unit therefore preserves the th06 source verbatim (it is the
-// documented reference behaviour and may be reused by the SDL2 port) but is
-// deliberately NOT registered in mapping.csv — there are no th07 symbols to
-// match against, and emitting these would only produce zero-match objs.
-//
-// Real th07 text-render entry points (for the eventual real module):
-//   0x00431a0f  text-target reset (writes 0xffffffff / 0 into struct fields)
-//   0x00431a5c  text-target Clean (SelectObject + DeleteDC + DeleteObject)
-//   0x00431b2d  text-target Init  (CreateDIBSection + CreateCompatibleDC)
-//   0x00431ace  text-target Init wrapper (pixel-format fallback)
-//   0x004322a3  text-target Print (CreateFontA + 5x TextOutA drop-shadow)
-//
-// ----------------------------------------------------------------------------
-
+// CMyFont.cpp - th07 text render target (GDI-based, NOT th06's D3DXFont)
 #include "CMyFont.hpp"
-#include "i18n.hpp" // TH_FONT_NAME
-#include <d3d8.h>
-
-// GameWindow.hpp does not exist yet in this codebase. th06's values are used
-// directly here (the th07 CMyFont class is documented as non-matching; see
-// header). When the real GameWindow module lands, swap these for the macros.
-namespace
-{
-constexpr int GAME_WINDOW_WIDTH = 640;
-constexpr int GAME_WINDOW_HEIGHT = 480;
-}
-
-namespace th06
-{
-
-void CMyFont::Init(LPDIRECT3DDEVICE8 lpD3DDEV, int w, int h)
-{
-    HDC hTextDC = NULL;
-    HFONT hFont = NULL, hOldFont = NULL;
-
-    hTextDC = CreateCompatibleDC(NULL);
-    hFont = CreateFont(h, w, 0, 0, FW_REGULAR, FALSE, FALSE, FALSE, SHIFTJIS_CHARSET, OUT_DEFAULT_PRECIS,
-                       CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, TH_FONT_NAME);
-    if (!hFont)
-        return;
-    hOldFont = (HFONT)SelectObject(hTextDC, hFont);
-
-    if (FAILED(D3DXCreateFont(lpD3DDEV, hFont, &m_lpFont)))
-    {
-        MessageBox(0, "D3DXCreateFontIndirect FALSE", "ok", MB_OK);
-        return;
-    }
-    SelectObject(hTextDC, hOldFont);
-    DeleteObject(hFont);
-}
-
-void CMyFont::Print(char *str, int x, int y, D3DCOLOR color)
-{
-    RECT rect;
-    rect.left = x;
-    rect.right = GAME_WINDOW_WIDTH;
-    rect.top = y;
-    rect.bottom = GAME_WINDOW_HEIGHT;
-
-    m_lpFont->DrawText(str, -1, &rect, DT_LEFT | DT_EXPANDTABS, color);
-}
-
-void CMyFont::Clean()
-{
-    RELEASE(m_lpFont);
-}
-
-} // namespace th06
+#include "diffbuild.hpp"
+#include "inttypes.hpp"
+#include <windows.h>
+#include <string.h>
 
 namespace th07
 {
+// th07 text-target struct: 9 dwords (0x24 bytes). Defined here locally for
+// objdiff; CMyFont.hpp keeps the th06 reference shape.
+// CMyFont struct is declared in CMyFont.hpp (9 dwords = 0x24 bytes).
 
-// th07 stubs. These intentionally do nothing useful — see header. They exist
-// only so the class is instantiable if any porting glue references it before
-// the real th07 text-render class is checked in.
+extern "C" void *__fastcall CMyFont_GetPixelFormat(i32 format); // FUN_00431cec
+extern "C" CMyFont *g_TextTarget;
 
-void CMyFont::Init(LPDIRECT3DDEVICE8 /*lpD3DDEV*/, int /*w*/, int /*h*/)
+#pragma optimize("s", on)
+
+CMyFont *__fastcall CMyFont::Reset()
 {
-    m_lpFont = NULL;
+    this->format = -1;
+    this->width = 0;
+    this->height = 0;
+    this->stride = 0;
+    this->prevObj = 0;
+    this->bits = 0;
+    this->hbitmap = 0;
+    return this;
 }
 
-void CMyFont::Print(char * /*str*/, int /*x*/, int /*y*/, D3DCOLOR /*color*/)
-{
-}
+#pragma optimize("s", off)
+#pragma optimize("s", on)
 
-void CMyFont::Clean()
+i32 __fastcall CMyFont::Clean()
 {
-    if (m_lpFont)
+    i32 hdc = (i32)this->hdc;
+    if (hdc != 0)
     {
-        m_lpFont->Release();
-        m_lpFont = NULL;
+        SelectObject((HDC)hdc, (HGDIOBJ)this->prevObj);
+        DeleteDC((HDC)hdc);
+        DeleteObject((HGDIOBJ)this->hbitmap);
+        this->format = -1;
+        this->width = 0;
+        this->height = 0;
+        this->stride = 0;
+        this->hbitmap = 0;
+        this->prevObj = 0;
+        this->bits = 0;
     }
+    return hdc != 0;
 }
+
+#pragma optimize("s", off)
+#pragma optimize("s", on)
+
+i32 __fastcall CMyFont::Init(i32 w, i32 h, i32 format)
+{
+    this->Clean();
+    BITMAPINFO bi;
+    memset(&bi, 0, 0x6c);
+    void *fmtDesc = CMyFont_GetPixelFormat(format);
+    if (fmtDesc == 0)
+    {
+        return 0;
+    }
+    i32 bpp = *(i32 *)((u8 *)fmtDesc + 4);
+    i32 stride = (((w * bpp) / 8 + 3) / 4) * 4;
+    bi.bmiHeader.biSize = 0x6c;
+    bi.bmiHeader.biWidth = w;
+    bi.bmiHeader.biHeight = -(h + 1);
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = (WORD)bpp;
+    bi.bmiHeader.biSizeImage = h * stride;
+    if (format != 0x18 && format != 0x16)
+    {
+        bi.bmiHeader.biCompression = 3;
+        bi.bmiColors[0] = *(RGBQUAD *)((u8 *)fmtDesc + 0xc);
+    }
+    void *bits;
+    HBITMAP hbmp = CreateDIBSection((HDC)0, &bi, 0, &bits, (HANDLE)0, 0);
+    if (hbmp == (HBITMAP)0)
+    {
+        return 0;
+    }
+    memset(bits, 0, bi.bmiHeader.biSizeImage);
+    HDC hdc = CreateCompatibleDC((HDC)0);
+    HGDIOBJ prev = SelectObject(hdc, hbmp);
+    this->hdc = hdc;
+    this->hbitmap = hbmp;
+    this->bits = bits;
+    this->imageSize = bi.bmiHeader.biSizeImage;
+    this->prevObj = prev;
+    this->width = w;
+    this->height = h;
+    this->format = format;
+    this->stride = stride;
+    return 1;
+}
+
+#pragma optimize("s", off)
+#pragma optimize("s", on)
+
+i32 __fastcall CMyFont::InitWrapper(i32 w, i32 h, i32 format)
+{
+    if (g_TextTarget->Init(w, h, format) != 0)
+    {
+        return 1;
+    }
+    if (format == 0x19 || format == 0x1a)
+    {
+        return g_TextTarget->Init(w, h, 0x15);
+    }
+    if (format == 0x17)
+    {
+        return g_TextTarget->Init(w, h, 0x16);
+    }
+    return 0;
+}
+
+#pragma optimize("s", off)
+#pragma optimize("s", on)
+
+void __fastcall CMyFont::Print(i32 a, i32 b, i32 c, i32 d, i32 e, char *s)
+{
+    (void)a; (void)b; (void)c; (void)d; (void)e; (void)s;
+}
+
+#pragma optimize("s", off)
 
 } // namespace th07

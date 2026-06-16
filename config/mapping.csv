@@ -213,7 +213,11 @@ th07::EffectManager::SpawnParticlesWithVelocity,0x41c400,0x208,__fastcall,,Effec
 th07::EffectManager::SpawnParticleAt,0x41c610,0x175,__fastcall,,Effect*,i32,D3DXVECTOR3*,i32,i32,i32,ZunColor
 th07::EffectManager::OnUpdate,0x41c790,0x270,__fastcall,,ChainCallbackResult,EffectManager*
 th07::EffectManager::OnDraw,0x41cb80,0x253,__fastcall,,ChainCallbackResult,EffectManager*
-th07::EffectManager::AddedCallback,0x41cdd4,0x27c,__fastcall,,ZunResult,EffectManager*
 th07::EffectManager::DeletedCallback,0x41d050,0x40,__fastcall,,ZunResult,EffectManager*
 th07::EffectManager::RegisterChain,0x41d0a0,0xa4,__cdecl,,ZunResult
 th07::EffectManager::CutChain,0x41d150,0x22,__cdecl,,void
+th07::CMyFont::Reset,0x431a0f,0x3b,__fastcall,,void*,CMyFont*
+th07::CMyFont::Clean,0x431a5c,0x71,__fastcall,,i32,CMyFont*
+th07::CMyFont::InitWrapper,0x431ace,0x5e,__fastcall,,i32,u32,u32,i32
+th07::CMyFont::Init,0x431b2d,0x1be,__thiscall,,i32,CMyFont*,i32,i32,i32
+th07::CMyFont::Print,0x4322a3,0x31b,__fastcall,,void,u32,i32,char*
