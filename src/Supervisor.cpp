@@ -1075,9 +1075,14 @@ ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
 // =====================================================================
 ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
 {
-    void *pbg = *(void **)0x00575c1c;
-    if (pbg != 0)
+    void *pbg;
+    void *midi;
+    void *gm;
+    void *gm2;
+    void *obj2;
+    if (*(void **)0x00575c1c != 0)
     {
+        pbg = *(void **)0x00575c1c;
         _free_th07(pbg);
         *(void **)0x00575c1c = 0;
     }
@@ -1088,7 +1093,7 @@ ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
     if (*(void **)((u8 *)s + 0x17c) != 0)
     {
         MidiOutput_StopPlayback();
-        void *midi = *(void **)((u8 *)s + 0x17c);
+        midi = *(void **)((u8 *)s + 0x17c);
         if (midi != 0)
         {
             Supervisor_MidiClearTracks();
@@ -1121,13 +1126,13 @@ ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
         (*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->Release();
         *(void **)((u8 *)s + 0xc) = 0;
     }
-    void *gm = *(void **)0x00626278;
+    gm = *(void **)0x00626278;
     if (gm != 0)
     {
         _free_th07(gm);
         *(void **)0x00626278 = 0;
     }
-    void *gm2 = *(void **)0x00626274;
+    gm2 = *(void **)0x00626274;
     if (gm2 != 0)
     {
         _free_th07(gm2);
