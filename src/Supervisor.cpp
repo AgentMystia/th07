@@ -99,6 +99,36 @@ extern "C" void *__fastcall Supervisor_ReadConfigBuffer(char *configPath, i32 fl
 extern "C" void __cdecl GameErrorContext_LogFmt3(void *ctx, char *fmt, char *arg);   // FUN_00431730 __cdecl (3 stack args)
 extern "C" i32 __fastcall Supervisor_ValidateSize(i32 size); // FUN_00431540 (assert config struct size)
 extern "C" void __cdecl Supervisor_LogStr1(char *fmt, ...);          // FUN_00437903 (printf-style, __cdecl)
+
+// Global DAT_ addresses used by Supervisor naked asm functions.
+// Declared as extern so MSVC generates relocs matching the orig delinked obj.
+extern "C" char g_DAT_575c1c[];   // pbg4Archive
+extern "C" char g_DAT_4b9e44[];   // g_AnmManager ptr
+extern "C" char g_DAT_4980d0[];   // "dummy" string
+extern "C" char g_DAT_4ba0d8[];   // SoundPlayer singleton
+extern "C" char g_DAT_575acc[];   // midiOutput ptr
+extern "C" char g_DAT_626278[];   // GameManager ptr
+extern "C" char g_DAT_626274[];   // GameManager2 ptr
+extern "C" char g_DAT_626258[];   // some heap ctx
+extern "C" char g_DAT_575a64[];   // some obj ptr
+extern "C" char g_DAT_575c0c[];   // some byte flag
+extern "C" char g_DAT_62627d[];   // g_NoFpsCounter
+extern "C" char g_DAT_575a87[];   // musicMode
+extern "C" char g_DAT_575a8b[];   // frameskipConfig
+extern "C" char g_DAT_498ab8_f[]; // 1000.0f const
+extern "C" char g_DAT_498a4c_f[]; // threshold const
+extern "C" char g_DAT_498a54_f[]; // limit const
+extern "C" char g_DAT_496c1e_s[]; // empty string
+extern "C" char g_DAT_4b9e4c[];   // g_CurFrameInput
+extern "C" char g_DAT_4b9e54[];   // g_LastFrameInput
+extern "C" char g_DAT_4b9e5c[];   // g_IsEighthFrame
+extern "C" char g_DAT_4b9e60[];   // g_NumFramesHeld
+extern "C" char g_DAT_4bda94[];   // CStreamingSound ptr
+extern "C" char g_DAT_626280[];   // gameManager idx
+extern "C" char g_DAT_62f52c[];   // clear table
+extern "C" char g_DAT_62f648[];   // displayOpts
+extern "C" char g_DAT_62f85c[];   // some counter
+
 extern "C" void *memset(void *, int, size_t);
 extern "C" void *memcpy(void *, const void *, size_t);
 extern "C" HANDLE __fastcall CreateFileA_th07(char *path, u32 access, u32 share, void *sa, u32 disp, u32 flags, HANDLE tmpl);
@@ -1292,10 +1322,10 @@ L_dc_pbg_skip:
         // AsciiManager_CutChain
         call    dword ptr [_asciiCutChain]
         // SoundQueueAdd(4, 0, "dummy") ECX=SoundPlayer
-        push    0x4980d0
+        push    offset g_DAT_4980d0
         push    0
         push    4
-        mov     ecx, 0x4ba0d8
+        mov     ecx, offset g_DAT_4ba0d8
         call    dword ptr [_stopStream]
 
         // if (this->midiOutput != 0)
@@ -1431,7 +1461,7 @@ L_dc_gm1:
         and     dword ptr [edx], 0
 L_dc_gm2:
         // HeapFreeAll (ECX=0x626258)
-        mov     ecx, 0x626258
+        mov     ecx, offset g_DAT_626258
         call    dword ptr [_heapFreeAll]
 
         // if (obj @ 0x575a64 != 0) cleanup4 + obj2 free
@@ -1729,7 +1759,7 @@ L_fo_use_adj:
         call    dword ptr [_floatToU32]
         push    eax
         push    5
-        mov     ecx, 0x4ba0d8
+        mov     ecx, offset g_DAT_4ba0d8
         call    dword ptr [_stopStream]
         jmp     L_fo_done
 L_fo_err:
