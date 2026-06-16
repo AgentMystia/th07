@@ -190,11 +190,11 @@ struct Supervisor
 {
 
     static ZunResult RegisterChain();
-    static ChainCallbackResult OnUpdate(Supervisor *s);
-    static ChainCallbackResult OnDraw(Supervisor *s);
-    static ZunResult AddedCallback(Supervisor *s);
-    static ZunResult DeletedCallback(Supervisor *s);
-    static void DrawFpsCounter(i32 drawArg);
+    static ChainCallbackResult __fastcall OnUpdate(Supervisor *s);
+    static ChainCallbackResult __fastcall OnDraw(Supervisor *s);
+    static ZunResult __fastcall AddedCallback(Supervisor *s);
+    static ZunResult __fastcall DeletedCallback(Supervisor *s);
+    static void __fastcall DrawFpsCounter(i32 drawArg);
 
 
     ZunResult ReadMidiFile(u32 midiFileIdx);

@@ -110,7 +110,7 @@ void Supervisor::TickTimer(i32 *frames, f32 *subframes)
 // __fastcall, ECX = Supervisor*. Calls DrawFpsCounter(1); returns 1.
 // NOTE: orig passes arg=1 (xor ecx,ecx; inc ecx), NOT 0.
 // =====================================================================
-ChainCallbackResult Supervisor::OnDraw(Supervisor *s)
+ChainCallbackResult __fastcall Supervisor::OnDraw(Supervisor *s)
 {
     Supervisor::DrawFpsCounter(1);
     return CHAIN_CALLBACK_RESULT_CONTINUE;
@@ -127,7 +127,7 @@ ChainCallbackResult Supervisor::OnDraw(Supervisor *s)
 // the early-return guard (g_NoFpsCounter) is implemented; the body lands
 // in a follow-up pass.
 // =====================================================================
-void Supervisor::DrawFpsCounter(i32 drawArg)
+void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
 {
     // orig: movsx eax,[0x0062627d]; test eax,eax; jne end
     if (*(i8 *)0x0062627d != 0) // g_NoFpsCounter (replay mode)
