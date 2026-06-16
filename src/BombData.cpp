@@ -52,6 +52,20 @@ struct AnmMgrStub
 };
 #define ANM_MGR (*(AnmMgrStub **)0x004b9e44)
 
+// ---- calc-helper externs ----
+extern "C" void __fastcall Gui_ShowBombPortrait2();              // FUN_00433a90
+extern "C" void __fastcall Gui_ShowBombName(i32 anmIdx, i32 strIdx); // FUN_0042868d (2 args)
+extern "C" void __fastcall Supervisor_ClearAnmScriptChain();     // FUN_004084f0
+extern "C" void __fastcall Supervisor_SetPlayerPosFlag(f32 a);   // FUN_00408610 (1 float arg)
+extern "C" void __fastcall Gui_EndPlayerSpellcard2();            // FUN_004277a0
+extern "C" void __fastcall AnmMgr_ExecuteAnmIdx(i32 *anmVm, i32 idx); // FUN_00404f30 (ECX-free, 2 args)
+extern "C" void __fastcall Effect_EnemyDamage(i32 a, i32 b, i32 c); // FUN_0044b310
+extern "C" void __fastcall AnmVm_ExecuteScript(i32 *anmVm);      // FUN_00450d60 (ECX)
+extern "C" void __fastcall Supervisor_TickTimer2(i32 *cur, i32 *sub); // FUN_0043958d
+extern "C" void __fastcall Gui_EndSpellcard();                   // FUN_00427b21
+extern "C" void __fastcall AnmVm_Die(f32 *pos, f32 x, f32 y, i32 z, i32 a); // FUN_004418b0
+extern "C" void __fastcall Sound_PlayEffect(i32 idx, i32 a);     // FUN_0044c930
+
 // perBombState stride in bytes
 #define SUB_STRIDE_B 0x1428
 
@@ -479,7 +493,128 @@ void __fastcall BombData::ReimuBBombDraw(Player *p)
 void __fastcall BombData::YoumuABombCalc(Player *) {}
 void __fastcall BombData::ReimuABombCalc2(Player *) {}
 void __fastcall BombData::YoumuBBombCalc(Player *) {}
-void __fastcall BombData::MarisaABombCalc2(Player *) {}
+// =====================================================================
+// MarisaABombCalc2  (FUN_0040d4c0)  -- 0x4e0 bytes
+// __fastcall, ECX = Player*. Master-Spark-like spell: timer-gated init at
+// t==0, screen-shake/effect calls at t==0x3c/0x78, bomb-spawn loop at t==0x1e,
+// damage-region updates while t>0x1d & t%4==0, enemy-damage at t==0x28/100,
+// final AnmVm::ExecuteScript loop, then TickTimer.
+// Globals: time fields @ player+0x16a38/16a34/16a30/16a28/16a20.
+// =====================================================================
+void __fastcall BombData::MarisaABombCalc2(Player *p)
+{
+    u8 *P = reinterpret_cast<u8 *>(p);
+    i32 curTime = *(i32 *)(P + 0x16a38);
+    i32 prevTime = *(i32 *)(P + 0x16a30);
+    if (curTime >= *(i32 *)(P + 0x16a28))
+    {
+        Gui_EndSpellcard();
+        *(i32 *)(P + 0x16a20) = 0;
+        *(u32 *)(P + 0x23f4) = 0x3f800000;
+        *(u32 *)(P + 0x23f0) = 0x3f800000;
+        AnmVm_Die(reinterpret_cast<f32 *>(P + 0x930), 0x44480000, 0.0f, 0, 6);
+        return;
+    }
+    f32 lp70, lp74;
+    if (curTime != prevTime && curTime == 0)
+    {
+        Gui_ShowBombPortrait2();
+        Gui_ShowBombName(0x4a3, *(i32 *)0x00498768);
+        *(i32 *)(P + 0x16a28) = 0xa0;
+        *(i32 *)(P + 0x16a08) = 0x104;
+        *(i32 *)(P + 0x16a04) = 0;
+        *(i32 *)(P + 0x16a00) = (i32)0xfffffc19;
+        Supervisor_ClearAnmScriptChain();
+        // clear 4 bombs
+        i32 *sub = reinterpret_cast<i32 *>(P + 0x16a4c);
+        for (u32 i = 0; (i32)i < 4; i++)
+        {
+            *sub = 0;
+            sub += 0x50a;
+        }
+        Sound_PlayEffect(0x13, 0);
+        Supervisor_SetPlayerPosFlag(0x3e851eb8);
+        *(u32 *)(P + 0x23f4) = 0x40000000;
+        *(u32 *)(P + 0x23f0) = 0x40000000;
+        Gui_EndPlayerSpellcard2();
+    }
+    if (curTime != prevTime && curTime == 0x3c)
+    {
+        Gui_EndPlayerSpellcard2();
+    }
+    if (curTime != prevTime && curTime == 0x78)
+    {
+        Gui_EndPlayerSpellcard2();
+    }
+    if (curTime != prevTime && curTime == 0x1e)
+    {
+        i32 *sub = reinterpret_cast<i32 *>(P + 0x16a4c);
+        for (u32 i = 0; (i32)i < 4; i++)
+        {
+            *sub = 1;
+            AnmMgr_ExecuteAnmIdx(sub + 0x6e, (i32)i + 0x409);
+            if ((i & 1) == 0)
+            {
+                lp70 = -128.0f;
+            }
+            else
+            {
+                lp70 = 128.0f;
+            }
+            sub[0xe0] = (i32)(*reinterpret_cast<f32 *>(0x00498c74) + lp70);
+            if ((i32)i / 2 == 0)
+            {
+                lp74 = -128.0f;
+            }
+            else
+            {
+                lp74 = 128.0f;
+            }
+            sub[0xe1] = (i32)(*reinterpret_cast<f32 *>(0x00498b2c) + lp74);
+            sub[0xe2] = (i32)0x3efae148;
+            sub[0x6a] = 0;
+            sub += 0x50a;
+        }
+    }
+    if (curTime > 0x1d && curTime != prevTime)
+    {
+        u32 r = (u32)curTime & 0x80000003;
+        if ((i32)r < 0)
+        {
+            r = (r - 1 | 0xfffffffc) + 1;
+        }
+        if (r == 0)
+        {
+            *(u32 *)(P + 0x9dc) = 0x43400000;
+            *(u32 *)(P + 0x9e0) = 0x43600000;
+            *(u32 *)(P + 0x9e8) = 0x43b00000;
+            *(u32 *)(P + 0x9ec) = 0x43d00000;
+            *(u32 *)(P + 0x9f4) = 3;
+        }
+    }
+    if (curTime != prevTime && curTime == 0x28)
+    {
+        Effect_EnemyDamage(1, 7, 0);
+    }
+    if (curTime != prevTime && curTime == 100)
+    {
+        Effect_EnemyDamage(0x18, 0, 0);
+    }
+    {
+        i32 *sub = reinterpret_cast<i32 *>(P + 0x16a4c);
+        for (u32 i = 0; (i32)i < 4; i++)
+        {
+            if (*sub != 0)
+            {
+                AnmVm_ExecuteScript(sub + 0x6e);
+            }
+            sub += 0x50a;
+        }
+    }
+    *(u8 *)(P + 0x2408) = 3;
+    *(i32 *)(P + 0x16a30) = *(i32 *)(P + 0x16a38);
+    Supervisor_TickTimer2(reinterpret_cast<i32 *>(P + 0x16a38), reinterpret_cast<i32 *>(P + 0x16a34));
+}
 void __fastcall BombData::SakuyaABombCalc2(Player *) {}
 
 // =====================================================================
