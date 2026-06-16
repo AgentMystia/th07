@@ -1025,6 +1025,7 @@ ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
 // Globals: g_Pbg4Archive @ 0x575c1c, g_GameManager @ 0x626278, g_GameManager2
 // @ 0x626274, g_SomeObj @ 0x575a64.
 // =====================================================================
+#pragma var_order(pbg, midi, gm, gm2, obj2, pad1, pad2)
 ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
 {
     void *pbg;
@@ -1032,6 +1033,7 @@ ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
     void *gm;
     void *gm2;
     void *obj2;
+    void *pad1, *pad2;
     if (*(void **)0x00575c1c != 0)
     {
         pbg = *(void **)0x00575c1c;
