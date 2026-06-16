@@ -9,30 +9,51 @@
 - **修复**：补全 Supervisor 14 函数到 mapping.csv（地址+大小全部 ghidra 实读验证），重跑 ImportFromCsv + ExportDelinker headless 流程（36 秒）。
 - **成果**：orig obj 从 17 个增至 18 个（新增 Supervisor.obj 26KB）。40 模块的 namespace 导出现在可按需补 mapping.csv 行即解锁。
 
-### Supervisor（第 16 模块，部分实现 7/14 函数，平均 **48.5%**，WIP）
+### Supervisor（第 16 模块，13/14 函数 objdiff，平均 **65.8%**，2×90%+）
 orig 26.4KB / 14 函数。从语法损坏的初稿重写为可编译的 C++（移除中文注释——MSVC 7.0 不认）。
+本 session 大幅推进：新增 PlayAudio/PlayMidiFile/SetupDInput/DeletedCallback/LoadConfig 实现，
+DrawFpsCounter 大函数体落地（2.5%→71.3%）。
 | 函数 | match% | 备注 |
 |---|---|---|
-| TickTimer | **97.95%** | 去局部缓存 + raw offset this+0x178 匹配 orig 重读 |
-| RegisterChain | 74.91% | g_Chain.CreateElem/AddToCalcChain；struct offset 已修正 |
-| StopAudio | 62.17% | 音频路由（MIDI/WAV 分支） |
-| OnDraw | 57.73% | 调 DrawFpsCounter(1) |
-| FadeOutMusic | 26.75% | framerate 调整 + SoundPlayer |
-| ReadMidiFile | 18.24% | musicMode 路由 |
-| DrawFpsCounter | 1.83% | 仅早期 return guard；大函数体待实现 |
+| OnDraw | **100%** | |
+| TickTimer | **97.95%** | 去局部缓存 + raw offset this+0x178 |
+| PlayAudio | **90.46%** | __thiscall 成员 + "dummy" rdata 字符串 |
+| StopAudio | 86.55% | 缓存 midiOutput 到 local |
+| ReadMidiFile | 81.49% | "dummy" rdata + 正确分支顺序 |
+| DrawFpsCounter | 71.27% | 完整实现（双路径 fps + slow% + AsciiManager 绘制）|
+| RegisterChain | 74.91% | |
+| FadeOutMusic | 69.0% | WAV-path reread + 1000.0f rdata 常量（分支方向 codegen 限制）|
+| SetupDInput | 57.16% | DirectInput8 COM thiscall via stub struct |
+| DeletedCallback | 53.96% | 清理链（free/DInput Release）|
+| OnUpdate | 44.45% | 状态机 |
+| LoadConfig | 27.77% | th07.cfg 读取 + thbgm.dat 头校验 + opts 位日志 |
+| PlayMidiFile | 0.0% | MSVC frame 布局差异（0x11c vs orig 0x120，dead d2 store 消除）|
 
 ### 关键 struct 修正（影响 Supervisor 全模块）
 - **DIDEVCAPS_FAKE**：14 u32 → 11 u32（th07 不含 FirmwareRevisionH/HardwareRevisionH）
 - **D3DPRESENT_PARAMETERS_FAKE**：fields[14] → fields[13]（th07 少一个字段）
 - 这两处修正让 calcCount/wantedState/curState 从 +0x160/+0x164/+0x15c 回到正确的 +0x150/+0x154/+0x158
 
-### 待续（Supervisor 剩余 7 函数）
-- OnUpdate (0x6aa 字节，状态机大函数)
-- AddedCallback (0x45b) / DeletedCallback (0x20d)
-- SetupDInput (0x28f, DirectInput 初始化)
-- LoadConfig (0x519, GetPrivateProfileInt 配置加载)
-- PlayAudio (0xf0) / PlayMidiFile (0x111)
-- DrawFpsCounter 大函数体（双路径 fps 测量 + slow% 累积）
+### Supervisor 待续
+- PlayMidiFile 0%：MSVC /Od 消除了 orig 保留的 dead `d2 = d` store，frame 4 字节差异致整函数偏移；需 inline asm 强制局部布局。
+- OnUpdate/LoadConfig 大函数精修。
+- AddedCallback (0x45b) 尚未实现（None）。
+
+### BombData（新增模块，6/24 函数实现，模块平均 **21.6%**，6 draw 平均 ~78%）
+g_BombData 表 @ 0x0049ec50（12 条目，calc/draw 对）。24 个回调已加入 mapping.csv 并导出 orig obj。
+- **6 draw 已实现**（avg ~78%）：MarisaABombDraw 88%、MarisaBBombDraw 87.7%、MarisaABombDraw2 76.6%、
+  YoumuABombDraw 74.3%、YoumuBBombDraw 73.5%、ReimuABombDraw2 67.7%。
+- **关键技巧**：AnmManager::Draw3 经 stub-method-on-global（`(*(AnmMgrStub**)0x4b9e44)->Draw3(anm)`）→
+  `MOV ECX,[0x4b9e44]; PUSH anm; CALL`；pos 字段按 raw f32 访问（勿 i32 强转，否则 FLD/FSTP 顺序变）。
+- **18 函数待实现**：12 个 calc（每个 0xe0~0x960 字节，复杂 Player 状态机）+ 6 个带 0x444f770 Draw 的展开循环 draw。
+
+### BulletData（数据模块，无函数 → orig obj 为空）
+th07::BulletData 命名空间下无函数（纯 .data 表），ExportDelinker 无法导出。
+需改用数据符号 + 静态数据定义才能建立 objdiff 基准（当前 0%）。
+
+### ItemManager（大函数模块，OnUpdate 4297 字节 → 未实现）
+th07::ItemManager 仅有 OnUpdate @ 0x432990（0x10c9 字节，switch 重度）。
+单体巨型函数，90% 匹配需完整逆向 + 精确 codegen，工作量极大（当前 0%，orig obj 未导出）。
 
 ### CMyFont（第 18 模块，5 函数 objdiff，平均 **70.8%**，3×90%+）
 orig 3.6KB / 5 函数。th07 文本渲染（GDI-based，非 th06 D3DXFont）。

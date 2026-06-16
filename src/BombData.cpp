@@ -48,6 +48,7 @@ extern "C" f32 __fastcall ZunSin(f32 a);  // FUN_0048bb40
 struct AnmMgrStub
 {
     void Draw3(i32 *anmVm); // FUN_0044f9a0
+    void Draw2(i32 *anmVm); // FUN_0044f770
 };
 #define ANM_MGR (*(AnmMgrStub **)0x004b9e44)
 
@@ -228,7 +229,6 @@ void __fastcall BombData::YoumuABombDraw(Player *p)
 
 // --- Remaining callbacks: stubs (not yet ported — large calc bodies) ---
 void __fastcall BombData::ReimuCBombCalc(Player *) {}
-void __fastcall BombData::ReimuCBombDraw(Player *) {}
 void __fastcall BombData::ReimuABombCalc(Player *) {}
 void __fastcall BombData::ReimuABombDraw(Player *) {}
 void __fastcall BombData::MarisaABombCalc(Player *) {}
@@ -245,5 +245,90 @@ void __fastcall BombData::YoumuBBombCalc(Player *) {}
 void __fastcall BombData::MarisaABombCalc2(Player *) {}
 void __fastcall BombData::SakuyaABombCalc2(Player *) {}
 void __fastcall BombData::SakuyaABombDraw2(Player *) {}
+
+// =====================================================================
+// ReimuCBombDraw  (FUN_00408e10)  -- 0x398 bytes
+// Loops 8 per-bomb entries (stride 0x1428). For each active entry it draws 4
+// sub-sprites (AnmVm @ sub+0x1b8 advancing by 0x24c). Each sub-sprite copies
+// pos = srcPos(sub+0x14) + subSpriteDelta(anm+0x230) into AnmVm pos @ +0x1c8,
+// nudges by focus offset, and calls AnmManager::Draw2 (FUN_0044f770). Orig is
+// fully unrolled (4 copies of the block); we mirror that.
+// =====================================================================
+void __fastcall BombData::ReimuCBombDraw(Player *p)
+{
+    Supervisor_BombPreDraw();
+    u8 *sub = reinterpret_cast<u8 *>(p) + 0x16a4c;
+    for (i32 i = 0; i < 8; i++)
+    {
+        if (*(i32 *)sub != 0)
+        {
+            u8 *anm = sub + 0x1b8;
+            // sub-sprite 0
+            {
+                f32 *delta = reinterpret_cast<f32 *>(anm + 0x230);
+                f32 *src = reinterpret_cast<f32 *>(sub + 0x14);
+                f32 x = src[0] + delta[0];
+                f32 y = src[1] + delta[1];
+                f32 z = src[2] + delta[2];
+                *(f32 *)(anm + 0x1c8) = x;
+                *(f32 *)(anm + 0x1cc) = y;
+                *(f32 *)(anm + 0x1d0) = z;
+                *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+                *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+                *(i32 *)(anm + 0x1d0) = 0;
+                ANM_MGR->Draw2(reinterpret_cast<i32 *>(anm));
+            }
+            anm += 0x24c;
+            // sub-sprite 1
+            {
+                f32 *delta = reinterpret_cast<f32 *>(anm + 0x230);
+                f32 *src = reinterpret_cast<f32 *>(sub + 0x14);
+                f32 x = src[0] + delta[0];
+                f32 y = src[1] + delta[1];
+                f32 z = src[2] + delta[2];
+                *(f32 *)(anm + 0x1c8) = x;
+                *(f32 *)(anm + 0x1cc) = y;
+                *(f32 *)(anm + 0x1d0) = z;
+                *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+                *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+                *(i32 *)(anm + 0x1d0) = 0;
+                ANM_MGR->Draw2(reinterpret_cast<i32 *>(anm));
+            }
+            anm += 0x24c;
+            // sub-sprite 2
+            {
+                f32 *delta = reinterpret_cast<f32 *>(anm + 0x230);
+                f32 *src = reinterpret_cast<f32 *>(sub + 0x14);
+                f32 x = src[0] + delta[0];
+                f32 y = src[1] + delta[1];
+                f32 z = src[2] + delta[2];
+                *(f32 *)(anm + 0x1c8) = x;
+                *(f32 *)(anm + 0x1cc) = y;
+                *(f32 *)(anm + 0x1d0) = z;
+                *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+                *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+                *(i32 *)(anm + 0x1d0) = 0;
+                ANM_MGR->Draw2(reinterpret_cast<i32 *>(anm));
+            }
+            anm += 0x24c;
+            // sub-sprite 3
+            {
+                f32 *delta = reinterpret_cast<f32 *>(anm + 0x230);
+                f32 *src = reinterpret_cast<f32 *>(sub + 0x14);
+                f32 x = src[0] + delta[0];
+                f32 y = src[1] + delta[1];
+                f32 z = src[2] + delta[2];
+                *(f32 *)(anm + 0x1c8) = x;
+                *(f32 *)(anm + 0x1cc) = y;
+                *(f32 *)(anm + 0x1d0) = z;
+                *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+                *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+                *(i32 *)(anm + 0x1d0) = 0;
+                ANM_MGR->Draw2(reinterpret_cast<i32 *>(anm));
+            }
+        }
+        sub += SUB_STRIDE_B;
+    }
+}
 
 } // namespace th07
