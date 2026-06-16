@@ -815,11 +815,13 @@ extern "C" char g_EmptyStr[];   // DAT_00496c1e "" (points at a NUL byte)
 // =====================================================================
 // Supervisor::ReadMidiFile  (FUN_0043a05f)
 // __fastcall arg: u32 midiFileIdx. ECX unused.
-// orig: WAV branch tests opts>>13 bit; if set StopStream(4,0,"dummy") else
-// StopStream(3,0,"dummy"). Name arg is the "dummy" rdata string, not NULL.
+// orig: MIDI first (jne WAV), WAV tests opts>>13 bit, StopStream(4 or 3, 0, "dummy").
+#pragma var_order(this_save)
 // =====================================================================
 ZunResult Supervisor::ReadMidiFile(u32 midiFileIdx)
 {
+    void *this_save;
+    (void)this_save;
     (void)midiFileIdx;
     if (MUSIC_MODE == MUSIC_MIDI)
     {
@@ -828,12 +830,8 @@ ZunResult Supervisor::ReadMidiFile(u32 midiFileIdx)
             MIDI_OUTPUT_PTR->StopPlayback();
         }
     }
-    else
+    else if (MUSIC_MODE == MUSIC_WAV)
     {
-        if (MUSIC_MODE != MUSIC_WAV)
-        {
-            return ZUN_ERROR;
-        }
         if ((CFG_OPTS >> 0xd & 1) != 0)
         {
             SOUND_PLAYER_PTR->SoundQueueAdd(4, 0, DUMMY_STR);
@@ -843,9 +841,12 @@ ZunResult Supervisor::ReadMidiFile(u32 midiFileIdx)
             SOUND_PLAYER_PTR->SoundQueueAdd(3, 0, DUMMY_STR);
         }
     }
+    else
+    {
+        return ZUN_ERROR;
+    }
     return ZUN_SUCCESS;
 }
-
 // =====================================================================
 // Supervisor::PlayAudio  (FUN_00439dd0)
 // __fastcall args: i32 channel, char *path. ECX = Supervisor* (unused body).
