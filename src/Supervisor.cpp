@@ -1034,8 +1034,7 @@ __declspec(naked) ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s
         mov     eax, [edx]
         mov     [ebp-0x1c], eax
         push    dword ptr [ebp-0x1c]
-        mov     esi, _free
-        call    esi
+        call    dword ptr [_free]
         pop     ecx
         mov     edx, 0x00575c1c
         and     dword ptr [edx], 0
@@ -1043,24 +1042,20 @@ L_dc_pbg_skip:
         // Supervisor_SomeCleanup1 (ECX=AnmMgr)
         mov     edx, 0x004b9e44
         mov     ecx, [edx]
-        mov     esi, _cleanup1
-        call    esi
+        call    dword ptr [_cleanup1]
         // ReleaseAnm0 (ECX=AnmMgr, push 0)
         push    0
         mov     edx, 0x004b9e44
         mov     ecx, [edx]
-        mov     esi, _releaseAnm0
-        call    esi
+        call    dword ptr [_releaseAnm0]
         // AsciiManager_CutChain
-        mov     esi, _asciiCutChain
-        call    esi
+        call    dword ptr [_asciiCutChain]
         // SoundQueueAdd(4, 0, "dummy") ECX=SoundPlayer
         push    0x4980d0
         push    0
         push    4
         mov     ecx, 0x4ba0d8
-        mov     esi, _stopStream
-        call    esi
+        call    dword ptr [_stopStream]
 
         // if (this->midiOutput != 0)
         mov     eax, [ebp-0x20]
@@ -1068,8 +1063,7 @@ L_dc_pbg_skip:
         jz      L_dc_midi_skip
         mov     eax, [ebp-0x20]
         mov     ecx, [eax+0x17c]
-        mov     esi, _stopPlayback
-        call    esi
+        call    dword ptr [_stopPlayback]
         mov     eax, [ebp-0x20]
         mov     eax, [eax+0x17c]
         mov     [ebp-0x8], eax
@@ -1078,16 +1072,14 @@ L_dc_pbg_skip:
         cmp     dword ptr [ebp-0x4], 0
         jz      L_dc_midi_null
         mov     ecx, [ebp-0x4]
-        mov     esi, _midiClearTracks
-        call    esi
+        call    dword ptr [_midiClearTracks]
         xor     eax, eax
         inc     eax
         and     eax, 1
         test    eax, eax
         jz      L_dc_midi_store
         push    dword ptr [ebp-0x4]
-        mov     esi, _free2
-        call    esi
+        call    dword ptr [_free2]
         pop     ecx
 L_dc_midi_store:
         mov     eax, [ebp-0x4]
@@ -1102,11 +1094,9 @@ L_dc_midi_skip:
         // SaveReplay(0, 0) ECX=0, EDX=0
         xor     edx, edx
         xor     ecx, ecx
-        mov     esi, _saveReplay
-        call    esi
+        call    dword ptr [_saveReplay]
         // Cleanup3
-        mov     esi, _cleanup3
-        call    esi
+        call    dword ptr [_cleanup3]
 
         // keyboard release chain: if (this->keyboard != 0) Acquire
         mov     eax, [ebp-0x20]
@@ -1181,8 +1171,7 @@ L_dc_di:
         mov     eax, [edx]
         mov     [ebp-0xc], eax
         push    dword ptr [ebp-0xc]
-        mov     esi, _free2
-        call    esi
+        call    dword ptr [_free2]
         pop     ecx
         mov     edx, 0x00626278
         and     dword ptr [edx], 0
@@ -1195,16 +1184,14 @@ L_dc_gm1:
         mov     eax, [edx]
         mov     [ebp-0x10], eax
         push    dword ptr [ebp-0x10]
-        mov     esi, _free2
-        call    esi
+        call    dword ptr [_free2]
         pop     ecx
         mov     edx, 0x00626274
         and     dword ptr [edx], 0
 L_dc_gm2:
         // HeapFreeAll (ECX=0x626258)
         mov     ecx, 0x626258
-        mov     esi, _heapFreeAll
-        call    esi
+        call    dword ptr [_heapFreeAll]
 
         // if (obj @ 0x575a64 != 0) cleanup4 + obj2 free
         mov     edx, 0x00575a64
@@ -1212,8 +1199,7 @@ L_dc_gm2:
         jz      L_dc_done
         mov     edx, 0x00575a64
         mov     ecx, [edx]
-        mov     esi, _cleanup4
-        call    esi
+        call    dword ptr [_cleanup4]
         mov     edx, 0x00575a64
         mov     eax, [edx]
         mov     [ebp-0x18], eax
@@ -1222,16 +1208,14 @@ L_dc_gm2:
         cmp     dword ptr [ebp-0x14], 0
         jz      L_dc_obj_null
         mov     ecx, [ebp-0x14]
-        mov     esi, _cleanup5
-        call    esi
+        call    dword ptr [_cleanup5]
         xor     eax, eax
         inc     eax
         and     eax, 1
         test    eax, eax
         jz      L_dc_obj_store
         push    dword ptr [ebp-0x14]
-        mov     esi, _free2
-        call    esi
+        call    dword ptr [_free2]
         pop     ecx
 L_dc_obj_store:
         mov     eax, [ebp-0x14]
