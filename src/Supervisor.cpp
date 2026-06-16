@@ -78,6 +78,22 @@ extern "C" void __fastcall Supervisor_D3DDiscard();               // FUN_0045c5d
 extern "C" void __fastcall Supervisor_ChainReleaseAll();          // FUN_00443da0 (ReplayManager release)
 extern "C" void __fastcall Supervisor_SomePulseFlag();            // FUN_00404fe0 (used by EffectManager)
 
+// ---- thiscall callee stubs (ECX = singleton pointer) ----
+struct MidiOutputStub
+{
+    void StopPlayback();                       // FUN_00436b30
+    ZunResult LoadFile(char *path);            // FUN_004369c0
+    void ClearTracks();                        // FUN_00436700
+    ZunResult Play();                          // FUN_00436ad0
+    ZunResult SetFadeOut(u32 ms);              // FUN_00436c90
+    ZunResult ParseFile(i32 idx);              // FUN_00436790
+};
+struct SoundPlayerStub
+{
+    void StopStream(i32 cmd, i32 param, char *name); // FUN_0044d2f0
+    void FadeOut(f32 seconds);                       // FUN_00444c20
+};
+
 // Chain singleton (orig g_Chain @ 0x00626218).
 extern "C" struct Chain g_Chain;
 
@@ -438,19 +454,15 @@ ZunResult Supervisor::RegisterChain()
 
 // =====================================================================
 // Supervisor audio globals (absolute, matching orig DAT_ addresses).
-// musicMode @ 0x00575a87, opts @ 0x00575a9c (= g_Supervisor.cfg.opts),
-// midiOutput @ 0x00575acc (= g_Supervisor.midiOutput).
-// =====================================================================
+// musicMode @ 0x00575a87, opts @ 0x00575a9c, midiOutput @ 0x00575acc.
 #define MUSIC_MODE (*(u8 *)0x00575a87)
 #define CFG_OPTS (*(u32 *)0x00575a9c)
-#define MIDI_OUTPUT_PTR (*(void **)0x00575acc)
+#define MIDI_OUTPUT_PTR (*(MidiOutputStub **)0x00575acc)
+#define SOUND_PLAYER_PTR (*(SoundPlayerStub **)0x004ba0d8)
 
 // =====================================================================
 // Supervisor::ReadMidiFile  (FUN_0043a05f)
-// __fastcall, arg: u32 midiFileIdx. ECX unused (orig has no this ref).
-// orig: if musicMode==MIDI(2) && midiOutput!=0: MidiOutput_StopPlayback.
-//       elif musicMode==WAV(1): SoundPlayer_StopStream(3 or 4 by opts bit13).
-//       else: return -1.
+// __fastcall arg: u32 midiFileIdx. ECX unused.
 // =====================================================================
 ZunResult __fastcall Supervisor_ReadMidiFile(u32 midiFileIdx)
 {
@@ -458,7 +470,7 @@ ZunResult __fastcall Supervisor_ReadMidiFile(u32 midiFileIdx)
     {
         if (MIDI_OUTPUT_PTR != 0)
         {
-            MidiOutput_StopPlayback();
+            MIDI_OUTPUT_PTR->StopPlayback();
         }
     }
     else
@@ -469,11 +481,11 @@ ZunResult __fastcall Supervisor_ReadMidiFile(u32 midiFileIdx)
         }
         if ((CFG_OPTS >> 0xd & 1) == 0)
         {
-            SoundPlayer_StopStream(3, 0, (char *)0);
+            SOUND_PLAYER_PTR->StopStream(3, 0, (char *)0);
         }
         else
         {
-            SoundPlayer_StopStream(4, 0, (char *)0);
+            SOUND_PLAYER_PTR->StopStream(4, 0, (char *)0);
         }
     }
     return ZUN_SUCCESS;
@@ -489,7 +501,7 @@ ZunResult Supervisor::ReadMidiFile(u32 idx)
 
 // =====================================================================
 // Supervisor::StopAudio  (FUN_00439ec1)
-// __thiscall, arg: i32 channel. ECX = Supervisor*.
+// __thiscall arg: i32 channel. ECX = Supervisor*.
 // =====================================================================
 ZunResult Supervisor::StopAudio(i32 channel)
 {
@@ -497,18 +509,18 @@ ZunResult Supervisor::StopAudio(i32 channel)
     {
         if (MIDI_OUTPUT_PTR != 0)
         {
-            MidiOutput_StopPlayback();
-            MidiOutput_LoadFile((char *)channel);
-            // orig: MidiOutput::Play() — stubbed via MidiOutput_LoadFile return path
+            MIDI_OUTPUT_PTR->StopPlayback();
+            MIDI_OUTPUT_PTR->ParseFile(channel);
+            MIDI_OUTPUT_PTR->Play();
         }
     }
     else if (MUSIC_MODE == MUSIC_WAV)
     {
         if ((CFG_OPTS >> 0xd & 1) != 0)
         {
-            SoundPlayer_StopStream(4, 0, "dummy");
+            SOUND_PLAYER_PTR->StopStream(4, 0, "dummy");
         }
-        SoundPlayer_StopStream(2, channel, "dummy");
+        SOUND_PLAYER_PTR->StopStream(2, channel, "dummy");
     }
     return ZUN_SUCCESS;
 }
@@ -518,7 +530,7 @@ ZunResult Supervisor::StopAudio(i32 channel)
 
 // =====================================================================
 // Supervisor::FadeOutMusic  (FUN_0043a0d6)
-// __thiscall, arg: f32 fadeOutSeconds. ECX = Supervisor*.
+// __thiscall arg: f32 fadeOutSeconds. ECX = Supervisor*.
 // =====================================================================
 ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
 {
@@ -526,7 +538,7 @@ ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
     {
         if (MIDI_OUTPUT_PTR != 0)
         {
-            MidiOutput_SetFadeOut((u32)(fadeOutSeconds * 1000.0f));
+            MIDI_OUTPUT_PTR->SetFadeOut((u32)(fadeOutSeconds * 1000.0f));
         }
     }
     else
@@ -537,13 +549,13 @@ ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
         }
         f32 adj = fadeOutSeconds;
         f32 mul = *(f32 *)((u8 *)this + 0x178);
-        f32 threshold = *(f32 *)0x00498a4c; // DAT_00498a4c
-        f32 limit = *(f32 *)0x00498a54;     // DAT_00498a54
+        f32 threshold = *(f32 *)0x00498a4c;
+        f32 limit = *(f32 *)0x00498a54;
         if (mul != threshold && mul <= limit)
         {
             adj = fadeOutSeconds / mul;
         }
-        SoundPlayer_StopStream(5, (i32)(adj * 1000.0f), (char *)0);
+        SOUND_PLAYER_PTR->StopStream(5, (i32)(adj * 1000.0f), (char *)0);
     }
     return ZUN_SUCCESS;
 }
