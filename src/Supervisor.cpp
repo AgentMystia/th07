@@ -81,7 +81,7 @@ extern "C" void __fastcall Supervisor_SomePulseFlag();            // FUN_00404fe
 // SetupDInput externs
 extern "C" i32 __fastcall GetWindowLongA_th07(HWND hwnd, i32 idx); // wraps GetWindowLongA
 extern "C" i32 __fastcall DirectInput8Create_th07(i32 inst, u32 ver, void *iid, void **out, void *unk);
-extern "C" void __fastcall GameErrorContext_LogFmt2(void *ctx, char *fmt); // FUN_004315f0 (1 arg after ctx)
+extern "C" void __cdecl GameErrorContext_LogFmt2(void *ctx, char *fmt);           // FUN_004315f0 __cdecl (2 stack args)
 extern "C" i32 __fastcall Supervisor_EnumKeybdCallback(void *ref, void *dev); // FUN_0043832f
 extern "C" i32 __fastcall Supervisor_EnumJoysCallback(void *ref, void *dev); // FUN_0043836e
 // DeletedCallback / cleanup externs
@@ -96,7 +96,7 @@ extern "C" void __fastcall Supervisor_SomeCleanup5();        // FUN_00438fef
 extern "C" void *_free_th07(void *p);                         // _free wrapper
 // LoadConfig externs
 extern "C" void *__fastcall Supervisor_ReadConfigBuffer(char *configPath, i32 flag);    // FUN_00431330 __fastcall: ECX=configPath, EDX=flag
-extern "C" void __fastcall GameErrorContext_LogFmt3(void *ctx, char *fmt, char *arg); // FUN_00431730
+extern "C" void __cdecl GameErrorContext_LogFmt3(void *ctx, char *fmt, char *arg);   // FUN_00431730 __cdecl (3 stack args)
 extern "C" i32 __fastcall Supervisor_ValidateSize(i32 size); // FUN_00431540 (assert config struct size)
 extern "C" void __cdecl Supervisor_LogStr1(char *fmt, ...);          // FUN_00437903 (printf-style, __cdecl)
 extern "C" void *memset(void *, int, size_t);
@@ -991,7 +991,7 @@ struct DInputDevStub
 };
 ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
 {
-    i32 hinst = GetWindowLongA_th07(*(HWND *)((u8 *)s + 0x44), -6);
+    i32 hinst = GetWindowLongA(*(HWND *)((u8 *)s + 0x44), -6);
     if ((*(u32 *)((u8 *)s + 0x14c) >> 0xb & 1) != 0)
     {
         return ZUN_ERROR;
@@ -1171,14 +1171,13 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     //   [ebp-0x8]=f1, [ebp-0x4]=buf.
     // Declare all locals at function scope in this order so MSVC lays them
     // out identically.
-    void *buf;
-    HANDLE f1;
-    u32 read1;
-    i32 hdr1[3];
-    HANDLE f2;
-    u32 read2;
     i32 hdr2[3];
-    char _pad4[4];
+    u32 read2;
+    HANDLE f2;
+    i32 hdr1[3];
+    u32 read1;
+    HANDLE f1;
+    void *buf;
     // Zero config struct: rep stosd of 0xe dwords.
     memset((void *)0x00575a68, 0, 0xe * 4);
     buf = Supervisor_ReadConfigBuffer(configPath, 1);
