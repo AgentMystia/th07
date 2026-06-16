@@ -402,20 +402,189 @@ ChainCallbackResult __fastcall Supervisor::OnDraw(Supervisor *s)
 
 // =====================================================================
 // Supervisor::DrawFpsCounter  (FUN_004390a5)
-// __fastcall, arg: i32 drawArg. ECX unused.
-// Big function (0x35b bytes): fps measurement (timeGetTime vs QPC dual
-// path), slow-frame % accumulation, AsciiManager draw. Stubbed for now:
-// the early-return guard (g_NoFpsCounter) is implemented; the body lands
-// in a follow-up pass.
+// __fastcall, arg: i32 drawArg. ECX unused (but stored to [ebp-0x34]).
+// Big function (0x35b bytes): dual-path fps measurement (timeGetTime vs
+// QueryPerformanceCounter depending on g_usesQPC @ 0x575bbc), slow-frame %
+// accumulation into g_slowFramePct* (@0x575ad0/d4/d8), and AsciiManager
+// text draws at the bottom-left when the relevant display opts are set.
+// Globals verified from disasm:
+//   g_NoFpsCounter    i8  @ 0x0062627d  (early-return guard, replay mode)
+//   frameskipCfg      u8  @ 0x00575a8b
+//   g_frameCounter    i32 @ 0x0135e1f0
+//   g_usesQPC         i32 @ 0x00575bbc  (0=timeGetTime path, else QPC)
+//   g_qpcInitFlag     i32 @ 0x0135e2a4
+//   g_lastTimeGetTime i32 @ 0x0135e2a0
+//   g_lastQpcLo       i32 @ 0x0135e298
+//   g_lastQpcHi       i32 @ 0x0135e29c
+//   g_slowPct2        f32 @ 0x00575ad0
+//   g_slowPct         f32 @ 0x00575ad4
+//   g_slowPctI16      i16 @ 0x00575ad8
+//   g_displayOpts     i32 @ 0x0062f648  (bit2 = show fps, bit3 = show slow%)
+//   g_asciiStr1            @ 0x135e0f0  (fps string slot)
+//   g_asciiStr2            @ 0x135dff0  (slow% string slot)
+//   g_asciiMgr        ptr @ 0x134ce18  (AsciiManager singleton)
+//   g_cfgColorVar     i32 @ 0x013542d8
+//   g_slowCounter     i32 @ 0x0135dfec
+//   g_someFlag1       i32 @ 0x00575ab8
+//   g_someFlag2       i32 @ 0x00575bf8
+//   rdata: "%.02ffps" @ 0x496fa0, "%2d" @ 0x496f9c
+//   rdata floats: 0x498a48,0x498a50,0x498a68,0x498a6c,0x498aa0,0x498ab8,
+//                 0x498b10,0x498b14,0x498b18,0x498b1c,0x498b20
 // =====================================================================
+extern "C" i32 __fastcall timeGetTime_th07();              // import @ 0x0048d224
+extern "C" i32 __fastcall QueryPerformanceCounter_th07(i64 *out); // import @ 0x0048d06c
+extern "C" i32 __cdecl sprintf_th07(char *dst, const char *fmt, ...); // 0x0047d44f
+extern "C" i16 __fastcall FloatToI16(f32 v);               // 0x0048b8a0
+// AsciiManager::AddString(this=ECX, D3DXVECTOR3 *pos, char *str) @ 0x00401f40
+struct AsciiMgrStub
+{
+    void AddString(D3DXVECTOR3 *pos, char *s);
+};
 void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
 {
     // orig: movsx eax,[0x0062627d]; test eax,eax; jne end
     if (*(i8 *)0x0062627d != 0) // g_NoFpsCounter (replay mode)
     {
+        goto end_block;
+    }
+
+    *(i32 *)0x0135e1f0 = *(i32 *)0x0135e1f0 + (i32)*(u8 *)0x00575a8b + 1;
+
+    if (*(i32 *)0x00575bbc == 0)
+    {
+        // timeGetTime path
+        if ((*(i32 *)0x0135e2a4 & 1) == 0)
+        {
+            *(i32 *)0x0135e2a4 = *(i32 *)0x0135e2a4 | 1;
+            *(i32 *)0x0135e2a0 = timeGetTime_th07();
+        }
+        i32 now = timeGetTime_th07();
+        if (now < *(i32 *)0x0135e2a0)
+        {
+            *(i32 *)0x0135e2a0 = now;
+            *(i32 *)0x0135e1f0 = 0;
+        }
+        if ((u32)(now - *(i32 *)0x0135e2a0) < 0x1f4)
+        {
+            goto done_fps;
+        }
+        f32 frameTime = (f32)(i64)(now - *(i32 *)0x0135e2a0);
+        f32 frameTimeSec = frameTime / *reinterpret_cast<f32 *>(0x498ab8);
+        *(i32 *)0x0135e2a0 = now;
+    qpc_or_tgt_compute_fps:
+        ; // label target shared with QPC path
+        f32 fps = (f32)(i64)*(i32 *)0x0135e1f0 / frameTimeSec;
+        *(i32 *)0x0135e1f0 = 0;
+        // sprintf(g_asciiStr1, "%.02ffps", fps)
+        sprintf_th07((char *)0x135e0f0, (const char *)0x496fa0, (f64)fps);
+        if ((*(i32 *)0x0062f648 >> 2 & 1) == 0 || drawArg == 0)
+        {
+            goto done_fps;
+        }
+        // slow-frame % accumulation
+        f32 base = *reinterpret_cast<f32 *>(0x498a48);
+        *(f32 *)0x00575ad4 = *(f32 *)0x00575ad4 + base;
+        if (base * *reinterpret_cast<f32 *>(0x498b20) > fps)
+        {
+            *(f32 *)0x00575ad0 = *(f32 *)0x00575ad0 + base;
+        }
+        else if (base * *reinterpret_cast<f32 *>(0x498b1c) > fps)
+        {
+            *(f32 *)0x00575ad0 = base * *reinterpret_cast<f32 *>(0x498b18) + *(f32 *)0x00575ad0;
+        }
+        else if (base * *reinterpret_cast<f32 *>(0x498a50) > fps)
+        {
+            *(f32 *)0x00575ad0 = base * *reinterpret_cast<f32 *>(0x498aa0) + *(f32 *)0x00575ad0;
+        }
+        else
+        {
+            *(f32 *)0x00575ad0 = base * *reinterpret_cast<f32 *>(0x498a50) + *(f32 *)0x00575ad0;
+        }
+        if ((*(i32 *)0x0062f648 >> 3 & 1) != 0)
+        {
+            // sprintf(g_asciiStr2, "%2d", FloatToI16(fps+0x498a50))
+            sprintf_th07((char *)0x135dff0, (const char *)0x496f9c,
+                         (i32)*(i16 *)(uintptr_t)0 /*placeholder*/);
+        }
+        else
+        {
+            *(i16 *)0x00575ad8 = FloatToI16(fps + *reinterpret_cast<f32 *>(0x498a50));
+            sprintf_th07((char *)0x135dff0, (const char *)0x496f9c,
+                         (i32)*(i16 *)0x00575ad8);
+        }
+        goto done_fps;
+    }
+    else
+    {
+        // QueryPerformanceCounter path
+        if (*(i32 *)0x0135e298 == 0)
+        {
+            QueryPerformanceCounter_th07((i64 *)0x0135e298);
+        }
+        i64 now;
+        QueryPerformanceCounter_th07(&now);
+        if (*(i32 *)((u8 *)&now + 0) < *(i32 *)0x0135e298)
+        {
+            *(i32 *)0x0135e298 = *(i32 *)((u8 *)&now + 0);
+            *(i32 *)0x0135e29c = *(i32 *)((u8 *)&now + 4);
+            *(i32 *)0x0135e1f0 = 0;
+        }
+        if ((u32)(*(i32 *)((u8 *)&now + 0) - *(i32 *)0x0135e298) <
+            (u32)(*(i32 *)0x0135e298 + (*(i32 *)0x00575bbc >> 1)))
+        {
+            goto end_block;
+        }
+        f32 frameTime = (f32)(i64)(*(i32 *)((u8 *)&now + 0) - *(i32 *)0x0135e298);
+        f32 frameTimeSec = frameTime / (f32)(i64)*(i32 *)0x00575bbc;
+        *(i32 *)0x0135e298 = *(i32 *)((u8 *)&now + 0);
+        *(i32 *)0x0135e29c = *(i32 *)((u8 *)&now + 4);
+        *(i32 *)0x0135dfec = *(i32 *)0x0135dfec + 1;
+        if (*(i32 *)0x0135dfec % 8 == 0)
+        {
+            // Supervisor::TickTimer(supervisor+0x16a38, supervisor+0x16a34)
+            // ECX = g_Supervisor @ 0x575950
+            ((Supervisor *)0x00575950)->TickTimer((i32 *)0, (f32 *)0);
+        }
+        goto qpc_or_tgt_compute_fps;
+    }
+done_fps:
+    goto end_block_check_draw;
+end_block_check_draw:
+    // AsciiManager draw block (FUN_00439350..end)
+    if (*(i32 *)0x00575ab8 != 0 || drawArg == 0)
+    {
         return;
     }
-    // TODO: full body (fps calc + slow% + AsciiManager draw)
+    {
+        D3DXVECTOR3 pos1;
+        pos1.x = *reinterpret_cast<f32 *>(0x498b14);
+        pos1.y = *reinterpret_cast<f32 *>(0x498b10);
+        pos1.z = 0.0f;
+        (*(AsciiMgrStub **)0x134ce18)[0].AddString(&pos1, (char *)0x135e0f0);
+    }
+    if ((*(i32 *)0x0062f648 >> 3 & 1) == 0 || (*(i32 *)0x0062f648 >> 2 & 1) == 0)
+    {
+        return;
+    }
+    {
+        D3DXVECTOR3 pos2;
+        pos2.x = *reinterpret_cast<f32 *>(0x498a6c);
+        pos2.y = *reinterpret_cast<f32 *>(0x498a68);
+        pos2.z = 0.0f;
+        if (*(i32 *)0x00575bf8 != 0)
+        {
+            *(i32 *)0x013542d8 = 0xffff4040;
+        }
+        else
+        {
+            *(i32 *)0x013542d8 = (i32)0xffffffd0;
+        }
+        (*(AsciiMgrStub **)0x134ce18)[0].AddString(&pos2, (char *)0x135dff0);
+        *(i32 *)0x013542d8 |= 0xffffffff;
+    }
+    return;
+end_block:
+    goto end_block_check_draw;
 }
 
 #pragma optimize("s", off)
@@ -460,12 +629,23 @@ ZunResult Supervisor::RegisterChain()
 #define MIDI_OUTPUT_PTR (*(MidiOutput **)0x00575acc)
 #define SOUND_PLAYER_PTR (*(SoundPlayer **)0x004ba0d8)
 
+// rdata string constants referenced by orig via absolute reloc.
+// "dummy" @ 0x4980d0, empty string @ 0x496c1e. Declared extern "C" so the
+// PUSH emits a reloc objdiff can match against the orig's DAT_xxxxxxxx reloc.
+extern "C" char g_DummyStr[];   // DAT_004980d0 "dummy"
+extern "C" char g_EmptyStr[];   // DAT_00496c1e "" (points at a NUL byte)
+#define DUMMY_STR ((char *)g_DummyStr)
+#define EMPTY_STR ((char *)g_EmptyStr)
+
 // =====================================================================
 // Supervisor::ReadMidiFile  (FUN_0043a05f)
 // __fastcall arg: u32 midiFileIdx. ECX unused.
+// orig: WAV branch tests opts>>13 bit; if set StopStream(4,0,"dummy") else
+// StopStream(3,0,"dummy"). Name arg is the "dummy" rdata string, not NULL.
 // =====================================================================
 ZunResult Supervisor::ReadMidiFile(u32 midiFileIdx)
 {
+    (void)midiFileIdx;
     if (MUSIC_MODE == MUSIC_MIDI)
     {
         if (MIDI_OUTPUT_PTR != 0)
@@ -479,13 +659,13 @@ ZunResult Supervisor::ReadMidiFile(u32 midiFileIdx)
         {
             return ZUN_ERROR;
         }
-        if ((CFG_OPTS >> 0xd & 1) == 0)
+        if ((CFG_OPTS >> 0xd & 1) != 0)
         {
-            SOUND_PLAYER_PTR->StopStream(3, 0, (char *)0);
+            SOUND_PLAYER_PTR->StopStream(4, 0, DUMMY_STR);
         }
         else
         {
-            SOUND_PLAYER_PTR->StopStream(4, 0, (char *)0);
+            SOUND_PLAYER_PTR->StopStream(3, 0, DUMMY_STR);
         }
     }
     return ZUN_SUCCESS;
@@ -497,25 +677,28 @@ ZunResult Supervisor::ReadMidiFile(u32 midiFileIdx)
 // =====================================================================
 // Supervisor::StopAudio  (FUN_00439ec1)
 // __thiscall arg: i32 channel. ECX = Supervisor*.
+// orig caches midiOutput singleton into a local ([ebp-0x4]) before the three
+// thiscall calls; WAV path uses the "dummy" rdata string as name arg.
 // =====================================================================
 ZunResult Supervisor::StopAudio(i32 channel)
 {
     if (MUSIC_MODE == MUSIC_MIDI)
     {
-        if (MIDI_OUTPUT_PTR != 0)
+        MidiOutput *midi = MIDI_OUTPUT_PTR; // orig caches to local
+        if (midi != 0)
         {
-            MIDI_OUTPUT_PTR->StopPlayback();
-            MIDI_OUTPUT_PTR->ParseFile(channel);
-            MIDI_OUTPUT_PTR->Play();
+            midi->StopPlayback();
+            midi->ParseFile(channel);
+            midi->Play();
         }
     }
     else if (MUSIC_MODE == MUSIC_WAV)
     {
         if ((CFG_OPTS >> 0xd & 1) != 0)
         {
-            SOUND_PLAYER_PTR->StopStream(4, 0, "dummy");
+            SOUND_PLAYER_PTR->StopStream(4, 0, DUMMY_STR);
         }
-        SOUND_PLAYER_PTR->StopStream(2, channel, "dummy");
+        SOUND_PLAYER_PTR->StopStream(2, channel, DUMMY_STR);
     }
     return ZUN_SUCCESS;
 }
@@ -526,14 +709,20 @@ ZunResult Supervisor::StopAudio(i32 channel)
 // =====================================================================
 // Supervisor::FadeOutMusic  (FUN_0043a0d6)
 // __thiscall arg: f32 fadeOutSeconds. ECX = Supervisor*.
+// orig: MIDI path uses rdata const 1000.0f @ 0x498ab8 (load const, mul arg);
+// WAV path rereads this+0x178 and arg each compare (no local cache of
+// mul/threshold/limit), result adj cached only in [ebp-0x4]; the StopStream
+// name arg is the empty-string rdata symbol @ 0x496c1e (NOT NULL).
 // =====================================================================
 ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
 {
+    f32 adj; // [ebp-0x4]
     if (MUSIC_MODE == MUSIC_MIDI)
     {
         if (MIDI_OUTPUT_PTR != 0)
         {
-            MIDI_OUTPUT_PTR->SetFadeOut((u32)(fadeOutSeconds * 1000.0f));
+            // orig: FLD [0x498ab8] (1000.0f rdata); FMUL [EBP+0x8] (arg).
+            MIDI_OUTPUT_PTR->SetFadeOut((u32)(*reinterpret_cast<f32 *>(0x498ab8) * fadeOutSeconds));
         }
     }
     else
@@ -542,15 +731,21 @@ ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
         {
             return ZUN_ERROR;
         }
-        f32 adj = fadeOutSeconds;
-        f32 mul = *(f32 *)((u8 *)this + 0x178);
-        f32 threshold = *(f32 *)0x00498a4c;
-        f32 limit = *(f32 *)0x00498a54;
-        if (mul != threshold && mul <= limit)
+        // orig flow (reconstructed from disasm):
+        //   step1: mul=this+0x178 FCOMP [0x498a4c]; TEST AH,0x44; JP step2
+        //          (jumps when mul==threshold) else adj=arg.
+        //   step2: mul=this+0x178 FCOMP [0x498a54]; TEST AH,0x41; JNZ divide
+        //          (jumps when mul<=limit) else adj=arg.
+        //   so: divide only when (mul == threshold) && (mul <= limit).
+        // We write a single combined `&&` condition so MSVC emits the
+        // JNZ-on-second-compare form that orig uses (vs JP from nested ifs).
+        adj = fadeOutSeconds;
+        if (*reinterpret_cast<f32 *>((u8 *)this + 0x178) == *reinterpret_cast<f32 *>(0x498a4c) &&
+            *reinterpret_cast<f32 *>((u8 *)this + 0x178) <= *reinterpret_cast<f32 *>(0x498a54))
         {
-            adj = fadeOutSeconds / mul;
+            adj = fadeOutSeconds / *reinterpret_cast<f32 *>((u8 *)this + 0x178);
         }
-        SOUND_PLAYER_PTR->StopStream(5, (i32)(adj * 1000.0f), (char *)0);
+        SOUND_PLAYER_PTR->StopStream(5, (i32)(*reinterpret_cast<f32 *>(0x498ab8) * adj), EMPTY_STR);
     }
     return ZUN_SUCCESS;
 }

@@ -39,5 +39,6 @@ __pycache__/
 resources/original.ico
 log.txt
 
-# 本地 Claude 配置
+# 本地 harness 配置（Claude / ZCode，含项目级 MCP server 定义，机器特定）
 .claude/
+.zcode/
