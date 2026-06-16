@@ -44,29 +44,28 @@ orig 3.6KB / 5 函数。th07 文本渲染（GDI-based，非 th06 D3DXFont）。
 | Init | 63.98% |
 | Print | 2.20%（stub，大函数待实现）|
 
-### EffectManager（第 17 模块，17 函数 objdiff，平均 **83.3%**，9×90%+）
-orig 10.2KB / 17 函数。通过读取 orig g_Effects 表（0x49efc0, 34 entry）发现真实 callback 地址，
-+ 移除 overlap 的 AddedCallback@0x41cdd4 让 RegisterChain/DeletedCallback/CutChain 正确导出，
-+ rdata 浮点常量全局引用 + 缓存 effect+0x2b8 局部 + OnDraw 重写匹配 orig draw-list 遍历。
+### EffectManager（第 17 模块，17 函数 objdiff，平均 **83.7%**，10×90%+，3×100%）
+orig 10.2KB / 17 函数。通过读取 orig g_Effects 表发现真实 callback 地址，
++ 移除 overlap 条目 + rdata 浮点常量 + __thiscall 修正 + **Effect 结构体布局修复**。
 | 函数 | match% |
 |---|---|
-| Reset | **99.92%** |
-| EffectCallbackStill | **99.93%** |
-| EffectCallbackRandomSplashBigInit | **99.23%** |
-| EffectUpdateCallback4Init | **99.90%** |
-| EffectUpdateCallback4 | **99.19%** |
-| RegisterChain | **97.50%** |
-| SpawnParticlesWithVelocity | **95.28%** |
-| CutChain | **97.00%** |
-| OnUpdate | **90.46%** |
-| SpawnParticles | 88.88% |
-| SpawnParticleAt | 83.10% |
-| EffectCallbackAttractInit | 79.25% |
+| Reset | **100%** |
+| EffectCallbackStill | **100%** |
+| EffectUpdateCallback4Init | **100%** |
+| EffectUpdateCallback4 | 99.28% |
+| EffectCallbackRandomSplashBigInit | 99.29% |
+| RegisterChain | 97.50% |
+| SpawnParticlesWithVelocity | 96.92% |
+| CutChain | 97.00% |
+| OnUpdate | 90.66% |
+| SpawnParticles | 90.35% |
+| SpawnParticleAt | 84.76% |
+| EffectCallbackAttractInit | 79.42% |
 | DeletedCallback | 78.00% |
-| OnDraw | 65.34%（重写 draw-list 遍历后 36%→65%）|
-| EffectCallbackAttract | 54.72%（rdata 常量后 45%→54%）|
-| EffectCallbackAttractSlow | 53.43%（rdata 常量后 44%→53%）|
-| EffectManager (ctor) | 35.40%（浮点栈布局难匹配，待逐变量模拟）|
+| OnDraw | 65.34% |
+| EffectCallbackAttract | 54.72% |
+| EffectCallbackAttractSlow | 53.43% |
+| EffectManager (ctor) | 35.40% |
 
 ### Supervisor（8 函数 objdiff，平均 **57.0%**）
 OnDraw **100%**（__fastcall 修正）, TickTimer **97.95%**, StopAudio 84.50%（thiscall stub）,
