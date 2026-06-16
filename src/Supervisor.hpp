@@ -199,7 +199,7 @@ struct Supervisor
     // Internal helpers (mapped in config/mapping.csv, called by other Supervisor methods).
     static void DebugPrint(char *fmt, ...);
     static i32 D3DDiscard(i32 mode);
-    static i32 AutosaveScore(char *p1, i32 p2, i32 p3);
+    i32 AutosaveScore(char *p1, i32 p2, i32 p3); // __thiscall: ECX=g_Supervisor singleton
     static void SomeCleanup1();
     static void ReleaseAnm0();
     static void HeapFreeAll();
