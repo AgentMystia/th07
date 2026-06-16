@@ -1178,6 +1178,7 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     u32 read1;
     HANDLE f1;
     void *buf;
+    char _pad4[4]; // match orig frame 0x38 (MSVC allocates this above this)
     // Zero config struct: rep stosd of 0xe dwords.
     memset((void *)0x00575a68, 0, 0xe * 4);
     buf = Supervisor_ReadConfigBuffer(configPath, 1);
