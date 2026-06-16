@@ -204,7 +204,7 @@ th07::EffectManager::EffectManager,0x41a370,0x176,__thiscall,,void,EffectManager
 th07::EffectManager::EffectCallbackStill,0x41a4f0,0xa5,__fastcall,,i32,Effect*
 th07::EffectManager::EffectCallbackRandomSplashBigInit,0x41a5a0,0x182,__fastcall,,i32,Effect*
 th07::EffectManager::EffectUpdateCallback4Init,0x41a750,0x304,__fastcall,,i32,Effect*
-th07::EffectManager::EffectCallbackAttractInit,0x41abe0,0x47,__fastcall,,i32,Effect*
+th07::EffectManager::EffectCallbackAttractInit,0x41aaf0,0x90,__fastcall,,i32,Effect*
 th07::EffectManager::EffectCallbackAttractSlow,0x41ac30,0xd8,__fastcall,,i32,Effect*
 th07::EffectManager::EffectUpdateCallback4,0x41ad10,0xd2,__fastcall,,i32,Effect*
 th07::EffectManager::SpawnParticles,0x41c1c0,0x233,__fastcall,,Effect*,i32,D3DXVECTOR3*,i32,ZunColor
