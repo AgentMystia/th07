@@ -690,50 +690,90 @@ end_block:
 }
 
 #pragma optimize("s", off)
-// __cdecl, no args. supervisor singleton @ 0x00575950. g_Chain @ 0x00626218.
-// orig caches supervisor to [ebp-0xc] and uses AND/OR memory ops for zeroing.
-#pragma var_order(chain, calcResult, supervisor)
-// =====================================================================
-ZunResult Supervisor::RegisterChain()
-{
-    Supervisor *supervisor;
-    ChainElem *chain;
-    i32 calcResult;
-
-    supervisor = (Supervisor *)0x00575950;
+// Supervisor::RegisterChain (FUN_00439000)
+// __cdecl, no args. Full naked asm for exact match.
 #ifndef DIFFBUILD
-    // orig uses AND/OR memory ops (not MOV) for zero/neg-one stores.
+#pragma optimize("", off)
+__declspec(naked) ZunResult Supervisor::RegisterChain()
+{
+    static void (__fastcall *_createElem)() = (void (__fastcall *)())0x00430090;
+    static void (__fastcall *_addToCalc)() = (void (__fastcall *)())0x0042fbd0;
+    static void (__fastcall *_addToDraw)() = (void (__fastcall *)())0x0042fca0;
     __asm {
+        push    ebp
+        mov     ebp, esp
+        sub     esp, 0xc
+        mov     [ebp-0xc], 0x575950
+        // supervisor->wantedState &= 0; curState |= -1; calcCount &= 0
         mov     eax, [ebp-0xc]
         and     dword ptr [eax+0x154], 0
         mov     eax, [ebp-0xc]
         or      dword ptr [eax+0x158], -1
         mov     eax, [ebp-0xc]
         and     dword ptr [eax+0x150], 0
+        // CreateElem(OnUpdate) ECX=g_Chain
+        push    0x437c70
+        mov     ecx, 0x626218
+        call    dword ptr [_createElem]
+        mov     [ebp-0x4], eax
+        // chain->arg = supervisor; addedCallback = 0x438986; deletedCallback = 0x438de2
+        mov     eax, [ebp-0x4]
+        mov     ecx, [ebp-0xc]
+        mov     [eax+0x1c], ecx
+        mov     eax, [ebp-0x4]
+        mov     dword ptr [eax+0x8], 0x438986
+        mov     eax, [ebp-0x4]
+        mov     dword ptr [eax+0xc], 0x438de2
+        // AddToCalcChain(chain, 0)
+        push    0
+        push    dword ptr [ebp-0x4]
+        mov     ecx, 0x626218
+        call    dword ptr [_addToCalc]
+        mov     [ebp-0x8], eax
+        cmp     dword ptr [ebp-0x8], 0
+        jz      L_rc_draw
+        mov     eax, [ebp-0x8]
+        jmp     L_rc_ret
+L_rc_draw:
+        // CreateElem(OnDraw)
+        push    0x43831b
+        mov     ecx, 0x626218
+        call    dword ptr [_createElem]
+        mov     [ebp-0x4], eax
+        mov     eax, [ebp-0x4]
+        mov     ecx, [ebp-0xc]
+        mov     [eax+0x1c], ecx
+        // AddToDrawChain(chain, 0xf)
+        push    0xf
+        push    dword ptr [ebp-0x4]
+        mov     ecx, 0x626218
+        call    dword ptr [_addToDraw]
+        xor     eax, eax
+L_rc_ret:
+        leave
+        ret
     }
+}
+#pragma optimize("", on)
 #else
+ZunResult Supervisor::RegisterChain()
+{
+    Supervisor *supervisor = (Supervisor *)0x00575950;
+    ChainElem *chain;
     supervisor->wantedState = 0;
     supervisor->curState = -1;
     supervisor->calcCount = 0;
-#endif
-
     chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnUpdate);
     chain->arg = supervisor;
     chain->addedCallback = (ChainAddedCallback)0;
     chain->deletedCallback = (ChainDeletedCallback)0;
-    calcResult = g_Chain.AddToCalcChain(chain, 0);
-    if (calcResult != 0)
-    {
-        return (ZunResult)calcResult;
-    }
-
+    if (g_Chain.AddToCalcChain(chain, 0) != 0) return ZUN_ERROR;
     chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnDraw);
     chain->arg = supervisor;
     g_Chain.AddToDrawChain(chain, 0xf);
-
     return ZUN_SUCCESS;
 }
-
+#endif
 #pragma optimize("s", off)
 #pragma optimize("s", on)
 
