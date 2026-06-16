@@ -1522,7 +1522,7 @@ ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
 // "display option" bit in cfg.opts (+0x14c).
 // Uses #pragma var_order to force MSVC to lay out locals in the exact order
 // the orig binary uses (frame 0x38).
-#pragma var_order(buf, f1, read1, hdr1_2, hdr1_1, hdr1_0, f2, read2, hdr2_2, hdr2_1, hdr2_0, _pad1, _pad2)
+#pragma var_order(buf, f1, read1, _pad1, hdr1_0, hdr1_1, hdr1_2, f2, read2, _pad2, hdr2_0, hdr2_1, hdr2_2)
 ZunResult Supervisor::LoadConfig(char *configPath)
 {
     i32 hdr2_0, hdr2_1, hdr2_2;
