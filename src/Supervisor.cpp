@@ -129,6 +129,18 @@ extern "C" char g_DAT_62f52c[];   // clear table
 extern "C" char g_DAT_62f648[];   // displayOpts
 extern "C" char g_DAT_62f85c[];   // some counter
 
+
+// DAT_ extern declarations matching orig delinked obj reloc names.
+extern "C" char DAT_00575a68[];   // config struct
+extern "C" char DAT_00575a87[];   // musicMode
+extern "C" char DAT_00575acc[];   // midiOutput ptr
+extern "C" char DAT_00575a9c[];   // cfg opts
+extern "C" char DAT_004ba0d8[];   // SoundPlayer singleton
+extern "C" char DAT_00575c0c[];   // byte flag
+extern "C" char DAT_004980d0[];   // "dummy" string
+extern "C" char DAT_00496c1e[];   // empty string
+extern "C" char DAT_004b9e44[];   // g_AnmManager
+
 extern "C" void *memset(void *, int, size_t);
 extern "C" void *memcpy(void *, const void *, size_t);
 extern "C" HANDLE __fastcall CreateFileA_th07(char *path, u32 access, u32 share, void *sa, u32 disp, u32 flags, HANDLE tmpl);
@@ -1534,7 +1546,7 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     HANDLE f1;
     void *buf;
     // Zero config struct: rep stosd of 0xe dwords.
-    memset((void *)0x00575a68, 0, 0xe * 4);
+    memset((void *)DAT_00575a68, 0, 0xe * 4);
     buf = Supervisor_ReadConfigBuffer(configPath, 1);
     if (buf == 0)
     {
@@ -1542,7 +1554,7 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     }
     else
     {
-        memcpy((void *)0x00575a68, buf, 0xe * 4);
+        memcpy((void *)DAT_00575a68, buf, 0xe * 4);
         _free_th07(buf);
         f1 = CreateFileA("./thbgm.dat", 0x80000000, 1, 0, 3, 0x8000080, 0);
         if (f1 != (HANDLE)-1)
@@ -1556,7 +1568,7 @@ ZunResult Supervisor::LoadConfig(char *configPath)
                 return ZUN_ERROR;
             }
         }
-        if (*(u8 *)0x00575a84 < 5 && *(u8 *)0x00575a85 < 4 && *(u8 *)0x00575a86 < 2 &&
+        if (*(u8 *)(DAT_00575a68 + 0x1c) < 5 && *(u8 *)(DAT_00575a68 + 0x1d) < 4 && *(u8 *)0x00575a86 < 2 &&
             *(u8 *)0x00575a87 < 3 && *(u8 *)0x00575a89 < 6 && *(u8 *)0x00575a88 < 2 &&
             *(u8 *)0x00575a8a < 2 && *(u8 *)0x00575a8b < 3 && *(u8 *)0x00575a8c < 3 &&
             *(u8 *)0x00575a8d < 2 && *(u8 *)0x00575a8e < 2 &&
@@ -1567,8 +1579,8 @@ ZunResult Supervisor::LoadConfig(char *configPath)
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496e88);
     }
     // Defaults.
-    *(u8 *)0x00575a84 = 2;
-    *(u8 *)0x00575a85 = 3;
+    *(u8 *)(DAT_00575a68 + 0x1c) = 2;
+    *(u8 *)(DAT_00575a68 + 0x1d) = 3;
     *(u8 *)0x00575a86 = 0xff;
     *(u32 *)0x00575a7c = 0x70002;
     *(i16 *)0x00575a80 = 600;
@@ -1596,13 +1608,13 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     *(u8 *)0x00575a8a = 0;
     *(u8 *)0x00575a8b = 0;
     // Default keymap copy: orig inlines movsd x4 + movsw (18 bytes).
-    memcpy((void *)0x00575a68, (void *)0x0049ee40, 0x12);
+    memcpy((void *)DAT_00575a68, (void *)0x0049ee40, 0x12);
     *(u8 *)0x00575a8c = 2;
     *(u8 *)0x00575a8d = 0;
     *(u8 *)0x00575a8e = 1;
 apply_opts:
     *(u32 *)0x00575a9c |= 1;
-    *(u32 *)0x0049ee40 = *(u32 *)0x00575a68;
+    *(u32 *)0x0049ee40 = *(u32 *)DAT_00575a68;
     *(u32 *)0x0049ee44 = *(u32 *)0x00575a6c;
     *(u32 *)0x0049ee48 = *(u32 *)0x00575a70;
     *(u32 *)0x0049ee4c = *(u32 *)0x00575a74;
