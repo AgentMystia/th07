@@ -100,19 +100,19 @@ i32 CMyFont::Init(i32 w, i32 h, i32 format)
 #pragma optimize("s", off)
 #pragma optimize("s", on)
 
-i32 __fastcall CMyFont::InitWrapper(i32 w, i32 h, i32 format)
+i32 CMyFont::InitWrapper(i32 w, i32 h, i32 format)
 {
-    if (g_TextTarget->Init(w, h, format) != 0)
+    if (this->Init(w, h, format) != 0)
     {
         return 1;
     }
     if (format == 0x19 || format == 0x1a)
     {
-        return g_TextTarget->Init(w, h, 0x15);
+        return this->Init(w, h, 0x15);
     }
     if (format == 0x17)
     {
-        return g_TextTarget->Init(w, h, 0x16);
+        return this->Init(w, h, 0x16);
     }
     return 0;
 }

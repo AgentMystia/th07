@@ -73,7 +73,7 @@ class CMyFont
     CMyFont *__fastcall Reset();
     i32 __fastcall Clean();
     i32 Init(i32 w, i32 h, i32 format);
-    i32 __fastcall InitWrapper(i32 w, i32 h, i32 format);
+    i32 InitWrapper(i32 w, i32 h, i32 format);
     void __fastcall Print(i32 a, i32 b, i32 c, i32 d, i32 e, char *s);
 };
 
