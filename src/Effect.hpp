@@ -54,6 +54,7 @@ struct Effect
     ZunColor color;            // +0x1b8  (AnmVm tail)
     i32 vmPadding;             // +0x1bc
     u32 flags;                 // +0x1c0  (AnmVm flags; bit 12 = "additive")
+    u8 vmFlagsPad[0x1c8 - 0x1c0 - 0x4];  // pad to align vmPos @ 0x1c8
     D3DXVECTOR3 vmPos;         // +0x1c8  (AnmVm pos, copied from pos1 in OnDraw)
     u8 vmPad2[0x1d8 - 0x1c8 - 0xc];
     u16 anmScriptIndex;        // +0x1d8
@@ -63,7 +64,7 @@ struct Effect
                                //         (th07 SpawnParticlesWithVelocity writes here)
     D3DXVECTOR3 velocity;      // +0x264  (th06 unk_11c)
     D3DXVECTOR3 acceleration;  // +0x270  (th06 unk_128)
-    u8 pad3[0x288 - 0x278 - 0xc];
+    u8 pad3[0xc];  // 0x27c..0x287 (align position @ 0x288)
     D3DXVECTOR3 position;      // +0x288  anchor (th06 position)
     D3DXVECTOR3 pos2;          // +0x294  direction / axis (th06 pos2)
     D3DXQUATERNION quaternion; // +0x2a0  (th06 quaternion)
