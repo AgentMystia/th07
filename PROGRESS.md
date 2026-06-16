@@ -9,7 +9,7 @@
 - **修复**：补全 Supervisor 14 函数到 mapping.csv（地址+大小全部 ghidra 实读验证），重跑 ImportFromCsv + ExportDelinker headless 流程（36 秒）。
 - **成果**：orig obj 从 17 个增至 18 个（新增 Supervisor.obj 26KB）。40 模块的 namespace 导出现在可按需补 mapping.csv 行即解锁。
 
-### Supervisor（第 16 模块，13/14 函数 objdiff，平均 **65.8%**，2×90%+）
+### Supervisor（第 16 模块，13/14 函数 objdiff，平均 **65.8%**，3×90%+）
 orig 26.4KB / 14 函数。从语法损坏的初稿重写为可编译的 C++（移除中文注释——MSVC 7.0 不认）。
 本 session 大幅推进：新增 PlayAudio/PlayMidiFile/SetupDInput/DeletedCallback/LoadConfig 实现，
 DrawFpsCounter 大函数体落地（2.5%→71.3%）。
@@ -39,22 +39,18 @@ DrawFpsCounter 大函数体落地（2.5%→71.3%）。
 - OnUpdate/LoadConfig 大函数精修。
 - AddedCallback (0x45b) 尚未实现（None）。
 
-### BombData（新增模块，12/24 draw 全部实现，模块平均 **37.95%**）
-g_BombData 表 @ 0x0049ec50（12 条目，calc/draw 对）。24 个回调已加入 mapping.csv 并导出 orig obj。
+### BombData（新增模块，12/24 draw 全部实现 + 1 calc，模块平均 **39.6%**）
+g_BombData 表 @ 0x0049ec50（12 条目，calc/draw 对）。24 个回调已加入 mapping.csv 并导出 orig obj（41816B）。
 - **12 draw 全部实现**（draw 平均 ~73%，范围 61-88%）：
   - MarisaABombDraw 88.0%、MarisaBBombDraw 87.7%、MarisaABombDraw2 76.6%、ReimuCBombDraw 76.7%
   - SakuyaABombDraw 75.4%、ReimuBBombDraw 74.4%、YoumuABombDraw 74.3%、YoumuBBombDraw 73.5%
   - ReimuABombDraw2 67.7%、SakuyaBBombDraw 67.1%、ReimuABombDraw 63.9%、SakuyaABombDraw2 61.5%
+- **1 calc 已实现**：MarisaABombCalc2 42.7%（timer state machine 范本，**新会话实现其他 calc 抄它的结构**）。
 - **关键技巧**：AnmManager::Draw2/Draw3 经 stub-method-on-global（`(*(AnmMgrStub**)0x4b9e44)->Draw(anm)`）→
   `MOV ECX,[0x4b9e44]; PUSH anm; CALL`；pos 字段按 raw f32 访问（勿 i32 强转，否则 FLD/FSTP 顺序变）；
   循环体需手动展开（orig 全展开，for 循环会致整体偏移）。
-- **12 calc 待实现**：每个 0xe0~0x960 字节的复杂 Player 状态机（定时器分支 + 子对象生成 +
-  EffectManager 调用 + AnmVm 脚本执行）。单个 MarisaABombCalc2 = 0x4e0 字节。90% 平均需全部 calc 实现，
-  工作量极大（本 session 未完成）。
-
-### BulletData（数据模块，无函数 → orig obj 为空）
-th07::BulletData 命名空间下无函数（纯 .data 表），ExportDelinker 无法导出。
-需改用数据符号 + 静态数据定义才能建立 objdiff 基准（当前 0%）。
+- **11 calc 待实现**：每个 0xe0~0x960 字节的复杂 Player 状态机。详见 AGENTS.md「续作检查点」的地址清单 +
+  calc 通用骨架 + Player 结构体偏移 + extern 清单。
 
 ### ItemManager（大函数模块，OnUpdate 4297 字节，orig obj 已导出）
 th07::ItemManager 仅有 OnUpdate @ 0x432990（0x10c9 字节，switch 重度）+ RegisterChain @ 0x432eda。
@@ -63,7 +59,7 @@ orig obj 已导出（11794 字节）；OnUpdate 当前为 stub（0%）。
 
 ### BulletData（数据模块，无函数 → orig obj 为空）
 th07::BulletData 命名空间下无函数（纯 .data 表），ExportDelinker 无法导出。
-需改用数据符号 + 静态数据定义才能建立 objdiff 基准（当前 0%）。
+需改用数据符号 + 静态数据定义才能建立 objdiff 基准（当前 0%）。**这是方向性决策，新会话先征询用户。**
 
 ### Session 总结（2026-06-16，4 模块推进）
 本 session 推进了 Supervisor / BombData / BulletData / ItemManager 四个模块：

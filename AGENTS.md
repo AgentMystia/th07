@@ -39,6 +39,51 @@ rm -rf /tmp/th07_new && mkdir -p /tmp/th07_new && /opt/ghidra/support/analyzeHea
 5. objdiff 对外部 CALL/reloc 宽容；atan2 用 extern "C" 符号 call 匹配 orig call imm
 6. IMUL/特殊寻址用 `#ifndef DIFFBUILD __asm` 逐条翻译
 
+## Session 2026-06-16 新增 codegen 发现（Supervisor/BombData，已验证）
+
+### 字符串 rdata reloc 匹配（关键！）
+orig 用绝对地址 push rdata 字符串（`PUSH 0x4980d0` = "dummy"、`PUSH 0x496c1e` = ""）。
+**字面量 `"dummy"` 会生成不同 reloc → 不匹配**。正确做法：
+```cpp
+extern "C" char g_DummyStr[];   // DAT_004980d0 "dummy" — 留 undefined，objdiff build 只编 .obj 不链接
+#define DUMMY_STR ((char *)g_DummyStr)
+extern "C" char g_EmptyStr[];   // DAT_00496c1e "" (NUL byte)
+```
+**`0x496c1e` 不是 NULL**——它指向一个 NUL 字节（空字符串），`PUSH 0x496c1e` ≠ `PUSH 0`（opcode 不同：`68 ..` vs `6a 00`）。
+
+### f32 字段访问：勿 i32 强转
+orig 对 Player-bomb AnmVm 的 posX/Y/Z（@ +0x1c8/+0x1cc/+0x1d0）做 `FLD/FADD/FSTP`（直接 f32）。
+写 `(i32)(*f32 + ...)` 会插 `fistp`/int roundtrip → **顺序与 orig 完全不同，整体偏移**。
+正确：`*(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);`（raw f32）。
+
+### 循环体必须手动展开
+orig 对 4-sub-sprite 绘制**全展开**（4 份相同 block）。写 `for (s = 0; s < 4; s++)` 会致
+整个循环偏移 → match% 从 76% 掉到 25%。必须写 4 份独立 block（可用 `{}` scope 隔离同名局部）。
+
+### AnmManager 单例调用 stub-method-on-global
+`AnmManager::Draw2/Draw3(this=[0x4b9e44], AnmVm*)` @ 0x444f770/0x444f9a0。
+正确：`(*(AnmMgrStub **)0x4b9e44)->Draw3(anm)` → MSVC 生成 `MOV ECX,[0x4b9e44]; PUSH anm; CALL`。
+**勿用 `extern __fastcall`**（第 2 条通用规则）。
+
+### Dead-store / frame-size 不可控（PlayMidiFile 0% 根因）
+orig PlayMidiFile 保留 dead `d2 = d` store（写入但不读），frame 0x120；MSVC /Od **消除 dead store**
+致 frame 0x11c → 整函数偏移 → 0% match。已试 volatile/self-assign 均无效。**此类函数需
+`#ifndef DIFFBUILD __asm` 强制局部布局**（第 6 条技巧），或接受 0%。
+**诊断法**：objdiff 显示 0% 但两边指令数相同 → 99% 是 frame/local-offset 偏移导致。
+
+### fcomp flag-branch codegen 限制（FadeOutMusic）
+同 `TEST AH,0x41` 后 orig 用 `JNZ`，MSVC 对 `<=` 可能生 `JP`（不同 opcode）。
+条件表达式重组（`&&`、`!(>)`）有时能切到 JNZ，但不保证。接受 ~69% 或 inline asm。
+
+### mapping.csv 新增模块函数（本 session）
+- **BombData**：24 个回调（12 calc/draw 对）已加，命名 `th07::BombData::{Char}{Shot}{Calc/Draw}`，
+  地址 0x408710..0x40e280，全部 `__fastcall` ECX=Player*。
+- **ItemManager**：OnUpdate @ 0x432990（0x10c9 字节）+ RegisterChain @ 0x432eda 已加。
+- **BulletData**：命名空间下**无函数**（纯 .data 表）→ ExportDelinker 产空 obj。需数据符号方案（未实现）。
+
+### 重新导出已生效
+mapping.csv 改后已重导 orig obj（BombData.obj 41816B、ItemManager.obj 11794B 已在 build/objdiff/orig/）。
+
 ## MSVC 7.0 硬限制
 - 不支持 `nullptr`（C++11）→ 用 `0`（`ptr_field = 0` 编译成 `and [mem],0`，匹配 orig 零初始化 idiom）。
 - 不认 UTF-8 中文注释（无 BOM 也无效）→ **源码注释必须英文**。
@@ -58,6 +103,51 @@ rm -rf /tmp/th07_new && mkdir -p /tmp/th07_new && /opt/ghidra/support/analyzeHea
 
 ## 大函数教训
 单 agent 啃 2000+字节函数会 STALL。大函数必须手动 ghidra 逆向（disassemble_function 权威）。小函数/结构体分析可并行 workflow。
+
+## 续作检查点（Session 2026-06-16 结束状态）
+新会话**第一件事读 PROGRESS.md** 的对应模块章节，然后从这里接：
+
+### Supervisor（13/14 函数 objdiff，avg 65.8%，3×≥90%）
+**下一步优先级**：
+1. **PlayMidiFile 0%**：frame-mismatch（0x11c vs orig 0x120，dead d2 store）。尝试 inline asm 强制 `[ebp-0x10c]` 局部，或重写为完全匹配 orig 字节循环结构。参考本 session 死磕记录。
+2. **OnUpdate 44% / LoadConfig 28%**：大状态机/配置函数，逐 block ghidra 反汇编精修。
+3. **AddedCallback (0x45b) 未实现**（None）——D3D 设备 + 纹理加载 + MidiOutput 创建，FUN_00438986。
+4. 已 ≥90% 的：OnDraw 100%、TickTimer 97.95%、PlayAudio 90.5%——不动。
+
+### BombData（24 函数，avg 39.6%，12 draw 已完成）
+**下一步**：实现 12 calc（每个 0xe0~0x960 字节）。按 size 从小到大：
+- 已做：MarisaABombCalc2 (0x4e0) 43%（timer state machine 范本，**抄它的结构**）。
+- 待做（按地址）：ReimuCBombCalc 0x408710(0x700)、ReimuABombCalc 0x4091b0(0x7e0)、MarisaABombCalc 0x409dd0(0x4b0)、
+  MarisaBBombCalc 0x40a3a0(0x310)、SakuyaABombCalc 0x40a7c0(0x3e0)、SakuyaBBombCalc 0x40af10(0x6c0)、
+  ReimuBBombCalc 0x40b7d0(0x4d0)、YoumuABombCalc 0x40be20(0x340)、ReimuABombCalc2 0x40c2e0(0x690)、
+  YoumuBBombCalc 0x40ca50(0x960)、SakuyaABombCalc2 0x40da80(0x800)。
+**calc 通用骨架**（MarisaABombCalc2 已验证）：
+```
+if (curTime >= duration) { EndSpellcard(); reset; AnmVm_Die; return; }
+if (curTime != prevTime && curTime == T0) { init block }
+if (curTime != prevTime && curTime == Tn) { ... }
+... 状态机分支 ...
+final: AnmVm_ExecuteScript loop; state=3; prev=cur; TickTimer
+```
+**Player 结构体偏移**（calc/draw 共用，已验证）：
+- +0x16a20 isInUse, +0x16a28 duration, +0x16a30 timer.prev, +0x16a34 timer.subFrame, +0x16a38 timer.cur
+- +0x16a4c perBombState[0]（8 entries，stride **0x1428 字节 = 0x50a i32**）
+- +0x16a08 invulnTimer, +0x23f0/f4 moveSpeedMultDuringBomb, +0x2408 playerState(u8)
+- +0x930 posCenter(D3DXVECTOR3), +0x9dc..+0x9f8 bombRegionPos/Size/Dmg（0x20 stride）
+- perBombState entry 内：[0x000]active, [0x010]angle, [0x014/8/1c]spriteIdx/x/y, [0x1b8]AnmVm(base),
+  AnmVm 内 +0x8 currentAngle, +0x1c0 flags(DWORD), +0x1c8 posX, +0x1cc posY, +0x1d0 posZ, +0x230 delta(D3DXVECTOR3)
+**calc 依赖 extern**（已声明在 BombData.cpp，按地址用）：00433a90/42868d/4084f0/408610/4277a0/404f30/44b310/450d60/43958d/427b21/4418b0/44c930
+
+### BulletData（0%，结构阻塞）
+纯 .data 模块，无函数。**要 90% 必须先实现数据符号导出方案**：
+ExportDelinker 只导出 namespace 内**函数/数据符号的 body**。需把 g_BombData-style 表的 data labels
+放进 th07::BulletData namespace（Ghidra 里手动 Disassemble+CreateData+label，或扩展 ImportFromCsv 支持 data）。
+这是**方向性决策**，新会话先征询用户。
+
+### ItemManager（0%，orig obj 已导出）
+OnUpdate @ 0x432990（0x10c9 字节，switch 重度 item 行为机）。**单体巨型函数**，
+新会话需手动 ghidra 逐 case 反汇编（disassemble_function 权威），分 block 移植。
+参考 src/GameManager.cpp 的 CALL 密集大函数实现范本。
 
 ## 终止条件（遇硬阻塞才停）
 - 需重新导出 orig obj 且非自主可控
