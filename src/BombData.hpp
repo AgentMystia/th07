@@ -50,6 +50,33 @@ struct BombData
 {
     void (*calc)(Player *player);
     void (*draw)(Player *player);
+
+    // The 24 calc/draw callbacks (declared as static __fastcall so ECX=Player).
+    // Names follow config/mapping.csv; bodies are in BombData.cpp.
+    static void __fastcall ReimuCBombCalc(Player *p);
+    static void __fastcall ReimuCBombDraw(Player *p);
+    static void __fastcall ReimuABombCalc(Player *p);
+    static void __fastcall ReimuABombDraw(Player *p);
+    static void __fastcall MarisaABombCalc(Player *p);
+    static void __fastcall MarisaABombDraw(Player *p);
+    static void __fastcall MarisaBBombCalc(Player *p);
+    static void __fastcall MarisaBBombDraw(Player *p);
+    static void __fastcall SakuyaABombCalc(Player *p);
+    static void __fastcall SakuyaABombDraw(Player *p);
+    static void __fastcall SakuyaBBombCalc(Player *p);
+    static void __fastcall SakuyaBBombDraw(Player *p);
+    static void __fastcall ReimuBBombCalc(Player *p);
+    static void __fastcall ReimuBBombDraw(Player *p);
+    static void __fastcall YoumuABombCalc(Player *p);
+    static void __fastcall YoumuABombDraw(Player *p);
+    static void __fastcall ReimuABombCalc2(Player *p);
+    static void __fastcall ReimuABombDraw2(Player *p);
+    static void __fastcall YoumuBBombCalc(Player *p);
+    static void __fastcall YoumuBBombDraw(Player *p);
+    static void __fastcall MarisaABombCalc2(Player *p);
+    static void __fastcall MarisaABombDraw2(Player *p);
+    static void __fastcall SakuyaABombCalc2(Player *p);
+    static void __fastcall SakuyaABombDraw2(Player *p);
 };
 DIFFABLE_EXTERN_ARRAY(BombData, 12, g_BombData);
 }; // namespace th07

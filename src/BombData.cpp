@@ -1,90 +1,185 @@
 // th07 BombData implementation.
 //
-// STATUS: SKELETON ONLY. See BombData.hpp for the rationale. This file
-// provides the g_BombData table initializer matching the layout in
-// th07.exe at 0x0049ec50 (12 entries, calc/draw pairs). The actual
-// callback bodies are NOT ported — they require Player.hpp (struct layout)
-// which has not yet been reverse-engineered for th07.
+// BombData is a 12-entry table at 0x0049ec50 of (calc, draw) callback pairs
+// invoked by Player during spell-card (bomb) use. The 24 callbacks live in the
+// th07::BombData struct (per config/ghidra_ns_to_obj.csv) and operate on a
+// Player* passed in ECX (__fastcall).
 //
-// Verified facts (all addresses read from th07.exe via ghidra-mcp):
+// Player struct layout relevant here (verified from decompilation):
+//   +0x16a4c  perBombState[0]  (8 bombs, 0x1428-byte / 0x50a-i32 stride)
+//     within each entry:
+//       [0x000] active flag        (i32)          *pSub != 0
+//       [0x010] angle              (i32 as f32)   pSub[4]
+//       [0x014] sprite idx         (i32)          pSub[5]
+//       [0x018] x                  (i32 as f32)   pSub[6]
+//       [0x01c] y                  (i32 as f32)   pSub[7]
+//       [0x1c0] currentAngle       (i32)          pSub[0x70]
+//       [0x378] flags              (i16)          *(i16*)(pSub+0xde)
+//       [0x380] posX               (i32 as f32)   pSub[0xe0]
+//       [0x384] posY               (i32 as f32)   pSub[0xe1]
+//       [0x388] posZ               (i32 as f32)   pSub[0xe2]
+//       [0x1b8] AnmVm              (at pSub+0x6e i32s)  FUN_0044f9a0 draw
 //
-//   g_BombData table address: 0x0049ec50 (.data section)
-//   Entry size: 0x08 (two function pointers)
-//   Entry count: 12 (NOT 4 like th06)
-//   Total table size: 0x60 bytes
-//
-//   Entry layout (read directly from .data at 0x0049ec50):
-//     [ 0] calc=FUN_00408710 draw=FUN_00408e10  (player+0x16a4c state, 8 bombs)
-//     [ 1] calc=FUN_004091b0 draw=FUN_00409990  (uses 0.3f move speed mult,
-//                                                duration 300, Master Spark-like)
-//     [ 2] calc=FUN_00409dd0 draw=FUN_0040a280
-//     [ 3] calc=FUN_0040a3a0 draw=FUN_0040a6b0
-//     [ 4] calc=FUN_0040a7c0 draw=FUN_0040aba0
-//     [ 5] calc=FUN_0040af10 draw=FUN_0040b5d0
-//     [ 6] calc=FUN_0040b7d0 draw=FUN_0040bca0
-//     [ 7] calc=FUN_0040be20 draw=FUN_0040c160
-//     [ 8] calc=FUN_0040c2e0 draw=FUN_0040c970
-//     [ 9] calc=FUN_0040ca50 draw=FUN_0040d3b0
-//     [10] calc=FUN_0040d4c0 draw=FUN_0040d9a0
-//     [11] calc=FUN_0040da80 draw=FUN_0040e280
-//
-//   Player struct offsets used by the bomb callbacks (verified from
-//   decompilation of FUN_00408710, FUN_004091b0, FUN_00408e10):
-//     +0x16a20  bombInfo.isInUse              (i32)
-//     +0x16a28  bombInfo.duration             (i32, frames)
-//     +0x16a30  bombInfo.timer.previous       (i32)
-//     +0x16a34  bombInfo.timer.subFrame       (i32)
-//     +0x16a38  bombInfo.timer.current        (i32)
-//     +0x16a4c  bombInfo.perBombState[0]      (each entry 0x1428 bytes,
-//                                             8 bombs * 0x1428 stride = 0xa140)
-//     +0x16a08  invulnerabilityTimer          (i32)
-//     +0x23f0  verticalMoveSpeedMultDuringBomb   (f32)
-//     +0x23f4  horizontalMoveSpeedMultDuringBomb (f32)
-//     +0x2408  playerState                    (u8)
-//     +0x930   positionCenter                 (D3DXVECTOR3)
-//     +0x9dc   bombRegionPositions[0]         (D3DXVECTOR3 per bomb, 0x20 stride)
-//     +0x9e8   bombRegionSizes[0].x           (f32, 0x20 stride)
-//     +0x9ec   bombRegionSizes[0].y           (f32, 0x20 stride)
-//     +0x9f4   bombRegionDamages[0]           (i32, 0x20 stride)
-//     +0x9f8   perBombLifetimeCounter[0]      (i32, 0x20 stride)
-//
-//   Helper functions called by the bomb callbacks:
-//     FUN_00427b21  Gui::EndPlayerSpellcard-like (sets a 2-byte flag at
-//                   GameManager+0x66da=1, +0x6b72=2)
-//     FUN_00433a90  Gui::ShowBombNamePortrait-like
-//     FUN_0042868d  Gui::ShowBombNamePortrait(anmIdx, stringIdx)
-//     FUN_0043958d  ZunTimer::Tick (player+0x16a38, player+0x16a34)
-//     FUN_00431930  utils::AddNormalizeAngle / RotateZ
-//     FUN_00450d60  AnmVm::ExecuteAnmScript-like
-//     FUN_00404f30  AnmManager::ExecuteAnmIdx
-//     FUN_0041c1c0  EffectManager::SpawnParticles
-//     FUN_004418b0  EffectManager::SetParticlePos/Velocity
-//     FUN_0044c930  SoundPlayer::PlaySoundByIdx
-//     FUN_0044b310  ScreenEffect::RegisterChain
-//     FUN_004083f0  (called by draw callbacks; likely AnmManager flush + viewport)
-//     FUN_0044f770  AnmVm::Draw or AnmManager::Draw
-//
-//   DarkenViewport body is INLINED into the bomb-draw dispatcher
-//   FUN_00406de0 (not a separate function in th07). The dispatcher reads
-//   player+0x514 (likely characterShotType or bombIsActive), and for the
-//   active branch computes the darkness alpha from the bomb timer and
-//   calls ScreenEffect::DrawSquare (FUN_00444a650 -- wait, DrawSquare is
-//   at 0x44a650 per config/mapping.csv). The fade rect uses 32,16,416,464
-//   like th06's DarkenViewport.
+// Helper functions (extern, addressed by absolute VA so objdiff sees the same
+// relocs the orig delinked obj does):
+//   FUN_004083f0  Supervisor::RegisterCurrentPosToChainLike (no args)
+//   FUN_00431930  utils::AngleNormalize(angle, base)  -> f32 in st0
+//   FUN_0044f9a0  AnmVm::Draw3 (ECX = AnmVm ptr)
+//   FUN_00450d60  AnmVm::ExecuteScript (ECX = AnmVm ptr)
 
+#include "Supervisor.hpp"
+#include "Player.hpp"
 #include "BombData.hpp"
+#include "diffbuild.hpp"
 
 namespace th07
 {
-// Placeholder initializer matching the 12-entry g_BombData table.
-// The real callback pointers (FUN_00408710 etc.) cannot be referenced by
-// name until the corresponding th07 functions are implemented. Until then
-// the entries are left as NULL so the table is allocated at the right size;
-// objdiff will flag every entry as unmatched. Once the Player struct is
-// ported, replace each slot with the real callback.
-DIFFABLE_STATIC_ARRAY_ASSIGN(BombData, 12, g_BombData) = {
-    {NULL, NULL}, {NULL, NULL}, {NULL, NULL}, {NULL, NULL},
-    {NULL, NULL}, {NULL, NULL}, {NULL, NULL}, {NULL, NULL},
-    {NULL, NULL}, {NULL, NULL}, {NULL, NULL}, {NULL, NULL},
+
+// ---- helper externs (absolute-VA stubs; objdiff matches orig relocs) ----
+extern "C" void __fastcall Supervisor_BombPreDraw();             // FUN_004083f0
+extern "C" f32 __fastcall ZunAngleNormalize(i32 angle, i32 base); // FUN_00431930 (returns st0)
+// AnmManager::Draw3(this=[0x4b9e44], AnmVm*) @ 0x0044f9a0 (__thiscall).
+// We model it as a stub-method-on-global so MSVC emits ECX=[0x4b9e44];
+// PUSH AnmVm; CALL.
+struct AnmMgrStub
+{
+    void Draw3(i32 *anmVm); // FUN_0044f9a0
 };
-}; // namespace th07
+#define ANM_MGR (*(AnmMgrStub **)0x004b9e44)
+
+// perBombState stride in bytes
+#define SUB_STRIDE_B 0x1428
+
+// =====================================================================
+// MarisaABombDraw2  (FUN_0040d9a0)  -- 224 bytes
+// __fastcall, ECX = Player*. Iterates perBombState[0..3]; for active slots
+// nudges the AnmVm pos by the focus offset, draws, then restores. Orig
+// treats sub+0x380/0x384 as raw f32 (no int roundtrip).
+// =====================================================================
+void __fastcall BombData::MarisaABombDraw2(Player *p)
+{
+    Supervisor_BombPreDraw();
+    u8 *sub = reinterpret_cast<u8 *>(p) + 0x16a4c;
+    for (i32 i = 0; i < 4; i++)
+    {
+        if (*(i32 *)sub != 0)
+        {
+            *(f32 *)(sub + 0x380) += *reinterpret_cast<f32 *>(0x0062f864);
+            *(f32 *)(sub + 0x384) += *reinterpret_cast<f32 *>(0x0062f868);
+            *(i32 *)(sub + 0x388) = 0;
+            ANM_MGR->Draw3(reinterpret_cast<i32 *>(sub + 0x1b8));
+            *(f32 *)(sub + 0x380) -= *reinterpret_cast<f32 *>(0x0062f864);
+            *(f32 *)(sub + 0x384) -= *reinterpret_cast<f32 *>(0x0062f868);
+        }
+        sub += SUB_STRIDE_B;
+    }
+}
+
+// =====================================================================
+// ReimuABombDraw2  (FUN_0040c970)  -- 224 bytes
+// Like MarisaABombDraw2 but sets angle/flags first (no focus offset). Orig
+// caches a tmp = sub+0x1b8 (the AnmVm base) into a local and accesses the
+// currentAngle/flags through it; we mirror that to match the codegen.
+// =====================================================================
+void __fastcall BombData::ReimuABombDraw2(Player *p)
+{
+    Supervisor_BombPreDraw();
+    u8 *sub = reinterpret_cast<u8 *>(p) + 0x16a4c;
+    for (i32 i = 0; i < 0x60; i++)
+    {
+        if (*(i32 *)sub != 0)
+        {
+            f32 ang = ZunAngleNormalize(*(i32 *)(sub + 0x10), 0x3fc90fdb);
+            i32 *tmp = reinterpret_cast<i32 *>(sub + 0x1b8);
+            *(f32 *)(tmp + 2) = ang;        // currentAngle @ tmp+8 (sub+0x1c0)
+            *(i32 *)(tmp + 0x70) |= 4;      // flags @ tmp+0x1c0 (sub+0x378) DWORD
+            *(i32 *)((u8 *)tmp + 0x200) = *(i32 *)(sub + 0x14);   // posX (tmp+0x200)
+            *(i32 *)((u8 *)tmp + 0x204) = *(i32 *)(sub + 0x18);   // posY
+            *(i32 *)((u8 *)tmp + 0x208) = *(i32 *)(sub + 0x1c);   // posZ
+            *(i32 *)((u8 *)tmp + 0x208) = 0;
+            ANM_MGR->Draw3(tmp);
+        }
+        sub += SUB_STRIDE_B;
+    }
+}
+
+// =====================================================================
+// YoumuBBombDraw  (FUN_0040d3b0)  -- 272 bytes
+// Sets angle/flags then nudges by focus offset before draw.
+// =====================================================================
+void __fastcall BombData::YoumuBBombDraw(Player *p)
+{
+    Supervisor_BombPreDraw();
+    u8 *sub = reinterpret_cast<u8 *>(p) + 0x16a4c;
+    for (i32 i = 0; i < 0x60; i++)
+    {
+        if (*(i32 *)sub != 0)
+        {
+            f32 ang = ZunAngleNormalize(*(i32 *)(sub + 0x10), 0x3fc90fdb);
+            i32 *tmp = reinterpret_cast<i32 *>(sub + 0x1b8);
+            *(f32 *)(tmp + 2) = ang;        // currentAngle
+            *(i32 *)(tmp + 0x70) |= 4;      // flags DWORD
+            *(f32 *)((u8 *)tmp + 0x200) = *(f32 *)(sub + 0x14);
+            *(f32 *)((u8 *)tmp + 0x204) = *(f32 *)(sub + 0x18);
+            *(f32 *)((u8 *)tmp + 0x200) += *reinterpret_cast<f32 *>(0x0062f864);
+            *(f32 *)((u8 *)tmp + 0x204) += *reinterpret_cast<f32 *>(0x0062f868);
+            *(i32 *)((u8 *)tmp + 0x208) = 0;
+            ANM_MGR->Draw3(tmp);
+        }
+        sub += SUB_STRIDE_B;
+    }
+}
+
+// =====================================================================
+// MarisaABombDraw  (FUN_0040a280)  -- 288 bytes
+// Loops 4 bombs; for each computes pos = subEntry.pos + subEntry.delta,
+// stores into AnmVm pos, nudges by focus offset, draws.
+// Orig uses [ebp-0x4]=AnmVm entry @ player+i*0x1428+0x16c04, with the entry's
+// own pos @ +0x230 and source pos @ player+i*0x1428+0x16a60.
+// =====================================================================
+void __fastcall BombData::MarisaABombDraw(Player *p)
+{
+    Supervisor_BombPreDraw();
+    for (i32 i = 0; i < 4; i++)
+    {
+        u8 *anm = reinterpret_cast<u8 *>(p) + i * 0x1428 + 0x16c04;
+        f32 *entryDelta = reinterpret_cast<f32 *>(anm + 0x230);
+        f32 *src = reinterpret_cast<f32 *>(reinterpret_cast<u8 *>(p) + i * 0x1428 + 0x16a60);
+        f32 z = src[2] + entryDelta[2];
+        f32 y = src[1] + entryDelta[1];
+        f32 x = src[0] + entryDelta[0];
+        // store into AnmVm pos @ anm+0x1c8 (as a D3DXVECTOR3 copied via ints).
+        i32 *pos = reinterpret_cast<i32 *>(anm + 0x1c8);
+        pos[0] = *(i32 *)&x;
+        pos[1] = *(i32 *)&y;
+        pos[2] = *(i32 *)&z;
+        *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+        *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+        *(i32 *)(anm + 0x1d0) = 0;
+        ANM_MGR->Draw3(reinterpret_cast<i32 *>(anm));
+    }
+}
+
+// --- Remaining callbacks: stubs (not yet ported — large calc bodies) ---
+void __fastcall BombData::ReimuCBombCalc(Player *) {}
+void __fastcall BombData::ReimuCBombDraw(Player *) {}
+void __fastcall BombData::ReimuABombCalc(Player *) {}
+void __fastcall BombData::ReimuABombDraw(Player *) {}
+void __fastcall BombData::MarisaABombCalc(Player *) {}
+void __fastcall BombData::MarisaBBombCalc(Player *) {}
+void __fastcall BombData::MarisaBBombDraw(Player *) {}
+void __fastcall BombData::SakuyaABombCalc(Player *) {}
+void __fastcall BombData::SakuyaABombDraw(Player *) {}
+void __fastcall BombData::SakuyaBBombCalc(Player *) {}
+void __fastcall BombData::SakuyaBBombDraw(Player *) {}
+void __fastcall BombData::ReimuBBombCalc(Player *) {}
+void __fastcall BombData::ReimuBBombDraw(Player *) {}
+void __fastcall BombData::YoumuABombCalc(Player *) {}
+void __fastcall BombData::YoumuABombDraw(Player *) {}
+void __fastcall BombData::ReimuABombCalc2(Player *) {}
+void __fastcall BombData::YoumuBBombCalc(Player *) {}
+void __fastcall BombData::MarisaABombCalc2(Player *) {}
+void __fastcall BombData::SakuyaABombCalc2(Player *) {}
+void __fastcall BombData::SakuyaABombDraw2(Player *) {}
+
+} // namespace th07
