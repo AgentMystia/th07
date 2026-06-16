@@ -139,6 +139,9 @@ extern "C" char g_DAT_62f85c[];   // some counter
 // DAT_ extern variables matching orig delinked obj reloc symbol names.
 // These are declared as extern "C" char arrays so MSVC generates dir32 relocs.
 // The demangle script strips the leading underscore, producing DAT_00575a68 etc.
+extern "C" char DAT_00497230[];
+extern "C" char DAT_00497228[];
+extern "C" char DAT_0135e29c[];
 extern "C" char DAT_00575a68[];   // config struct base
 extern "C" char DAT_00575a9c[];   // cfg opts
 extern "C" char DAT_00624210[];
@@ -338,44 +341,44 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
     anm8 = *(u8 **)0x004b9e44; *(u32 *)(anm8 + 0x4) = 0; *(u32 *)(anm8 + 0x0) = 0x80808080;
     *(f32 *)(*(u8 **)0x004b9e44 + 0x1c) = 0.0f;
     *(f32 *)(*(u8 **)0x004b9e44 + 0x18) = 0.0f;
-    *(u8 *)0x00575c0c = 0xff;
-    if (*(void **)0x004bda94 != 0)
+    *(u8 *)&DAT_00575c0c = 0xff;
+    if (*(void **)&DAT_004bda94 != 0)
     {
         CStreamingSound_UpdateFadeOut();
     }
 
-    if (*(i8 *)0x0062627d == 0)
+    if (*(i8 *)&DAT_0062627d == 0)
     {
-        *(u16 *)0x004b9e54 = *(u16 *)0x004b9e4c;
-        *(u16 *)0x004b9e4c = Controller_GetInput();
-        *(u16 *)0x004b9e5c = 0;
-        if (*(u16 *)0x004b9e54 == *(u16 *)0x004b9e4c)
+        *(u16 *)&DAT_004b9e54 = *(u16 *)&DAT_004b9e4c;
+        *(u16 *)&DAT_004b9e4c = Controller_GetInput();
+        *(u16 *)&DAT_004b9e5c = 0;
+        if (*(u16 *)&DAT_004b9e54 == *(u16 *)&DAT_004b9e4c)
         {
-            if (0x1e <= *(u16 *)0x004b9e60)
+            if (0x1e <= *(u16 *)&DAT_004b9e60)
             {
-                *(u16 *)0x004b9e5c = (u16)(*(u16 *)0x004b9e60 % 8 == 0);
-                if (0x26 < *(u16 *)0x004b9e60)
+                *(u16 *)&DAT_004b9e5c = (u16)(*(u16 *)&DAT_004b9e60 % 8 == 0);
+                if (0x26 < *(u16 *)&DAT_004b9e60)
                 {
-                    *(u16 *)0x004b9e60 = 0x1e;
+                    *(u16 *)&DAT_004b9e60 = 0x1e;
                 }
             }
-            *(u16 *)0x004b9e60 = *(u16 *)0x004b9e60 + 1;
+            *(u16 *)&DAT_004b9e60 = *(u16 *)&DAT_004b9e60 + 1;
         }
         else
         {
-            *(u16 *)0x004b9e60 = 0;
+            *(u16 *)&DAT_004b9e60 = 0;
         }
     }
     else
     {
-        *(u16 *)0x004b9e4c = *(u16 *)0x004b9e4c | Controller_GetInput();
+        *(u16 *)&DAT_004b9e4c = *(u16 *)&DAT_004b9e4c | Controller_GetInput();
     }
 
     s->wantedState2 = s->wantedState;
     if (s->wantedState != s->curState)
     {
         wanted = s->wantedState;
-        Supervisor_LogStr1((char *)0x497230, s->wantedState, s->curState);
+        Supervisor_LogStr1((char *)&DAT_00497230, s->wantedState, s->curState);
 
         switch (wanted)
         {
@@ -462,7 +465,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                 switch (cur2)
                 {
                 case 9:
-                    ((i32 *)0x62f52c)[*(i32 *)0x00626280 * 0xb]++;
+                    ((i32 *)&DAT_0062f52c)[*(i32 *)&DAT_00626280 * 0xb]++;
                     GameManager::CutChain();
                     if (MainMenu_RegisterChain() != 0)
                     {
@@ -471,13 +474,13 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                     break;
                 case 0xa:
                     GameManager::CutChain();
-                    if ((*(u32 *)0x0062f648 & 1) == 0 && *(i32 *)0x00626280 < 4)
+                    if ((*(u32 *)&DAT_0062f648 & 1) == 0 && *(i32 *)&DAT_00626280 < 4)
                     {
-                        *(i32 *)0x0062f85c = 0;
+                        *(i32 *)&DAT_0062f85c = 0;
                     }
                     else
                     {
-                        *(i32 *)0x0062f85c = *(i32 *)0x0062f85c - 1;
+                        *(i32 *)&DAT_0062f85c = *(i32 *)&DAT_0062f85c - 1;
                     }
                     Supervisor_ChainReleaseAll(0, 0);
                     if (GameManager::RegisterChain() != 0)
@@ -487,9 +490,9 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                     s->curState = 2;
                     break;
                 case 0xb:
-                    *(i32 *)0x00575aa8 = 3;
+                    *(i32 *)&DAT_00575aa8 = 3;
                     GameManager::CutChain();
-                    *(i32 *)0x0062f85c = *(i32 *)0x0062f85c - 1;
+                    *(i32 *)&DAT_0062f85c = *(i32 *)&DAT_0062f85c - 1;
                     if (GameManager::RegisterChain() != 0)
                     {
                         return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
@@ -497,7 +500,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                     s->curState = 2;
                     break;
                 case 0xc:
-                    *(i32 *)0x00575aa8 = 3;
+                    *(i32 *)&DAT_00575aa8 = 3;
                     GameManager::CutChain();
                     if (GameManager::RegisterChain() != 0)
                     {
@@ -569,16 +572,16 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             break;
         }
 
-        *(u16 *)0x004b9e5c = 0;
-        *(u16 *)0x004b9e54 = 0;
-        *(u16 *)0x004b9e4c = 0;
+        *(u16 *)&DAT_004b9e5c = 0;
+        *(u16 *)&DAT_004b9e54 = 0;
+        *(u16 *)&DAT_004b9e4c = 0;
     }
 
     s->wantedState = s->curState;
     s->calcCount++;
     if (s->calcCount % 4000 == 3999)
     {
-        if (Supervisor_AutosaveScore((char *)0x497228, *(i32 *)0x00575c14, *(i32 *)0x00575c10) != 0)
+        if (Supervisor_AutosaveScore((char *)&DAT_00497228, *(i32 *)&DAT_00575c14, *(i32 *)&DAT_00575c10) != 0)
         {
             return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
         }
@@ -667,64 +670,64 @@ void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
 {
     i32 now;
     f32 frameTime, frameTimeSec, fps, base;
-    if (*(i8 *)0x0062627d != 0) // g_NoFpsCounter (replay mode)
+    if (*(i8 *)&DAT_0062627d != 0) // g_NoFpsCounter (replay mode)
     {
         goto end_block_check_draw;
     }
 
-    *(i32 *)0x0135e1f0 = *(i32 *)0x0135e1f0 + (i32)*(u8 *)0x00575a8b + 1;
+    *(i32 *)&DAT_0135e1f0 = *(i32 *)&DAT_0135e1f0 + (i32)*(u8 *)&DAT_00575a8b + 1;
 
-    if (*(i32 *)0x00575bbc == 0)
+    if (*(i32 *)&DAT_00575bbc == 0)
     {
         // timeGetTime path
-        if ((*(i32 *)0x0135e2a4 & 1) == 0)
+        if ((*(i32 *)&DAT_0135e2a4 & 1) == 0)
         {
-            *(i32 *)0x0135e2a4 = *(i32 *)0x0135e2a4 | 1;
-            *(i32 *)0x0135e2a0 = timeGetTime();
+            *(i32 *)&DAT_0135e2a4 = *(i32 *)&DAT_0135e2a4 | 1;
+            *(i32 *)&DAT_0135e2a0 = timeGetTime();
         }
         now = timeGetTime();
-        if (now < *(i32 *)0x0135e2a0)
+        if (now < *(i32 *)&DAT_0135e2a0)
         {
-            *(i32 *)0x0135e2a0 = now;
-            *(i32 *)0x0135e1f0 = 0;
+            *(i32 *)&DAT_0135e2a0 = now;
+            *(i32 *)&DAT_0135e1f0 = 0;
         }
-        if ((u32)(now - *(i32 *)0x0135e2a0) < 0x1f4)
+        if ((u32)(now - *(i32 *)&DAT_0135e2a0) < 0x1f4)
         {
             goto done_fps;
         }
-        frameTime = (f32)(i64)(now - *(i32 *)0x0135e2a0);
+        frameTime = (f32)(i64)(now - *(i32 *)&DAT_0135e2a0);
         frameTimeSec = frameTime / *reinterpret_cast<f32 *>(0x498ab8);
-        *(i32 *)0x0135e2a0 = now;
+        *(i32 *)&DAT_0135e2a0 = now;
     qpc_or_tgt_compute_fps:
         ; // label target shared with QPC path
-        fps = (f32)(i64)*(i32 *)0x0135e1f0 / frameTimeSec;
-        *(i32 *)0x0135e1f0 = 0;
+        fps = (f32)(i64)*(i32 *)&DAT_0135e1f0 / frameTimeSec;
+        *(i32 *)&DAT_0135e1f0 = 0;
         // sprintf(g_asciiStr1, "%.02ffps", fps)
         sprintf_th07((char *)0x135e0f0, (const char *)0x496fa0, (f64)fps);
-        if ((*(i32 *)0x0062f648 >> 2 & 1) == 0 || drawArg == 0)
+        if ((*(i32 *)&DAT_0062f648 >> 2 & 1) == 0 || drawArg == 0)
         {
             goto done_fps;
         }
         // slow-frame % accumulation
         base = *reinterpret_cast<f32 *>(0x498a48);
-        *(f32 *)0x00575ad4 = *(f32 *)0x00575ad4 + base;
+        *(f32 *)&DAT_00575ad4 = *(f32 *)&DAT_00575ad4 + base;
         if (base * *reinterpret_cast<f32 *>(0x498b20) > fps)
         {
-            *(f32 *)0x00575ad0 = *(f32 *)0x00575ad0 + base;
+            *(f32 *)&DAT_00575ad0 = *(f32 *)&DAT_00575ad0 + base;
         }
         else if (base * *reinterpret_cast<f32 *>(0x498b1c) > fps)
         {
-            *(f32 *)0x00575ad0 = base * *reinterpret_cast<f32 *>(0x498b18) + *(f32 *)0x00575ad0;
+            *(f32 *)&DAT_00575ad0 = base * *reinterpret_cast<f32 *>(0x498b18) + *(f32 *)&DAT_00575ad0;
         }
         else if (base * *reinterpret_cast<f32 *>(0x498a50) > fps)
         {
-            *(f32 *)0x00575ad0 = base * *reinterpret_cast<f32 *>(0x498aa0) + *(f32 *)0x00575ad0;
+            *(f32 *)&DAT_00575ad0 = base * *reinterpret_cast<f32 *>(0x498aa0) + *(f32 *)&DAT_00575ad0;
         }
         else
         {
-            *(f32 *)0x00575ad0 = base * *reinterpret_cast<f32 *>(0x498a50) + *(f32 *)0x00575ad0;
+            *(f32 *)&DAT_00575ad0 = base * *reinterpret_cast<f32 *>(0x498a50) + *(f32 *)&DAT_00575ad0;
         }
-        if ((*(i32 *)0x0062f648 >> 3 & 1) != 0)
+        if ((*(i32 *)&DAT_0062f648 >> 3 & 1) != 0)
         {
             // sprintf(g_asciiStr2, "%2d", FloatToI16(fps+0x498a50))
             sprintf_th07((char *)0x135dff0, (const char *)0x496f9c,
@@ -741,29 +744,29 @@ void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
     else
     {
         // QueryPerformanceCounter path
-        if (*(i32 *)0x0135e298 == 0)
+        if (*(i32 *)&DAT_0135e298 == 0)
         {
             QueryPerformanceCounter((LARGE_INTEGER *)0x0135e298);
         }
         i64 now;
         QueryPerformanceCounter((LARGE_INTEGER *)&now);
-        if (*(i32 *)((u8 *)&now + 0) < *(i32 *)0x0135e298)
+        if (*(i32 *)((u8 *)&now + 0) < *(i32 *)&DAT_0135e298)
         {
-            *(i32 *)0x0135e298 = *(i32 *)((u8 *)&now + 0);
-            *(i32 *)0x0135e29c = *(i32 *)((u8 *)&now + 4);
-            *(i32 *)0x0135e1f0 = 0;
+            *(i32 *)&DAT_0135e298 = *(i32 *)((u8 *)&now + 0);
+            *(i32 *)&DAT_0135e29c = *(i32 *)((u8 *)&now + 4);
+            *(i32 *)&DAT_0135e1f0 = 0;
         }
-        if ((u32)(*(i32 *)((u8 *)&now + 0) - *(i32 *)0x0135e298) <
-            (u32)(*(i32 *)0x0135e298 + (*(i32 *)0x00575bbc >> 1)))
+        if ((u32)(*(i32 *)((u8 *)&now + 0) - *(i32 *)&DAT_0135e298) <
+            (u32)(*(i32 *)&DAT_0135e298 + (*(i32 *)&DAT_00575bbc >> 1)))
         {
             goto end_block;
         }
-        frameTime = (f32)(i64)(*(i32 *)((u8 *)&now + 0) - *(i32 *)0x0135e298);
-        frameTimeSec = frameTime / (f32)(i64)*(i32 *)0x00575bbc;
-        *(i32 *)0x0135e298 = *(i32 *)((u8 *)&now + 0);
-        *(i32 *)0x0135e29c = *(i32 *)((u8 *)&now + 4);
-        *(i32 *)0x0135dfec = *(i32 *)0x0135dfec + 1;
-        if (*(i32 *)0x0135dfec % 8 == 0)
+        frameTime = (f32)(i64)(*(i32 *)((u8 *)&now + 0) - *(i32 *)&DAT_0135e298);
+        frameTimeSec = frameTime / (f32)(i64)*(i32 *)&DAT_00575bbc;
+        *(i32 *)&DAT_0135e298 = *(i32 *)((u8 *)&now + 0);
+        *(i32 *)&DAT_0135e29c = *(i32 *)((u8 *)&now + 4);
+        *(i32 *)&DAT_0135dfec = *(i32 *)&DAT_0135dfec + 1;
+        if (*(i32 *)&DAT_0135dfec % 8 == 0)
         {
             // Supervisor::TickTimer(supervisor+0x16a38, supervisor+0x16a34)
             // ECX = g_Supervisor @ 0x575950
