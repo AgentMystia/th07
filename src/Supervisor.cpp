@@ -753,12 +753,13 @@ end_block:
 #pragma optimize("s", off)
 // __cdecl, no args. supervisor singleton @ 0x00575950. g_Chain @ 0x00626218.
 // orig caches supervisor to [ebp-0xc] and uses AND/OR memory ops for zeroing.
-#pragma var_order(chain, supervisor)
+#pragma var_order(chain, calcResult, supervisor)
 // =====================================================================
 ZunResult Supervisor::RegisterChain()
 {
     Supervisor *supervisor;
     ChainElem *chain;
+    i32 calcResult;
 
     supervisor = (Supervisor *)0x00575950;
 #ifndef DIFFBUILD
@@ -781,9 +782,10 @@ ZunResult Supervisor::RegisterChain()
     chain->arg = supervisor;
     chain->addedCallback = (ChainAddedCallback)0;
     chain->deletedCallback = (ChainDeletedCallback)0;
-    if (g_Chain.AddToCalcChain(chain, 0) != 0)
+    calcResult = g_Chain.AddToCalcChain(chain, 0);
+    if (calcResult != 0)
     {
-        return ZUN_ERROR;
+        return (ZunResult)calcResult;
     }
 
     chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnDraw);
