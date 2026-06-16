@@ -52,6 +52,7 @@ extern const char TH_SCENE_FMT[];          // "scene %d -> %d\r\n"
 
 // ---- cross-module stubs (full impls land when those modules reverse) ----
 // Declared as extern C so MSVC emits a reloc CALL that objdiff tolerates.
+struct ReplayManager { static void SaveReplay(char *a, char *b); };
 // Forward-declared GameManager methods (avoids GameManager.hpp g_Supervisor conflict).
 // GameManager declared in GameManager.hpp
 // MainMenu/MusicRoom/Ending/ReplayManager via extern C.
@@ -63,7 +64,6 @@ extern "C" ZunResult __cdecl MainMenu_RegisterChain();            // FUN_0041e82
 extern "C" ZunResult __fastcall MusicRoom_RegisterChain(i32 b);   // FUN_0044a302 (ECX=b)
 extern "C" ZunResult __cdecl Ending_RegisterChain();              // FUN_0043b4db
 extern "C" ZunResult __fastcall ResultScreen_RegisterChain(i32 b);// FUN_0041c1b0
-extern "C" i32 __fastcall Supervisor_AutosaveScore(char *p1, i32 p2, i32 p3);       // FUN_0043a569 __thiscall: ECX=g_Supervisor, 3 stack args
 extern "C" void __fastcall SoundPlayer_StopStream(i32 cmd, i32 p, char *name); // FUN_0044d2f0
 extern "C" void __fastcall SoundPlayer_FadeOut(f32 seconds);      // FUN_00444c20
 extern "C" ZunResult __fastcall SoundPlayer_InitSoundBuffers();   // FUN_0044c7d0
@@ -80,7 +80,6 @@ extern "C" void __fastcall MidiOutput_ClearTracks();              // FUN_0043670
 extern "C" ZunResult __fastcall MidiOutput_SetFadeOut(u32 ms);    // FUN_00436c90
 extern "C" void __fastcall CStreamingSound_UpdateFadeOut();       // FUN_0045dad0
 extern "C" i32 __fastcall GetPrivateProfileInt_th07(char *app, char *key, i32 def, char *file); // FUN_00431330
-extern "C" i32 __fastcall Supervisor_D3DDiscard(i32 mode);          // FUN_0045c5d0 (ECX=mode 0 or 1)
 extern "C" void __fastcall Supervisor_ChainReleaseAll(i32 ecxArg, i32 edxArg);          // FUN_00443da0 (XOR ECX,EDX before call)
 extern "C" void __fastcall Supervisor_SomePulseFlag();            // FUN_00404fe0 (used by EffectManager)
 // SetupDInput externs
@@ -90,20 +89,12 @@ extern "C" void __cdecl GameErrorContext_LogFmt2(void *ctx, char *fmt);         
 extern "C" i32 __fastcall Supervisor_EnumKeybdCallback(void *ref, void *dev); // FUN_0043832f
 extern "C" i32 __fastcall Supervisor_EnumJoysCallback(void *ref, void *dev); // FUN_0043836e
 // DeletedCallback / cleanup externs
-extern "C" void __fastcall Supervisor_SomeCleanup1();        // FUN_00437c39
-extern "C" void __fastcall Supervisor_ReleaseAnm0();         // FUN_0044e4e0 wrapper
-extern "C" void __fastcall Supervisor_MidiClearTracks();     // FUN_004365b0 (MidiOutput dtor step)
 extern "C" void __fastcall Supervisor_Cleanup2();            // FUN_00443da0 (ReplayManager release)
-extern "C" void __fastcall Supervisor_Cleanup3();            // FUN_0043227e
-extern "C" void __fastcall Supervisor_HeapFreeAll();         // FUN_0045f800
-extern "C" void __fastcall Supervisor_SomeCleanup4();        // FUN_004378f0
-extern "C" void __fastcall Supervisor_SomeCleanup5();        // FUN_00438fef
 extern "C" void *_free_th07(void *p);                         // _free wrapper
 // LoadConfig externs
 extern "C" void *__fastcall Supervisor_ReadConfigBuffer(char *configPath, i32 flag);    // FUN_00431330 __fastcall: ECX=configPath, EDX=flag
 extern "C" void __cdecl GameErrorContext_LogFmt3(void *ctx, char *fmt, char *arg);   // FUN_00431730 __cdecl (3 stack args)
 extern "C" i32 __fastcall Supervisor_ValidateSize(i32 size); // FUN_00431540 (assert config struct size)
-extern "C" void __cdecl Supervisor_LogStr1(char *fmt, ...);          // FUN_00437903 (printf-style, __cdecl)
 
 // Global DAT_ addresses used by Supervisor naked asm functions.
 // Declared as extern so MSVC generates relocs matching the orig delinked obj.
@@ -378,7 +369,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
     if (s->wantedState != s->curState)
     {
         wanted = s->wantedState;
-        Supervisor_LogStr1((char *)&DAT_00497230, s->wantedState, s->curState);
+        Supervisor::DebugPrint((char *)&DAT_00497230, s->wantedState, s->curState);
 
         switch (wanted)
         {
@@ -428,10 +419,10 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                 case 7:
                     GameManager::CutChain();
                     s->curState = 0;
-                    Supervisor_ChainReleaseAll(0, 0);
+                    ReplayManager::SaveReplay((char*)0, (char*)0);
                     s->curState = 1;
                     (*(D3DDeviceStub **)0x00575958)[0].lpVtbl->Reset((*(D3DDeviceStub **)0x00575958), 0);
-                    if (Supervisor_D3DDiscard(1) != 0)
+                    if (Supervisor::D3DDiscard(1) != 0)
                     {
                         return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     }
@@ -441,7 +432,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                 case 1:
                     GameManager::CutChain();
                     s->curState = 0;
-                    Supervisor_ChainReleaseAll(0, 0);
+                    ReplayManager::SaveReplay((char*)0, (char*)0);
                     goto reinit_mainmenu_d3d;
                 case 3:
                     GameManager::CutChain();
@@ -482,7 +473,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                     {
                         *(i32 *)&DAT_0062f85c = *(i32 *)&DAT_0062f85c - 1;
                     }
-                    Supervisor_ChainReleaseAll(0, 0);
+                    ReplayManager::SaveReplay((char*)0, (char*)0);
                     if (GameManager::RegisterChain() != 0)
                     {
                         return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
@@ -522,7 +513,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             reinit_mainmenu_d3d:
                 s->curState = 1;
                 (*(D3DDeviceStub **)0x00575958)[0].lpVtbl->Reset((*(D3DDeviceStub **)0x00575958), 0);
-                if (Supervisor_D3DDiscard(0) != 0)
+                if (Supervisor::D3DDiscard(0) != 0)
                 {
                     return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 }
@@ -534,11 +525,11 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             switch (cur6)
             {
             case -1:
-                Supervisor_ChainReleaseAll(0, 0);
+                ReplayManager::SaveReplay((char*)0, (char*)0);
                 return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
             case 1:
                 s->curState = 0;
-                Supervisor_ChainReleaseAll(0, 0);
+                ReplayManager::SaveReplay((char*)0, (char*)0);
                 goto reinit_mainmenu_d3d;
             }
             break;
@@ -581,7 +572,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
     s->calcCount++;
     if (s->calcCount % 4000 == 3999)
     {
-        if (Supervisor_AutosaveScore((char *)&DAT_00497228, *(i32 *)&DAT_00575c14, *(i32 *)&DAT_00575c10) != 0)
+        if (Supervisor::AutosaveScore((char *)&DAT_00497228, *(i32 *)&DAT_00575c14, *(i32 *)&DAT_00575c10) != 0)
         {
             return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
         }
@@ -1672,7 +1663,7 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     if (f2 == (HANDLE)-1)
     {
         *(u8 *)((DAT_00575a68 + 0x1f)) = 2;
-        Supervisor_LogStr1((char *)&DAT_00496ebc);
+        Supervisor::DebugPrint((char *)&DAT_00496ebc);
     }
     else
     {
