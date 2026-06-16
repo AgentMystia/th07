@@ -206,6 +206,12 @@ extern "C" char DAT_00498ab8[];
 extern "C" char DAT_00498a4c[];
 extern "C" char DAT_00498a54[];
 extern "C" char DAT_00575968[];
+extern "C" char DAT_00498a48[];
+extern "C" char DAT_00498a50[];
+extern "C" char DAT_00498aa0[];
+extern "C" char DAT_00498b18[];
+extern "C" char DAT_00498b1c[];
+extern "C" char DAT_00498b20[];
 extern "C" char DAT_00575c1c[];
 extern "C" char DAT_004bda94[];
 extern "C" char DAT_0062627d[];
@@ -703,7 +709,7 @@ void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
             goto done_fps;
         }
         frameTime = (f32)(i64)(now - *(i32 *)&DAT_0135e2a0);
-        frameTimeSec = frameTime / *reinterpret_cast<f32 *>(0x498ab8);
+        frameTimeSec = frameTime / *(f32 *)&DAT_00498ab8;
         *(i32 *)&DAT_0135e2a0 = now;
     qpc_or_tgt_compute_fps:
         ; // label target shared with QPC path
@@ -716,23 +722,23 @@ void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
             goto done_fps;
         }
         // slow-frame % accumulation
-        base = *reinterpret_cast<f32 *>(0x498a48);
+        base = *(f32 *)&DAT_00498a48;
         *(f32 *)&DAT_00575ad4 = *(f32 *)&DAT_00575ad4 + base;
-        if (base * *reinterpret_cast<f32 *>(0x498b20) > fps)
+        if (base * *(f32 *)&DAT_00498b20 > fps)
         {
             *(f32 *)&DAT_00575ad0 = *(f32 *)&DAT_00575ad0 + base;
         }
-        else if (base * *reinterpret_cast<f32 *>(0x498b1c) > fps)
+        else if (base * *(f32 *)&DAT_00498b1c > fps)
         {
-            *(f32 *)&DAT_00575ad0 = base * *reinterpret_cast<f32 *>(0x498b18) + *(f32 *)&DAT_00575ad0;
+            *(f32 *)&DAT_00575ad0 = base * *(f32 *)&DAT_00498b18 + *(f32 *)&DAT_00575ad0;
         }
-        else if (base * *reinterpret_cast<f32 *>(0x498a50) > fps)
+        else if (base * *(f32 *)&DAT_00498a50 > fps)
         {
-            *(f32 *)&DAT_00575ad0 = base * *reinterpret_cast<f32 *>(0x498aa0) + *(f32 *)&DAT_00575ad0;
+            *(f32 *)&DAT_00575ad0 = base * *(f32 *)&DAT_00498aa0 + *(f32 *)&DAT_00575ad0;
         }
         else
         {
-            *(f32 *)&DAT_00575ad0 = base * *reinterpret_cast<f32 *>(0x498a50) + *(f32 *)&DAT_00575ad0;
+            *(f32 *)&DAT_00575ad0 = base * *(f32 *)&DAT_00498a50 + *(f32 *)&DAT_00575ad0;
         }
         if ((*(i32 *)&DAT_0062f648 >> 3 & 1) != 0)
         {
@@ -742,7 +748,7 @@ void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
         }
         else
         {
-            *(i16 *)0x00575ad8 = FloatToI16(fps + *reinterpret_cast<f32 *>(0x498a50));
+            *(i16 *)0x00575ad8 = FloatToI16(fps + *(f32 *)&DAT_00498a50);
             sprintf_th07((char *)0x135dff0, (const char *)0x496f9c,
                          (i32)*(i16 *)0x00575ad8);
         }
