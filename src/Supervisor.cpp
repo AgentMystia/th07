@@ -1568,11 +1568,11 @@ ZunResult Supervisor::LoadConfig(char *configPath)
                 return ZUN_ERROR;
             }
         }
-        if (*(u8 *)(DAT_00575a68 + 0x1c) < 5 && *(u8 *)(DAT_00575a68 + 0x1d) < 4 && *(u8 *)0x00575a86 < 2 &&
-            *(u8 *)0x00575a87 < 3 && *(u8 *)0x00575a89 < 6 && *(u8 *)0x00575a88 < 2 &&
-            *(u8 *)0x00575a8a < 2 && *(u8 *)0x00575a8b < 3 && *(u8 *)0x00575a8c < 3 &&
-            *(u8 *)0x00575a8d < 2 && *(u8 *)0x00575a8e < 2 &&
-            *(u32 *)0x00575a7c == 0x70002 && *(u32 *)0x004b9e64 == 0x38)
+        if (*(u8 *)(DAT_00575a68 + 0x1c) < 5 && *(u8 *)(DAT_00575a68 + 0x1d) < 4 && *(u8 *)((DAT_00575a68 + 0x1e)) < 2 &&
+            *(u8 *)((DAT_00575a68 + 0x1f)) < 3 && *(u8 *)((DAT_00575a68 + 0x21)) < 6 && *(u8 *)((DAT_00575a68 + 0x20)) < 2 &&
+            *(u8 *)((DAT_00575a68 + 0x22)) < 2 && *(u8 *)((DAT_00575a68 + 0x23)) < 3 && *(u8 *)((DAT_00575a68 + 0x24)) < 3 &&
+            *(u8 *)((DAT_00575a68 + 0x25)) < 2 && *(u8 *)((DAT_00575a68 + 0x26)) < 2 &&
+            *(u32 *)((DAT_00575a68 + 0x14)) == 0x70002 && *(u32 *)0x004b9e64 == 0x38)
         {
             goto apply_opts;
         }
@@ -1581,14 +1581,14 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     // Defaults.
     *(u8 *)(DAT_00575a68 + 0x1c) = 2;
     *(u8 *)(DAT_00575a68 + 0x1d) = 3;
-    *(u8 *)0x00575a86 = 0xff;
-    *(u32 *)0x00575a7c = 0x70002;
-    *(i16 *)0x00575a80 = 600;
-    *(i16 *)0x00575a82 = 600;
+    *(u8 *)((DAT_00575a68 + 0x1e)) = 0xff;
+    *(u32 *)((DAT_00575a68 + 0x14)) = 0x70002;
+    *(i16 *)((DAT_00575a68 + 0x18)) = 600;
+    *(i16 *)((DAT_00575a68 + 0x1a)) = 600;
     f2 = CreateFileA("./thbgm.dat", 0x80000000, 1, 0, 3, 0x8000080, 0);
     if (f2 == (HANDLE)-1)
     {
-        *(u8 *)0x00575a87 = 2;
+        *(u8 *)((DAT_00575a68 + 0x1f)) = 2;
         Supervisor_LogStr1((char *)0x00496ebc);
     }
     else
@@ -1601,24 +1601,24 @@ ZunResult Supervisor::LoadConfig(char *configPath)
             GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c20);
             return ZUN_ERROR;
         }
-        *(u8 *)0x00575a87 = 1;
+        *(u8 *)((DAT_00575a68 + 0x1f)) = 1;
     }
-    *(u8 *)0x00575a88 = 1;
-    *(u8 *)0x00575a89 = 1;
-    *(u8 *)0x00575a8a = 0;
-    *(u8 *)0x00575a8b = 0;
+    *(u8 *)((DAT_00575a68 + 0x20)) = 1;
+    *(u8 *)((DAT_00575a68 + 0x21)) = 1;
+    *(u8 *)((DAT_00575a68 + 0x22)) = 0;
+    *(u8 *)((DAT_00575a68 + 0x23)) = 0;
     // Default keymap copy: orig inlines movsd x4 + movsw (18 bytes).
     memcpy((void *)DAT_00575a68, (void *)0x0049ee40, 0x12);
-    *(u8 *)0x00575a8c = 2;
-    *(u8 *)0x00575a8d = 0;
-    *(u8 *)0x00575a8e = 1;
+    *(u8 *)((DAT_00575a68 + 0x24)) = 2;
+    *(u8 *)((DAT_00575a68 + 0x25)) = 0;
+    *(u8 *)((DAT_00575a68 + 0x26)) = 1;
 apply_opts:
-    *(u32 *)0x00575a9c |= 1;
+    *(u32 *)((DAT_00575a68 + 0x34)) |= 1;
     *(u32 *)0x0049ee40 = *(u32 *)DAT_00575a68;
-    *(u32 *)0x0049ee44 = *(u32 *)0x00575a6c;
-    *(u32 *)0x0049ee48 = *(u32 *)0x00575a70;
-    *(u32 *)0x0049ee4c = *(u32 *)0x00575a74;
-    *(u32 *)0x0049ee50 = *(u32 *)0x00575a78;
+    *(u32 *)0x0049ee44 = *(u32 *)((DAT_00575a68 + 0x4));
+    *(u32 *)0x0049ee48 = *(u32 *)((DAT_00575a68 + 0x8));
+    *(u32 *)0x0049ee4c = *(u32 *)((DAT_00575a68 + 0xc));
+    *(u32 *)0x0049ee50 = *(u32 *)((DAT_00575a68 + 0x10));
     if ((*(u32 *)((u8 *)this + 0x14c) >> 1 & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496e64);
@@ -1676,7 +1676,7 @@ apply_opts:
     if ((*(u32 *)((u8 *)this + 0x14c) >> 0xe & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c98);
-        *(u32 *)0x00575abc = 1;
+        *(u32 *)((DAT_00575a68 + 0x54)) = 1;
     }
     if (Supervisor_ValidateSize(0x38) == 0)
     {
