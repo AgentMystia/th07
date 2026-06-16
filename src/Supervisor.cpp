@@ -53,8 +53,8 @@ extern const char TH_SCENE_FMT[];          // "scene %d -> %d\r\n"
 // Declared as extern C so MSVC emits a reloc CALL that objdiff tolerates.
 extern "C" u16 __fastcall Controller_GetInput();                  // FUN_00430b50
 extern "C" void __fastcall DebugPrint_th(const char *fmt, ...);         // FUN_0045e4f0
-extern "C" ZunResult __cdecl GameManager_RegisterChain();         // FUN_0042f3c5
-extern "C" void __cdecl GameManager_CutChain();                   // FUN_0042f45d
+// GameManager is mapped in mapping.csv -> orig reloc is th07::GameManager::RegisterChain.
+struct GameManager { static ZunResult RegisterChain(); static void CutChain(); };
 extern "C" ZunResult __cdecl MainMenu_RegisterChain();            // FUN_0041e820
 extern "C" ZunResult __fastcall MusicRoom_RegisterChain(i32 b);   // FUN_0044a302 (ECX=b)
 extern "C" ZunResult __cdecl Ending_RegisterChain();              // FUN_0043b4db
@@ -329,7 +329,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             case -1:
                 return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
             case 2:
-                if (GameManager_RegisterChain() != 0)
+                if (GameManager::RegisterChain() != 0)
                 {
                     return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 }
@@ -349,7 +349,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                 }
                 break;
             case 9:
-                GameManager_CutChain();
+                GameManager::CutChain();
                 if (MainMenu_RegisterChain() != 0)
                 {
                     return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
@@ -364,7 +364,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                 switch (cur2)
                 {
                 case 7:
-                    GameManager_CutChain();
+                    GameManager::CutChain();
                     s->curState = 0;
                     Supervisor_ChainReleaseAll(0, 0);
                     s->curState = 1;
@@ -377,20 +377,20 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                 case -1:
                     return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 case 1:
-                    GameManager_CutChain();
+                    GameManager::CutChain();
                     s->curState = 0;
                     Supervisor_ChainReleaseAll(0, 0);
                     goto reinit_mainmenu_d3d;
                 case 3:
-                    GameManager_CutChain();
-                    if (GameManager_RegisterChain() != 0)
+                    GameManager::CutChain();
+                    if (GameManager::RegisterChain() != 0)
                     {
                         return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     }
                     s->curState = 2;
                     break;
                 case 6:
-                    GameManager_CutChain();
+                    GameManager::CutChain();
                     if (MusicRoom_RegisterChain(1) != 0)
                     {
                         return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
@@ -404,14 +404,14 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                 {
                 case 9:
                     ((i32 *)0x62f52c)[*(i32 *)0x00626280 * 0xb]++;
-                    GameManager_CutChain();
+                    GameManager::CutChain();
                     if (MainMenu_RegisterChain() != 0)
                     {
                         return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     }
                     break;
                 case 0xa:
-                    GameManager_CutChain();
+                    GameManager::CutChain();
                     if ((*(u32 *)0x0062f648 & 1) == 0 && *(i32 *)0x00626280 < 4)
                     {
                         *(i32 *)0x0062f85c = 0;
@@ -421,7 +421,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                         *(i32 *)0x0062f85c = *(i32 *)0x0062f85c - 1;
                     }
                     Supervisor_ChainReleaseAll(0, 0);
-                    if (GameManager_RegisterChain() != 0)
+                    if (GameManager::RegisterChain() != 0)
                     {
                         return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     }
@@ -429,9 +429,9 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                     break;
                 case 0xb:
                     *(i32 *)0x00575aa8 = 3;
-                    GameManager_CutChain();
+                    GameManager::CutChain();
                     *(i32 *)0x0062f85c = *(i32 *)0x0062f85c - 1;
-                    if (GameManager_RegisterChain() != 0)
+                    if (GameManager::RegisterChain() != 0)
                     {
                         return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     }
@@ -439,8 +439,8 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                     break;
                 case 0xc:
                     *(i32 *)0x00575aa8 = 3;
-                    GameManager_CutChain();
-                    if (GameManager_RegisterChain() != 0)
+                    GameManager::CutChain();
+                    if (GameManager::RegisterChain() != 0)
                     {
                         return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     }
