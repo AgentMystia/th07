@@ -1005,22 +1005,24 @@ struct DInputDevStub
     i32 SetProperty(void *prop, void *data);                  // +0x34
     i32 Release();                                            // +0x8
 };
+#pragma var_order(hinst, s_save)
 ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
 {
-    i32 hinst = GetWindowLongA(*(HWND *)((u8 *)s + 0x44), -6);
+    i32 hinst;
+    Supervisor *s_save;
+    s_save = s;
+    hinst = GetWindowLongA(*(HWND *)((u8 *)s + 0x44), -6);
     if ((*(u32 *)((u8 *)s + 0x14c) >> 0xb & 1) != 0)
     {
         return ZUN_ERROR;
     }
-    i32 r = DirectInput8Create_th07(hinst, 0x800, (void *)0x004904a8, (void **)((u8 *)s + 0xc), 0);
-    if (r < 0)
+    if (DirectInput8Create_th07(hinst, 0x800, (void *)0x004904a8, (void **)((u8 *)s + 0xc), 0) < 0)
     {
         *(void **)((u8 *)s + 0xc) = 0;
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00497208);
         return ZUN_ERROR;
     }
-    r = (*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->CreateDevice((void *)0x00490408, (void **)((u8 *)s + 0x10), 0);
-    if (r < 0)
+    if ((*(DInputStub **)*(u32 *)((u8 *)s + 0xc))->CreateDevice((void *)0x00490408, (void **)((u8 *)s + 0x10), 0) < 0)
     {
         if (*(void **)((u8 *)s + 0xc) != 0)
         {
@@ -1030,8 +1032,7 @@ ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00497208);
         return ZUN_ERROR;
     }
-    r = (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->SetDataFormat((void *)0x0048d674);
-    if (r < 0)
+    if ((*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->SetDataFormat((void *)0x0048d674) < 0)
     {
         if (*(void **)((u8 *)s + 0x10) != 0)
         {
@@ -1046,8 +1047,7 @@ ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x004971d8);
         return ZUN_ERROR;
     }
-    r = (*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->SetCooperativeLevel(*(HWND *)((u8 *)s + 0x44), 0x16);
-    if (r < 0)
+    if ((*(DInputDevStub **)*(u32 *)((u8 *)s + 0x10))->SetCooperativeLevel(*(HWND *)((u8 *)s + 0x44), 0x16) < 0)
     {
         if (*(void **)((u8 *)s + 0x10) != 0)
         {
@@ -1076,7 +1076,6 @@ ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
     }
     return ZUN_SUCCESS;
 }
-
 #pragma optimize("s", off)
 #pragma optimize("s", on)
 
