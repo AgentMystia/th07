@@ -53,7 +53,7 @@ i32 __fastcall CMyFont::Clean()
 #pragma optimize("s", off)
 #pragma optimize("s", on)
 
-i32 __fastcall CMyFont::Init(i32 w, i32 h, i32 format)
+i32 CMyFont::Init(i32 w, i32 h, i32 format)
 {
     this->Clean();
     BITMAPINFO bi;
