@@ -93,6 +93,14 @@ extern "C" void __fastcall Supervisor_HeapFreeAll();         // FUN_0045f800
 extern "C" void __fastcall Supervisor_SomeCleanup4();        // FUN_004378f0
 extern "C" void __fastcall Supervisor_SomeCleanup5();        // FUN_00438fef
 extern "C" void *_free_th07(void *p);                         // _free wrapper
+// LoadConfig externs
+extern "C" void *__fastcall Supervisor_ReadConfigBuffer();    // FUN_00431330 (reads th07.cfg into heap)
+extern "C" void __fastcall GameErrorContext_LogFmt3(void *ctx, char *fmt, char *arg); // FUN_00431730
+extern "C" i32 __fastcall Supervisor_ValidateSize(i32 size); // FUN_00431540 (assert config struct size)
+extern "C" void __fastcall Supervisor_LogStr1(char *s);      // FUN_00437903 (1 string arg)
+extern "C" HANDLE __fastcall CreateFileA_th07(char *path, u32 access, u32 share, void *sa, u32 disp, u32 flags, HANDLE tmpl);
+extern "C" i32 __fastcall ReadFile_th07(HANDLE f, void *buf, u32 n, u32 *read, void *ovl);
+extern "C" i32 __fastcall CloseHandle_th07(HANDLE h);
 
 // ---- thiscall callee stubs (ECX = singleton pointer) ----
 struct MidiOutput
@@ -749,12 +757,13 @@ ZunResult Supervisor::PlayAudio(i32 channel, char *path)
 // =====================================================================
 ZunResult Supervisor::PlayMidiFile(char *midiPath)
 {
+    MidiOutput *midi; // orig: function-scope local (allocates +0x4 in frame).
     if (MUSIC_MODE == MUSIC_MIDI)
     {
         // orig: check global != 0 first, THEN cache to local [ebp-0x10c].
         if (MIDI_OUTPUT_PTR != 0)
         {
-            MidiOutput *midi = MIDI_OUTPUT_PTR;
+            midi = MIDI_OUTPUT_PTR;
             midi->StopPlayback();
             midi->LoadFile(midiPath);
             midi->Play();
@@ -1004,6 +1013,188 @@ ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
         *(void **)0x00575a64 = 0;
     }
     return ZUN_SUCCESS;
+}
+
+#pragma optimize("s", off)
+#pragma optimize("s", on)
+
+// =====================================================================
+// Supervisor::LoadConfig  (FUN_004398b6)
+// __thiscall arg: char *configPath. ECX = Supervisor*.
+// Reads ./th07.cfg (FUN_00431330 returns heap buffer of 0x38 bytes), validates
+// the thbgm.dat header ("ZAV\1" + 0x700), range-checks config fields, applies
+// config to the global config block @ 0x575a68, and logs warnings for each set
+// "display option" bit in cfg.opts (+0x14c).
+// Globals verified from disasm: config struct @ 0x575a68 (0x38 bytes),
+// DAT_004b9e64 (must be 0x38), DAT_0049ee40..50 (5 dwords = default keymap),
+// DAT_00575abc (joystick present flag).
+// =====================================================================
+ZunResult Supervisor::LoadConfig(char *configPath)
+{
+    // Zero the config struct (0xe dwords = 0x38 bytes).
+    u32 *cfg = (u32 *)0x00575a68;
+    for (i32 i = 0xe; i != 0; i--)
+    {
+        *cfg = 0;
+        cfg++;
+    }
+    void *buf = Supervisor_ReadConfigBuffer();
+    if (buf == 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496f14);
+    }
+    else
+    {
+        u32 *src = (u32 *)buf;
+        u32 *dst = (u32 *)0x00575a68;
+        for (i32 i = 0xe; i != 0; i--)
+        {
+            *dst = *src;
+            src++;
+            dst++;
+        }
+        _free_th07(buf);
+        // Read thbgm.dat header (16 bytes).
+        i32 hdr[3];
+        u32 read1;
+        HANDLE f1 = CreateFileA_th07("./thbgm.dat", 0x80000000, 1, 0, 3, 0x8000080, 0);
+        if (f1 != (HANDLE)-1)
+        {
+            ReadFile_th07(f1, hdr, 0x10, &read1, 0);
+            CloseHandle_th07(f1);
+            if (hdr[0] != 0x5641575a || hdr[1] != 1 || hdr[2] != 0x700)
+            {
+                GameErrorContext_LogFmt3((void *)0x00624210, (char *)0x00496ee4, configPath);
+                GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c20);
+                return ZUN_ERROR;
+            }
+        }
+        // Range validation.
+        if (*(u8 *)0x00575a84 < 5 && *(u8 *)0x00575a85 < 4 && *(u8 *)0x00575a86 < 2 &&
+            *(u8 *)0x00575a87 < 3 && *(u8 *)0x00575a89 < 6 && *(u8 *)0x00575a88 < 2 &&
+            *(u8 *)0x00575a8a < 2 && *(u8 *)0x00575a8b < 3 && *(u8 *)0x00575a8c < 3 &&
+            *(u8 *)0x00575a8d < 2 && *(u8 *)0x00575a8e < 2 &&
+            *(u32 *)0x00575a7c == 0x70002 && *(u32 *)0x004b9e64 == 0x38)
+        {
+            goto apply_opts;
+        }
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496e88);
+    }
+    // Defaults.
+    *(u8 *)0x00575a84 = 2;
+    *(u8 *)0x00575a85 = 3;
+    *(u8 *)0x00575a86 = 0xff;
+    *(u32 *)0x00575a7c = 0x70002;
+    *(i16 *)0x00575a80 = 600;
+    *(i16 *)0x00575a82 = 600;
+    i32 hdr2[3];
+    u32 read2;
+    HANDLE f2 = CreateFileA_th07("./thbgm.dat", 0x80000000, 1, 0, 3, 0x8000080, 0);
+    if (f2 == (HANDLE)-1)
+    {
+        *(u8 *)0x00575a87 = 2;
+        Supervisor_LogStr1((char *)0x00496ebc);
+    }
+    else
+    {
+        ReadFile_th07(f2, hdr2, 0x10, &read2, 0);
+        CloseHandle_th07(f2);
+        if (hdr2[0] != 0x5641575a || hdr2[1] != 1 || hdr2[2] != 0x700)
+        {
+            GameErrorContext_LogFmt3((void *)0x00624210, (char *)0x00496ee4, configPath);
+            GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c20);
+            return ZUN_ERROR;
+        }
+        *(u8 *)0x00575a87 = 1;
+    }
+    *(u8 *)0x00575a88 = 1;
+    *(u8 *)0x00575a89 = 1;
+    *(u8 *)0x00575a8a = 0;
+    *(u8 *)0x00575a8b = 0;
+    *(u32 *)0x00575a68 = *(u32 *)0x0049ee40;
+    *(u32 *)0x00575a6c = *(u32 *)0x0049ee44;
+    *(u32 *)0x00575a70 = *(u32 *)0x0049ee48;
+    *(u32 *)0x00575a74 = *(u32 *)0x0049ee4c;
+    *(u32 *)0x00575a78 = *(u32 *)0x0049ee50;
+    *(u8 *)0x00575a8c = 2;
+    *(u8 *)0x00575a8d = 0;
+    *(u8 *)0x00575a8e = 1;
+apply_opts:
+    *(u32 *)0x00575a9c |= 1;
+    *(u32 *)0x0049ee40 = *(u32 *)0x00575a68;
+    *(u32 *)0x0049ee44 = *(u32 *)0x00575a6c;
+    *(u32 *)0x0049ee48 = *(u32 *)0x00575a70;
+    *(u32 *)0x0049ee4c = *(u32 *)0x00575a74;
+    *(u32 *)0x0049ee50 = *(u32 *)0x00575a78;
+    u32 opts = *(u32 *)((u8 *)this + 0x14c);
+    if ((opts >> 1 & 1) != 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496e64);
+    }
+    if ((opts >> 10 & 1) != 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496e48);
+    }
+    if ((opts >> 2 & 1) != 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496e20);
+    }
+    if ((opts >> 3 & 1) != 0 || (opts >> 4 & 1) != 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496dfc);
+    }
+    if ((opts >> 4 & 1) != 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496dd0);
+    }
+    if ((opts >> 5 & 1) != 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496da8);
+    }
+    if ((opts >> 6 & 1) != 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496d8c);
+    }
+    *(u32 *)((u8 *)this + 0x16c) = 0;
+    opts = opts & 0xffffff7f;
+    *(u32 *)((u8 *)this + 0x14c) = opts;
+    if ((opts >> 8 & 1) != 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496d6c);
+    }
+    if (*(i8 *)((u8 *)this + 0x13a) != 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496d4c);
+    }
+    if ((opts >> 9 & 1) != 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496d24);
+    }
+    if ((opts >> 0xb & 1) != 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496cec);
+    }
+    if ((opts >> 0xc & 1) != 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496cd0);
+    }
+    if ((opts >> 0xd & 1) != 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496cb0);
+    }
+    if ((opts >> 0xe & 1) != 0)
+    {
+        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c98);
+        *(u32 *)0x00575abc = 1;
+    }
+    i32 r = Supervisor_ValidateSize(0x38);
+    if (r == 0)
+    {
+        return ZUN_SUCCESS;
+    }
+    GameErrorContext_LogFmt3((void *)0x00624210, (char *)0x00496c78, configPath);
+    GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c20);
+    return ZUN_ERROR;
 }
 
 #pragma optimize("s", off)
