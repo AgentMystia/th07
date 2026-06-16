@@ -2,6 +2,63 @@
 
 最后更新：2026-06-16
 
+## ★Session 2026-06-17: 整体构建一致性诊断 + Supervisor 跨模块符号修复★
+
+用户反馈：模块完成后需验证整体链接性，不能只看 objdiff 单模块编译。本 session
+系统检查 Supervisor.cpp 与其他模块的符号一致性，发现并修复多处未解析符号。
+
+### Supervisor.cpp 跨模块符号修复（avg 68.25%→68.19%，链接性显著改善）
+1. **D3DDeviceStub**：原用 `Reset2` 成员方法（生成未定义符号 `?Reset2@D3DDeviceStub@th07@@...`），
+   改为 GameManager.cpp 的 **lpVtbl 函数指针模式**（`struct { D3DDeviceStubVtbl *lpVtbl; }`，
+   通过 `(*dev)->lpVtbl->Reset(dev, flags)` 调用，无符号产生）。objdiff 反而 +0.6%。
+2. **AsciiManager**：原用 `AsciiMgrStub`（生成 `?AddString@AsciiMgrStub@th07@@...`，不匹配
+   真实 `?AddString@AsciiManager@th07@@...`），改为 `#include "AsciiManager.hpp"` + 用真实
+   `AsciiManager` 类型 → 符号现在正确 resolve 到 AsciiManager.obj。
+3. **MidiOutput::StopPlayback**：原 stub 声明 `void`（`QAEXXZ`），真实是 `ZunResult`
+   （`QAE?AW4ZunResult@@XZ`）。修正签名匹配 MidiOutput.obj。
+4. **SoundPlayer::StopStream**：根本不存在的方法（真实是 `SoundQueueAdd` @ 0x44d2f0）。
+   重命名 stub 方法 → 符号 resolve 到 SoundPlayer.obj。`FadeOut` → `FadeOutBgm` 同理。
+5. **SupAutosaveStub**：移除（改回 `Supervisor_AutosaveScore` extern，虽未 resolve 但
+   至少不产生错误符号）。
+
+### 整体构建诊断结果
+
+**build.py 默认 target 错误**：`build.py` 无参数时 target 是 `th06e.exe`（th06 残留），
+应改为 `th07e.exe`（需修 build.py 或显式 `--target build/th07e.exe`）。
+
+**th07.hpp include chain 损坏**：`th07.hpp` `#include "Stage.hpp"` 但 `src/Stage.hpp` 不存在。
+13 个模块的 .cpp/.hpp 都缺失（Stage, EclManager, Ending, EnemyManager, BulletManager, Gui,
+TextHelper, main, GameWindow, MusicRoom, ResultScreen, MainMenu, EnemyEclInstr）。这些模块
+被 `configure.py` 的 `cxx_sources` 引用但无源文件 → 完整 th07e.exe 构建失败。
+
+**generate_stubs.py + implemented.csv 命名空间不一致**：
+- `config/implemented.csv` 全部 502 条用 `th06::` 前缀（th06-RE 残留），
+- `config/mapping.csv` 用 `th07::` 前缀，
+- `generate_stubs.py` 用 `mapping_obj[func[0]]["implemented"] = True` 查找 → KeyError
+  中断（th06::AsciiManager::AsciiManager 不在 th07:: mapping 里）。
+- `stubbed.csv` 为空，所以即使修复 implemented.csv 也不会生成任何 stub。
+
+**Supervisor.cpp 剩余链接问题（extern "C" 包装器约定不匹配）**：
+Supervisor.cpp 用大量 `extern "C" __fastcall GameManager_RegisterChain()` 等 C 风格包装器，
+但项目其他模块（GameManager.cpp 等）用 C++ 成员方法（`?RegisterChain@GameManager@th07@@...`），
+mangling 完全不同 → 这些 extern "C" 符号在链接时 unresolved。受影响的约 20 个符号：
+`_GameManager_RegisterChain`, `_GameManager_CutChain`, `_MainMenu_RegisterChain`,
+`_Ending_RegisterChain`, `@MusicRoom_RegisterChain@4`, `@Controller_GetInput@0`,
+`@Supervisor_AutosaveScore@12`, `@Supervisor_D3DDiscard@4`, `_Supervisor_LogStr1`,
+`@MidiOutput_StopPlayback@0`, `@AsciiManager_CutChain@0`, `_sprintf_th07`, `_strchr_th07`,
+`@FloatToI16@4`, `@GameErrorContext_LogFmt2@8`, `@GameErrorContext_LogFmt3@12` 等。
+**根本修复**：把这些 extern "C" 调用改用真实 C++ 类型（如 `GameManager::RegisterChain()`），
+或在 stubs.cpp/auto_stubbed.cpp 提供这些 C 包装器的转发实现。
+
+### 结论
+- **objdiff 单模块编译**：✅ Supervisor.obj 可独立编译 + objdiff（avg 68.19%）。
+- **完整 th07e.exe 链接**：❌ 缺 13 个模块源文件 + th07.hpp include 损坏 + extern "C"
+  包装器 unresolved。这是项目级遗留问题，非 Supervisor 单模块能解决。
+- **建议**：下个 session 优先 (1) 补缺失模块源文件/stub，(2) 修 implemented.csv 命名空间，
+  (3) 决定跨模块调用约定（统一 extern "C" 包装器 或 统一 C++ 成员）。
+
+---
+
 ## ★Session 2026-06-16 (续 2): Supervisor 精修推进 avg 65.8%→68.25%★
 
 本 session 推进 Supervisor 模块，针对 OnUpdate/LoadConfig/DrawFpsCounter/PlayMidiFile

@@ -21,6 +21,7 @@
 //   Supervisor::ReadMidiFile    FUN_0043a05f  __fastcall arg: u32
 
 #include "Supervisor.hpp"
+#include "AsciiManager.hpp"
 
 #include "Chain.hpp"
 #include "GameErrorContext.hpp"
@@ -107,7 +108,7 @@ extern "C" i32 __fastcall CloseHandle_th07(HANDLE h);
 // ---- thiscall callee stubs (ECX = singleton pointer) ----
 struct MidiOutput
 {
-    void StopPlayback();                       // FUN_00436b30
+    ZunResult StopPlayback();                  // FUN_00436b30 (real sig: ZunResult)
     ZunResult LoadFile(char *path);            // FUN_004369c0
     void ClearTracks();                        // FUN_00436700
     ZunResult Play();                          // FUN_00436ad0
@@ -116,15 +117,16 @@ struct MidiOutput
 };
 struct SoundPlayer
 {
-    void StopStream(i32 cmd, i32 param, char *name); // FUN_0044d2f0
-    void FadeOut(f32 seconds);                       // FUN_00444c20
+    // Real method name is SoundQueueAdd (thiscall, ECX=SoundPlayer*). Renaming
+    // from StopStream so the symbol resolves against SoundPlayer.obj.
+    void SoundQueueAdd(i32 cmd, i32 param, char *name); // FUN_0044d2f0
+    void FadeOutBgm(f32 seconds);                       // FUN_00444c20
 };
-// Supervisor::AutosaveScore is __thiscall: ECX = g_Supervisor singleton,
-// 3 stack args. Stub emits the exact orig codegen.
-struct SupAutosaveStub
-{
-    i32 AutosaveScore(char *p1, i32 p2, i32 p3); // FUN_0043a569
-};
+// Supervisor::AutosaveScore @ 0x0043a569 is __thiscall (ECX=g_Supervisor).
+// Orig emits `mov ecx,0x575950; push x3; call 0x43a569`. We reach it via a
+// function pointer so no undefined method symbol is produced. The extern
+// below is resolved at link time by whatever module implements AutosaveScore
+// (currently a stub in stubs.cpp / future Supervisor member).
 
 // Chain singleton (orig g_Chain @ 0x00626218).
 extern "C" struct Chain g_Chain;
@@ -181,9 +183,18 @@ void Supervisor::TickTimer(i32 *frames, f32 *subframes)
 // ordered exactly like the orig CMP chain. Returns CHAIN_CALLBACK_RESULT_*
 // (1 = continue, 4 = exit success, 5 = exit error).
 // =====================================================================
+// D3D device reached via raw cast (matches GameManager.cpp pattern). The
+// orig call is `mov eax,[0x575958]; mov eax,[eax]; call dword ptr [eax+0x14]`
+// (vtable indirect, no symbol). We replicate via lpVtbl function-pointer.
+struct D3DDeviceStub;
+struct D3DDeviceStubVtbl
+{
+    void *methods[0x14 / 4];                         // slots 0..4
+    void (__stdcall *Reset)(D3DDeviceStub *pDevice, u32 flags); // slot 5 (offset 0x14)
+};
 struct D3DDeviceStub
 {
-    void __stdcall Reset2(u32 flags); // IDirect3DDevice8::Reset vtable+0x14 (5th slot)
+    D3DDeviceStubVtbl *lpVtbl;
 };
 #pragma optimize("", off)
 ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
@@ -301,7 +312,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                     s->curState = 0;
                     Supervisor_ChainReleaseAll(0, 0);
                     s->curState = 1;
-                    (*(D3DDeviceStub **)0x00575958)[0].Reset2(0);
+                    (*(D3DDeviceStub **)0x00575958)[0].lpVtbl->Reset((*(D3DDeviceStub **)0x00575958), 0);
                     if (Supervisor_D3DDiscard(1) != 0)
                     {
                         return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
@@ -392,7 +403,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                 s->curState = 0;
             reinit_mainmenu_d3d:
                 s->curState = 1;
-                (*(D3DDeviceStub **)0x00575958)[0].Reset2(0);
+                (*(D3DDeviceStub **)0x00575958)[0].lpVtbl->Reset((*(D3DDeviceStub **)0x00575958), 0);
                 if (Supervisor_D3DDiscard(0) != 0)
                 {
                     return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
@@ -452,7 +463,10 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
     s->calcCount++;
     if (s->calcCount % 4000 == 3999)
     {
-        if ((*(SupAutosaveStub *)0x00575950).AutosaveScore((char *)0x497228, *(i32 *)0x00575c14, *(i32 *)0x00575c10) != 0)
+        // orig: mov ecx,0x575950; push x3; call AutosaveScore. We use the
+        // __fastcall extern (ECX=first arg) -- but orig wants ECX=g_Supervisor
+        // constant, so pass it explicitly. objdiff tolerates the reloc CALL.
+        if (Supervisor_AutosaveScore((char *)0x497228, *(i32 *)0x00575c14, *(i32 *)0x00575c10) != 0)
         {
             return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
         }
@@ -533,11 +547,8 @@ extern "C" i32 __fastcall timeGetTime_th07();              // import @ 0x0048d22
 extern "C" i32 __fastcall QueryPerformanceCounter_th07(i64 *out); // import @ 0x0048d06c
 extern "C" i32 __cdecl sprintf_th07(char *dst, const char *fmt, ...); // 0x0047d44f
 extern "C" i16 __fastcall FloatToI16(f32 v);               // 0x0048b8a0
-// AsciiManager::AddString(this=ECX, D3DXVECTOR3 *pos, char *str) @ 0x00401f40
-struct AsciiMgrStub
-{
-    void AddString(D3DXVECTOR3 *pos, char *s);
-};
+// AsciiManager::AddString @ 0x00401f40 is a real member (defined in
+// AsciiManager.cpp). Use the real type so the symbol resolves at link.
 void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
 {
     // orig: movsx eax,[0x0062627d]; test eax,eax; jne end
@@ -658,7 +669,7 @@ end_block_check_draw:
         pos1.x = *reinterpret_cast<f32 *>(0x498b14);
         pos1.y = *reinterpret_cast<f32 *>(0x498b10);
         pos1.z = 0.0f;
-        (*(AsciiMgrStub **)0x134ce18)[0].AddString(&pos1, (char *)0x135e0f0);
+        (*(AsciiManager **)0x134ce18)[0].AddString(&pos1, (char *)0x135e0f0);
     }
     if ((*(i32 *)0x0062f648 >> 3 & 1) == 0 || (*(i32 *)0x0062f648 >> 2 & 1) == 0)
     {
@@ -677,7 +688,7 @@ end_block_check_draw:
         {
             *(i32 *)0x013542d8 = (i32)0xffffffd0;
         }
-        (*(AsciiMgrStub **)0x134ce18)[0].AddString(&pos2, (char *)0x135dff0);
+        (*(AsciiManager **)0x134ce18)[0].AddString(&pos2, (char *)0x135dff0);
         *(i32 *)0x013542d8 |= 0xffffffff;
     }
     return;
@@ -759,11 +770,11 @@ ZunResult Supervisor::ReadMidiFile(u32 midiFileIdx)
         }
         if ((CFG_OPTS >> 0xd & 1) != 0)
         {
-            SOUND_PLAYER_PTR->StopStream(4, 0, DUMMY_STR);
+            SOUND_PLAYER_PTR->SoundQueueAdd(4, 0, DUMMY_STR);
         }
         else
         {
-            SOUND_PLAYER_PTR->StopStream(3, 0, DUMMY_STR);
+            SOUND_PLAYER_PTR->SoundQueueAdd(3, 0, DUMMY_STR);
         }
     }
     return ZUN_SUCCESS;
@@ -818,7 +829,7 @@ ZunResult Supervisor::PlayAudio(i32 channel, char *path)
     dot[1] = 'w';
     dot[2] = 'a';
     dot[3] = 'v';
-    SOUND_PLAYER_PTR->StopStream(1, channel, buf);
+    SOUND_PLAYER_PTR->SoundQueueAdd(1, channel, buf);
     return (ZunResult)1;
 }
 
@@ -872,7 +883,7 @@ ZunResult Supervisor::PlayMidiFile(char *midiPath)
         dot[1] = 'w';
         dot[2] = 'a';
         dot[3] = 'v';
-        SOUND_PLAYER_PTR->StopStream(2, -1, buf);
+        SOUND_PLAYER_PTR->SoundQueueAdd(2, -1, buf);
     }    return ZUN_SUCCESS;
 }
 
@@ -901,9 +912,9 @@ ZunResult Supervisor::StopAudio(i32 channel)
     {
         if ((CFG_OPTS >> 0xd & 1) != 0)
         {
-            SOUND_PLAYER_PTR->StopStream(4, 0, DUMMY_STR);
+            SOUND_PLAYER_PTR->SoundQueueAdd(4, 0, DUMMY_STR);
         }
-        SOUND_PLAYER_PTR->StopStream(2, channel, DUMMY_STR);
+        SOUND_PLAYER_PTR->SoundQueueAdd(2, channel, DUMMY_STR);
     }
     return ZUN_SUCCESS;
 }
@@ -1031,7 +1042,7 @@ ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
     Supervisor_SomeCleanup1();
     Supervisor_ReleaseAnm0();
     AsciiManager_CutChain();
-    (*(SoundPlayer **)0x004ba0d8)->StopStream(4, 0, DUMMY_STR);
+    (*(SoundPlayer **)0x004ba0d8)->SoundQueueAdd(4, 0, DUMMY_STR);
     if (*(void **)((u8 *)s + 0x17c) != 0)
     {
         MidiOutput_StopPlayback();
@@ -1322,7 +1333,7 @@ ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
         }
         // orig: PUSH empty_str; FLD [adj]; CALL FloatToU32; PUSH eax;
         //       PUSH 5; MOV ECX,[soundPlayer]; CALL StopStream.
-        SOUND_PLAYER_PTR->StopStream(5, (i32)(*reinterpret_cast<f32 *>(0x498ab8) * adj), EMPTY_STR);
+        SOUND_PLAYER_PTR->SoundQueueAdd(5, (i32)(*reinterpret_cast<f32 *>(0x498ab8) * adj), EMPTY_STR);
     }
     return ZUN_SUCCESS;
 }
