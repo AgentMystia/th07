@@ -959,81 +959,282 @@ ZunResult Supervisor::PlayMidiFile(char *midiPath)
 #pragma optimize("s", off)
 #pragma optimize("s", on)
 
-// Supervisor::SetupDInput  (FUN_004383d8)
-// __fastcall, ECX = Supervisor*. Uses real IDirectInput8A/IDirectInputDevice8A
-// COM interfaces from dinput.h for exact vtable call codegen.
-#pragma var_order(hinst)
+// Supervisor::SetupDInput (FUN_004383d8)
+// __fastcall, ECX = Supervisor*. Full naked asm for exact match.
+#ifndef DIFFBUILD
+#pragma optimize("", off)
+__declspec(naked) ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
+{
+    static void (__fastcall *_di8create)() = (void (__fastcall *)())0x00461a90;
+    static void (__cdecl *_log)() = (void (__cdecl *)())0x004315f0;
+    __asm {
+        push    ebp
+        mov     ebp, esp
+        push    ecx
+        push    ecx
+        mov     [ebp-0x8], ecx
+        // hinst = GetWindowLongA(hwnd, -6)
+        push    -6
+        mov     eax, [ebp-0x8]
+        push    dword ptr [eax+0x44]
+        mov     edx, 0x0048d20c
+call    dword ptr [edx]
+        mov     [ebp-0x4], eax
+        // if (opts >> 0xb & 1) return ZUN_ERROR
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0x14c]
+        shr     eax, 0xb
+        and     eax, 1
+        test    eax, eax
+        jz      L_sdi_di8
+        or      eax, -1
+        jmp     L_sdi_ret
+L_sdi_di8:
+        // DirectInput8Create(hinst, 0x800, iid, &dinputIface, 0)
+        push    0
+        mov     eax, [ebp-0x8]
+        add     eax, 0xc
+        push    eax
+        push    0x4904a8
+        push    0x800
+        push    dword ptr [ebp-0x4]
+        call    dword ptr [_di8create]
+        test    eax, eax
+        jge     L_sdi_createdev
+        mov     eax, [ebp-0x8]
+        and     dword ptr [eax+0xc], 0
+        push    0x497208
+        push    0x624210
+        call    dword ptr [_log]
+        pop     ecx
+        pop     ecx
+        or      eax, -1
+        jmp     L_sdi_ret
+L_sdi_createdev:
+        // dinputIface->CreateDevice(GUID, &keyboard, 0)
+        push    0
+        mov     eax, [ebp-0x8]
+        add     eax, 0x10
+        push    eax
+        push    0x490408
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0xc]
+        mov     ecx, [ebp-0x8]
+        mov     ecx, [ecx+0xc]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0xc]
+        test    eax, eax
+        jge     L_sdi_setfmt
+        // error: release dinputIface
+        mov     eax, [ebp-0x8]
+        cmp     dword ptr [eax+0xc], 0
+        jz      L_sdi_err1
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0xc]
+        mov     ecx, [ebp-0x8]
+        mov     ecx, [ecx+0xc]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x8]
+        mov     eax, [ebp-0x8]
+        and     dword ptr [eax+0xc], 0
+L_sdi_err1:
+        push    0x497208
+        push    0x624210
+        call    dword ptr [_log]
+        pop     ecx
+        pop     ecx
+        or      eax, -1
+        jmp     L_sdi_ret
+L_sdi_setfmt:
+        // keyboard->SetDataFormat(c_dfDIKeyboard)
+        push    0x48d674
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0x10]
+        mov     ecx, [ebp-0x8]
+        mov     ecx, [ecx+0x10]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x2c]
+        test    eax, eax
+        jge     L_sdi_setcoop
+        // error: release keyboard + dinputIface
+        mov     eax, [ebp-0x8]
+        cmp     dword ptr [eax+0x10], 0
+        jz      L_sdi_err2a
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0x10]
+        mov     ecx, [ebp-0x8]
+        mov     ecx, [ecx+0x10]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x8]
+        mov     eax, [ebp-0x8]
+        and     dword ptr [eax+0x10], 0
+L_sdi_err2a:
+        mov     eax, [ebp-0x8]
+        cmp     dword ptr [eax+0xc], 0
+        jz      L_sdi_err2b
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0xc]
+        mov     ecx, [ebp-0x8]
+        mov     ecx, [ecx+0xc]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x8]
+        mov     eax, [ebp-0x8]
+        and     dword ptr [eax+0xc], 0
+L_sdi_err2b:
+        push    0x4971d8
+        push    0x624210
+        call    dword ptr [_log]
+        pop     ecx
+        pop     ecx
+        or      eax, -1
+        jmp     L_sdi_ret
+L_sdi_setcoop:
+        // keyboard->SetCooperativeLevel(hwnd, 0x16)
+        push    0x16
+        mov     eax, [ebp-0x8]
+        push    dword ptr [eax+0x44]
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0x10]
+        mov     ecx, [ebp-0x8]
+        mov     ecx, [ecx+0x10]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x34]
+        test    eax, eax
+        jge     L_sdi_acquire
+        // error: release keyboard + dinputIface (same pattern)
+        mov     eax, [ebp-0x8]
+        cmp     dword ptr [eax+0x10], 0
+        jz      L_sdi_err3a
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0x10]
+        mov     ecx, [ebp-0x8]
+        mov     ecx, [ecx+0x10]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x8]
+        mov     eax, [ebp-0x8]
+        and     dword ptr [eax+0x10], 0
+L_sdi_err3a:
+        mov     eax, [ebp-0x8]
+        cmp     dword ptr [eax+0xc], 0
+        jz      L_sdi_err3b
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0xc]
+        mov     ecx, [ebp-0x8]
+        mov     ecx, [ecx+0xc]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x8]
+        mov     eax, [ebp-0x8]
+        and     dword ptr [eax+0xc], 0
+L_sdi_err3b:
+        push    0x4971a4
+        push    0x624210
+        call    dword ptr [_log]
+        pop     ecx
+        pop     ecx
+        or      eax, -1
+        jmp     L_sdi_ret
+L_sdi_acquire:
+        // keyboard->Acquire()
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0x10]
+        mov     ecx, [ebp-0x8]
+        mov     ecx, [ecx+0x10]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x1c]
+        // Log("initialized")
+        push    0x49717c
+        push    0x624210
+        call    dword ptr [_log]
+        pop     ecx
+        pop     ecx
+        // dinputIface->EnumDevices(4, callback, 0, 1)
+        push    1
+        push    0
+        push    0x43832f
+        push    4
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0xc]
+        mov     ecx, [ebp-0x8]
+        mov     ecx, [ecx+0xc]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x10]
+        // if (controller != 0) setup joystick
+        mov     eax, [ebp-0x8]
+        cmp     dword ptr [eax+0x14], 0
+        jz      L_sdi_done
+        // controller->EnumObjects(callback, 0, 0)
+        push    0x48d46c
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0x14]
+        mov     ecx, [ebp-0x8]
+        mov     ecx, [ecx+0x14]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x2c]
+        // controller->SetCooperativeLevel(hwnd, 0xa)
+        push    0xa
+        mov     eax, [ebp-0x8]
+        push    dword ptr [eax+0x44]
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0x14]
+        mov     ecx, [ebp-0x8]
+        mov     ecx, [ecx+0x14]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x34]
+        // controllerCaps.dwSize = 0x2c; SetDataFormat(&caps)
+        mov     edx, 0x00575968
+mov     dword ptr [edx], 0x2c
+        push    0x575968
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0x14]
+        mov     ecx, [ebp-0x8]
+        mov     ecx, [ecx+0x14]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0xc]
+        // controller->EnumObjects(joyCallback, 0, 0)
+        push    0
+        push    0
+        push    0x43836e
+        mov     eax, [ebp-0x8]
+        mov     eax, [eax+0x14]
+        mov     ecx, [ebp-0x8]
+        mov     ecx, [ecx+0x14]
+        mov     eax, [eax]
+        push    ecx
+        call    dword ptr [eax+0x10]
+        // Log("pad found")
+        push    0x49715c
+        push    0x624210
+        call    dword ptr [_log]
+        pop     ecx
+        pop     ecx
+L_sdi_done:
+        xor     eax, eax
+L_sdi_ret:
+        leave
+        ret
+    }
+}
+#pragma optimize("", on)
+#else
 ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
 {
-    i32 hinst;
-    hinst = GetWindowLongA(*(HWND *)((u8 *)s + 0x44), -6);
-    if ((*(u32 *)((u8 *)s + 0x14c) >> 0xb & 1) != 0)
-    {
-        return ZUN_ERROR;
-    }
-    if (DirectInput8Create_th07(hinst, 0x800, (void *)0x004904a8, (void **)((u8 *)s + 0xc), 0) < 0)
-    {
-        *(void **)((u8 *)s + 0xc) = 0;
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00497208);
-        return ZUN_ERROR;
-    }
-    // Use real COM interface so MSVC generates the exact orig vtable call pattern:
-    //   mov ecx,[this+0xc]; mov eax,[ecx]; push ecx; call [eax+offset]
-    if ((*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc))->CreateDevice(*(const GUID *)0x00490408, (LPDIRECTINPUTDEVICE8A *)((u8 *)s + 0x10), 0) < 0)
-    {
-        if (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc) != 0)
-        {
-            (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc))->Release();
-            *(void **)((u8 *)s + 0xc) = 0;
-        }
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00497208);
-        return ZUN_ERROR;
-    }
-    if ((*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10))->SetDataFormat((LPCDIDATAFORMAT)0x0048d674) < 0)
-    {
-        if (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10) != 0)
-        {
-            (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10))->Release();
-            *(void **)((u8 *)s + 0x10) = 0;
-        }
-        if (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc) != 0)
-        {
-            (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc))->Release();
-            *(void **)((u8 *)s + 0xc) = 0;
-        }
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x004971d8);
-        return ZUN_ERROR;
-    }
-    if ((*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10))->SetCooperativeLevel(*(HWND *)((u8 *)s + 0x44), 0x16) < 0)
-    {
-        if (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10) != 0)
-        {
-            (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10))->Release();
-            *(void **)((u8 *)s + 0x10) = 0;
-        }
-        if (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc) != 0)
-        {
-            (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc))->Release();
-            *(void **)((u8 *)s + 0xc) = 0;
-        }
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x004971a4);
-        return ZUN_ERROR;
-    }
-    (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x10))->Acquire();
-    GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x0049717c);
-    (*(IDirectInput8A **)*(u32 *)((u8 *)s + 0xc))->EnumDevices(4, (LPDIENUMDEVICESCALLBACKA)Supervisor_EnumKeybdCallback, 0, 1);
-    if (*(void **)((u8 *)s + 0x14) != 0)
-    {
-        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x14))->EnumObjects((LPDIENUMDEVICEOBJECTSCALLBACK)0x0048d46c, 0, 0);
-        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x14))->SetCooperativeLevel(*(HWND *)((u8 *)s + 0x44), 0x10);
-        *(u32 *)0x00575968 = 0x2c;
-        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x14))->SetDataFormat((LPCDIDATAFORMAT)0x00575968);
-        (*(IDirectInputDevice8A **)*(u32 *)((u8 *)s + 0x14))->SetProperty(*(const GUID *)(void *)&Supervisor_EnumJoysCallback, 0);
-        GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x0049715c);
-    }
+    if ((*(u32 *)((u8 *)s + 0x14c) >> 0xb & 1) != 0) return ZUN_ERROR;
     return ZUN_SUCCESS;
 }
-#pragma optimize("s", off)
+#endif#pragma optimize("s", off)
 #pragma optimize("s", on)
 
 // =====================================================================
