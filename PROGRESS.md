@@ -2,6 +2,71 @@
 
 最后更新：2026-06-16
 
+## ★Session 2026-06-16 (续 2): Supervisor 精修推进 avg 65.8%→68.25%★
+
+本 session 推进 Supervisor 模块，针对 OnUpdate/LoadConfig/DrawFpsCounter/PlayMidiFile
+四个函数做 codegen 精修。avg 从 65.8% 推进到 **68.25%**，4 个函数显著提升。
+
+### Supervisor 精修结果（avg 68.25%，3×≥90%）
+| 函数 | 旧 | 新 | 关键修复 |
+|---|---|---|---|
+| OnUpdate | 44.45% | **59.98%** | C++ 重写：补 g_NoFpsCounter 分支、修正 wanted/cur switch case 数字、D3D vtable 间接 call、AutosaveScore 用 stub-method-on-singleton |
+| LoadConfig | 27.77% | **42.72%** | 改用 memset/memcpy intrinsic（生成 rep stosd/rep movsd）、CreateFileA/ReadFile/CloseHandle 用真实 Win32 import（call [IAT]）、opts 每次重读 this+0x14c、frame 0x38 布局、默认 keymap 用 memcpy 生成 movsd x4+movsw |
+| DrawFpsCounter | 71.27% | **73.03%** | timeGetTime/QueryPerformanceCounter 改用真实 Win32 import（call [IAT]）、g_NoFpsCounter 分支直达 end_block_check_draw |
+| PlayMidiFile | 0.0% | 0.0% | MSVC /Od 局部布局硬限制（标量局部恒在 [ebp-0x4]，orig midi 在 [ebp-0x10c]）—— 需 inline asm，已记录 |
+
+### 关键 codegen 发现（本 session）
+
+#### 1. MSVC /Od 局部布局：标量恒在帧底，数组单独分配
+MSVC 7.0 /Od 对函数内**所有非数组局部变量**（无论声明顺序/scope）一律分配到帧底
+（`[ebp-0x4]`, `[ebp-0x8]`, ...），数组单独从帧顶向下分配。这导致：
+- **PlayMidiFile 0% 根因**：orig 把 midi 放在 `[ebp-0x10c]`（buf 上方），但 MSVC
+  对任何 C++ 写法都把 midi 放到 `[ebp-0x4]`。`volatile`/声明顺序/作用域全部无效。
+  唯一解：inline asm（但 asm 不能 call C 符号，需函数指针变体）。
+- **LoadConfig 布局**：通过反向声明 + char _pad4[4] 强制 frame 0x38（匹配 orig），
+  但 buf/read1/handle 的具体槽位仍与 orig 不同（orig buf@0x4，reimpl read1@0x4）。
+
+#### 2. memset/memcpy intrinsic = rep stosd / rep movsd
+`memset(addr, 0, N*4)` 在 /Oi 下生成 `push N; pop ecx; xor eax,eax; mov edi,addr; rep stosd`。
+`memcpy(dst, src, N*4)` 生成 `mov esi,src; mov edi,dst; push N; pop ecx; rep movsd`。
+小 memcpy（18 字节）生成 `movsd x4 + movsw`（展开）。**手写 for 循环不匹配**，必须用 intrinsic。
+
+#### 3. Win32 API 必须直接 call（不走 wrapper）
+orig 对 CreateFileA/ReadFile/CloseHandle/timeGetTime/QueryPerformanceCounter 都是
+`call DWORD PTR ds:[IAT]`（直接 import）。若用 `CreateFileA_th07()` wrapper（__fastcall），
+MSVC 生成 `mov edx,arg; mov ecx,arg; call wrapper` —— 完全不匹配。
+**正确做法**：直接调用 `<windows.h>`/`<mmsystem.h>` 的真实 API（MSVC 生成 `call [__imp__Api]`）。
+
+#### 4. opts 位检查必须每次重读全局
+orig 对 `this+0x14c` 的每个位测试都重新 `mov eax,[ebp-0x38]; mov eax,[eax+0x14c]; shr; and; test`
+（无局部缓存）。C++ 写 `u32 opts = ...; if (opts>>1&1)` 会缓存到局部 → 不匹配。
+**正确**：每个 if 条件都写 `(*(u32*)((u8*)this+0x14c) >> N & 1)`。
+
+#### 5. AutosaveScore __thiscall：stub-method-on-singleton
+orig `MOV ECX,0x575950; PUSH arg3; PUSH arg2; PUSH arg1; CALL` = __thiscall，
+ECX=g_Supervisor singleton + 3 stack args。
+声明 `struct SupAutosaveStub { i32 AutosaveScore(char*,i32,i32); };`
+调用 `(*(SupAutosaveStub*)0x575950).AutosaveScore(...)` 生成精确匹配。
+
+#### 6. inline asm 限制（MSVC 7.0 已验证）
+- `__declspec(naked)` + `__asm {}` 可用，但 **`call <Cfunc>` 报 C2415**（improper operand）。
+- **`call dword ptr [fp]` 可用**（fp 是函数指针局部）——生成 `call *[ebp-X]`。
+- 绝对地址 store `mov [0xADDR], imm` 在 naked asm 中也报 C2415。
+- 结论：复杂函数（如 OnUpdate 的状态机）用纯 asm 不可行；必须用 C++ + 精确表达式。
+
+### Supervisor 续作检查点
+**优先级**：
+1. **PlayMidiFile 0%**：唯一解是 inline asm + 函数指针 call。orig 的 midi@[ebp-0x10c]
+   需要手动帧布局。参考本 session asm 测试（`call dword ptr [fp]` 可用）。
+2. **LoadConfig 43%**：buf/read1/handle 槽位仍偏。orig buf@0x4 read1@0xc hdr1@0x1c。
+   需更精细的局部声明顺序实验，或 inline asm 强制布局。
+3. **DrawFpsCounter 73%**：orig 用纯 FPU 栈（无 f32 局部），reimpl 用 f32 局部致 frame
+   偏大（0x64 vs 0x54）+ 多余 fstp/fld。需重写为 FPU 栈表达式。
+4. **DeletedCallback 54% / SetupDInput 57%**：依赖外部 stub，orig 调用序列复杂。
+5. 已 ≥90% 的：OnDraw 100%、TickTimer 97.95%、PlayAudio 90.5%——不动。
+
+---
+
 ## ★Session 2026-06-16: ghidra namespace 工具链修复 + Supervisor 部分实现★
 
 ### 🔑 重大突破：修复 ghidra namespace 导入（解锁全部 40 模块导出）

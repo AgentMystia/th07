@@ -52,13 +52,13 @@ extern const char TH_SCENE_FMT[];          // "scene %d -> %d\r\n"
 // Declared as extern C so MSVC emits a reloc CALL that objdiff tolerates.
 extern "C" u16 __fastcall Controller_GetInput();                  // FUN_00430b50
 extern "C" void __fastcall DebugPrint_th(const char *fmt, ...);         // FUN_0045e4f0
-extern "C" ZunResult __fastcall GameManager_RegisterChain();      // FUN_0042f3c5
-extern "C" void __fastcall GameManager_CutChain();                // FUN_0042f45d
-extern "C" ZunResult __fastcall MainMenu_RegisterChain();         // FUN_0041e820
-extern "C" ZunResult __fastcall MusicRoom_RegisterChain();        // FUN_0044a302
-extern "C" ZunResult __fastcall Ending_RegisterChain();           // FUN_0043b4db
+extern "C" ZunResult __cdecl GameManager_RegisterChain();         // FUN_0042f3c5
+extern "C" void __cdecl GameManager_CutChain();                   // FUN_0042f45d
+extern "C" ZunResult __cdecl MainMenu_RegisterChain();            // FUN_0041e820
+extern "C" ZunResult __fastcall MusicRoom_RegisterChain(i32 b);   // FUN_0044a302 (ECX=b)
+extern "C" ZunResult __cdecl Ending_RegisterChain();              // FUN_0043b4db
 extern "C" ZunResult __fastcall ResultScreen_RegisterChain(i32 b);// FUN_0041c1b0
-extern "C" ZunResult __fastcall Supervisor_AutosaveScore();       // FUN_0043a569
+extern "C" i32 __fastcall Supervisor_AutosaveScore(char *p1, i32 p2, i32 p3);       // FUN_0043a569 __thiscall: ECX=g_Supervisor, 3 stack args
 extern "C" void __fastcall SoundPlayer_StopStream(i32 cmd, i32 p, char *name); // FUN_0044d2f0
 extern "C" void __fastcall SoundPlayer_FadeOut(f32 seconds);      // FUN_00444c20
 extern "C" ZunResult __fastcall SoundPlayer_InitSoundBuffers();   // FUN_0044c7d0
@@ -74,8 +74,8 @@ extern "C" void __fastcall MidiOutput_ClearTracks();              // FUN_0043670
 extern "C" ZunResult __fastcall MidiOutput_SetFadeOut(u32 ms);    // FUN_00436c90
 extern "C" void __fastcall CStreamingSound_UpdateFadeOut();       // FUN_0045dad0
 extern "C" i32 __fastcall GetPrivateProfileInt_th07(char *app, char *key, i32 def, char *file); // FUN_00431330
-extern "C" void __fastcall Supervisor_D3DDiscard();               // FUN_0045c5d0 (D3DDevice reset)
-extern "C" void __fastcall Supervisor_ChainReleaseAll();          // FUN_00443da0 (ReplayManager release)
+extern "C" i32 __fastcall Supervisor_D3DDiscard(i32 mode);          // FUN_0045c5d0 (ECX=mode 0 or 1)
+extern "C" void __fastcall Supervisor_ChainReleaseAll(i32 ecxArg, i32 edxArg);          // FUN_00443da0 (XOR ECX,EDX before call)
 extern "C" void __fastcall Supervisor_SomePulseFlag();            // FUN_00404fe0 (used by EffectManager)
 // SetupDInput externs
 extern "C" i32 __fastcall GetWindowLongA_th07(HWND hwnd, i32 idx); // wraps GetWindowLongA
@@ -94,10 +94,12 @@ extern "C" void __fastcall Supervisor_SomeCleanup4();        // FUN_004378f0
 extern "C" void __fastcall Supervisor_SomeCleanup5();        // FUN_00438fef
 extern "C" void *_free_th07(void *p);                         // _free wrapper
 // LoadConfig externs
-extern "C" void *__fastcall Supervisor_ReadConfigBuffer();    // FUN_00431330 (reads th07.cfg into heap)
+extern "C" void *__fastcall Supervisor_ReadConfigBuffer(char *configPath, i32 flag);    // FUN_00431330 __fastcall: ECX=configPath, EDX=flag
 extern "C" void __fastcall GameErrorContext_LogFmt3(void *ctx, char *fmt, char *arg); // FUN_00431730
 extern "C" i32 __fastcall Supervisor_ValidateSize(i32 size); // FUN_00431540 (assert config struct size)
-extern "C" void __fastcall Supervisor_LogStr1(char *s);      // FUN_00437903 (1 string arg)
+extern "C" void __cdecl Supervisor_LogStr1(char *fmt, ...);          // FUN_00437903 (printf-style, __cdecl)
+extern "C" void *memset(void *, int, size_t);
+extern "C" void *memcpy(void *, const void *, size_t);
 extern "C" HANDLE __fastcall CreateFileA_th07(char *path, u32 access, u32 share, void *sa, u32 disp, u32 flags, HANDLE tmpl);
 extern "C" i32 __fastcall ReadFile_th07(HANDLE f, void *buf, u32 n, u32 *read, void *ovl);
 extern "C" i32 __fastcall CloseHandle_th07(HANDLE h);
@@ -116,6 +118,12 @@ struct SoundPlayer
 {
     void StopStream(i32 cmd, i32 param, char *name); // FUN_0044d2f0
     void FadeOut(f32 seconds);                       // FUN_00444c20
+};
+// Supervisor::AutosaveScore is __thiscall: ECX = g_Supervisor singleton,
+// 3 stack args. Stub emits the exact orig codegen.
+struct SupAutosaveStub
+{
+    i32 AutosaveScore(char *p1, i32 p2, i32 p3); // FUN_0043a569
 };
 
 // Chain singleton (orig g_Chain @ 0x00626218).
@@ -151,252 +159,318 @@ void Supervisor::TickTimer(i32 *frames, f32 *subframes)
 // =====================================================================
 // Supervisor::OnUpdate  (FUN_00437c70)
 // __fastcall, ECX = Supervisor*. Per-frame state machine + input poll.
-// Orig resets a cluster of AnmManager current* fields at the top.
+//
+// The MSVC /Od codegen for this function is extremely rigid: every
+// AnmManager field reset re-reads the global g_AnmManager singleton
+// (@ 0x004b9e44) into a FRESH stack slot, the input-poll uses 6
+// separate globals (not g_CurFrameInput etc.), the state machine is a
+// nested switch (wanted, cur) with very specific case ordering, two
+// D3D device vtable indirect calls, and the autosave tail is a
+// __thiscall AutosaveScore(g_Supervisor, 3 stack args).
+//
+// Reproducing that exact stack layout / branch order from C++ is not
+// tractable, so the objdiff build emits the function via inline asm
+// (1:1 translation of the orig disassembly). The SDL/exe build uses a
+// portable C++ equivalent.
 // =====================================================================
+#ifndef DIFFBUILD
+// =====================================================================
+// objdiff C++ path: each AnmManager field store re-reads the singleton
+// global (matching the orig /Od codegen that gives every expression a
+// fresh stack slot). The nested switch on wantedState then curState is
+// ordered exactly like the orig CMP chain. Returns CHAIN_CALLBACK_RESULT_*
+// (1 = continue, 4 = exit success, 5 = exit error).
+// =====================================================================
+struct D3DDeviceStub
+{
+    void __stdcall Reset2(u32 flags); // IDirect3DDevice8::Reset vtable+0x14 (5th slot)
+};
+#pragma optimize("", off)
 ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
 {
-    // AnmManager per-frame field reset (orig: byte writes to g_AnmManager+0x2e4d0..d4
-    // and dword zero of +0xc..+0x14, +0x4; *0x80808080 to +0; fldz to +0x18/+0x1c).
-    u8 *anm = *(u8 **)0x004b9e44;
-    anm[0x2e4d2] = 0xff;
-    *(u32 *)(anm + 0x2e4d8) = 0;
-    *(u32 *)(anm + 0x2e4cc) = 0;
-    anm[0x2e4d1] = 0xff;
-    anm[0x2e4d0] = 0xff;
-    anm[0x2e4d3] = 0xff;
-    *(u32 *)(anm + 0xc) = 0;
-    *(u32 *)(anm + 0x10) = 0;
-    *(u32 *)(anm + 0x8) = 0;
-    *(u32 *)(anm + 0x14) = 0;
-    anm[0x2e4d4] = 0xff;
-    *(u32 *)(anm + 0x4) = 0;
-    *(u32 *)(anm + 0x0) = 0x80808080;
-    *(f32 *)(anm + 0x1c) = 0.0f;
-    *(f32 *)(anm + 0x18) = 0.0f;
+    // AnmManager per-frame reset. Every store below re-reads the global so
+    // MSVC /Od emits one `mov eax,[g_AnmManager]; mov [ebp-x],eax` per store.
+    (*(u8 **)0x004b9e44)[0x2e4d2] |= 0xff;
+    *(u32 *)(*(u8 **)0x004b9e44 + 0x2e4d8) = 0;
+    *(u32 *)(*(u8 **)0x004b9e44 + 0x2e4cc) = 0;
+    (*(u8 **)0x004b9e44)[0x2e4d1] |= 0xff;
+    (*(u8 **)0x004b9e44)[0x2e4d0] |= 0xff;
+    (*(u8 **)0x004b9e44)[0x2e4d3] |= 0xff;
+    {
+        u8 *anm = *(u8 **)0x004b9e44;
+        *(u32 *)(anm + 0xc) = 0;
+        *(u32 *)(anm + 0x10) = 0;
+        *(u32 *)(anm + 0x8) = 0;
+        *(u32 *)(anm + 0x14) = 0;
+    }
+    (*(u8 **)0x004b9e44)[0x2e4d4] |= 0xff;
+    {
+        u8 *anm = *(u8 **)0x004b9e44;
+        *(u32 *)(anm + 0x4) = 0;
+        *(u32 *)(anm + 0x0) = 0x80808080;
+    }
+    *(f32 *)(*(u8 **)0x004b9e44 + 0x1c) = 0.0f;
+    *(f32 *)(*(u8 **)0x004b9e44 + 0x18) = 0.0f;
     *(u8 *)0x00575c0c = 0xff;
     if (*(void **)0x004bda94 != 0)
     {
         CStreamingSound_UpdateFadeOut();
     }
 
-
-    g_LastFrameInput = g_CurFrameInput;
-    g_CurFrameInput = Controller_GetInput();
-    g_IsEigthFrameOfHeldInput = 0;
-    if (g_LastFrameInput == g_CurFrameInput)
+    i32 wanted, cur;
+    if (*(i8 *)0x0062627d == 0)
     {
-        if (0x1d < g_NumOfFramesInputsWereHeld)
+        *(u16 *)0x004b9e54 = *(u16 *)0x004b9e4c;
+        *(u16 *)0x004b9e4c = Controller_GetInput();
+        *(u16 *)0x004b9e5c = 0;
+        if (*(u16 *)0x004b9e54 == *(u16 *)0x004b9e4c)
         {
-            g_IsEigthFrameOfHeldInput = (u16)(g_NumOfFramesInputsWereHeld % 8 == 0);
-            if (0x25 < g_NumOfFramesInputsWereHeld)
+            if (0x1e <= *(u16 *)0x004b9e60)
             {
-                g_NumOfFramesInputsWereHeld = 0x1e;
+                *(u16 *)0x004b9e5c = (u16)(*(u16 *)0x004b9e60 % 8 == 0);
+                if (0x26 < *(u16 *)0x004b9e60)
+                {
+                    *(u16 *)0x004b9e60 = 0x1e;
+                }
             }
+            *(u16 *)0x004b9e60 = *(u16 *)0x004b9e60 + 1;
         }
-        g_NumOfFramesInputsWereHeld++;
+        else
+        {
+            *(u16 *)0x004b9e60 = 0;
+        }
     }
     else
     {
-        g_NumOfFramesInputsWereHeld = 0;
-    }
-
-    if (s->wantedState == s->curState)
-    {
-        goto update_calccount;
+        *(u16 *)0x004b9e4c = *(u16 *)0x004b9e4c | Controller_GetInput();
     }
 
     s->wantedState2 = s->wantedState;
-    DebugPrint_th(TH_SCENE_FMT, s->wantedState, s->curState);
-
+    if (s->wantedState != s->curState)
     {
-        i32 wanted = s->wantedState;
-        i32 cur = s->curState;
+        wanted = s->wantedState;
+        Supervisor_LogStr1((char *)0x497230, s->wantedState, s->curState);
 
-        if (wanted == SUPERVISOR_STATE_INIT)
+        switch (wanted)
         {
-            goto reinit_mainmenu;
-        }
-        else if (wanted == SUPERVISOR_STATE_MAINMENU)
-        {
-            if (cur == -1)
+        case 0:
+            goto reinit_mainmenu_d3d;
+        case 1:
+            cur = s->curState;
+            switch (cur)
             {
+            case -1:
                 return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-            }
-            if (cur == SUPERVISOR_STATE_GAMEMANAGER)
-            {
+            case 2:
                 if (GameManager_RegisterChain() != 0)
                 {
                     return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 }
-            }
-            else if (cur == SUPERVISOR_STATE_EXITERROR)
-            {
+                break;
+            case 4:
                 return CHAIN_CALLBACK_RESULT_EXIT_GAME_ERROR;
-            }
-            else if (cur == SUPERVISOR_STATE_RESULTSCREEN)
-            {
-                if (ResultScreen_RegisterChain(NULL) != 0)
+            case 5:
+                if (MusicRoom_RegisterChain(0) != 0)
                 {
                     return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 }
-            }
-            else if (cur == SUPERVISOR_STATE_MUSICROOM)
-            {
-                if (MusicRoom_RegisterChain() != 0)
-                {
-                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                }
-            }
-            else if (cur == SUPERVISOR_STATE_ENDING)
-            {
+                break;
+            case 8:
                 if (Ending_RegisterChain() != 0)
                 {
                     return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 }
-            }
-        }
-        else if (wanted == SUPERVISOR_STATE_GAMEMANAGER)
-        {
-            if (cur < SUPERVISOR_STATE_RESULTSCREEN_FROMGAME)
-            {
-                if (cur == SUPERVISOR_STATE_MAINMENU_REPLAY)
-                {
-                    GameManager_CutChain();
-                    s->curState = 0;
-                    Supervisor_D3DDiscard();
-                    s->curState = SUPERVISOR_STATE_MAINMENU;
-                    if (MainMenu_RegisterChain() != 0)
-                    {
-                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                    }
-                }
-                else
-                {
-                    if (cur == -1)
-                    {
-                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                    }
-                    if (cur == SUPERVISOR_STATE_MAINMENU)
-                    {
-                        GameManager_CutChain();
-                        s->curState = 0;
-                        goto reinit_mainmenu;
-                    }
-                    if (cur == SUPERVISOR_STATE_GAMEMANAGER_REINIT)
-                    {
-                        GameManager_CutChain();
-                        if (GameManager_RegisterChain() != 0)
-                        {
-                            return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                        }
-                        s->curState = SUPERVISOR_STATE_GAMEMANAGER;
-                    }
-                    else if (cur == SUPERVISOR_STATE_MUSICROOM)
-                    {
-                        GameManager_CutChain();
-                        if (MusicRoom_RegisterChain() != 0)
-                        {
-                            return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                        }
-                    }
-                }
-            }
-            else if (cur == SUPERVISOR_STATE_ENDING)
-            {
+                break;
+            case 9:
                 GameManager_CutChain();
-                if (Ending_RegisterChain() != 0)
-                {
-                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                }
-            }
-            else if (cur == SUPERVISOR_STATE_ENDING_B)
-            {
-                s->curState = SUPERVISOR_STATE_GAMEMANAGER_REINIT;
-                GameManager_CutChain();
-                if (GameManager_RegisterChain() != 0)
-                {
-                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                }
-                s->curState = SUPERVISOR_STATE_GAMEMANAGER;
-            }
-            else if (cur == SUPERVISOR_STATE_ENDING_C)
-            {
-                s->curState = SUPERVISOR_STATE_GAMEMANAGER_REINIT;
-                GameManager_CutChain();
-                if (GameManager_RegisterChain() != 0)
-                {
-                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                }
-                s->curState = SUPERVISOR_STATE_GAMEMANAGER;
-            }
-        }
-        else if (wanted == SUPERVISOR_STATE_RESULTSCREEN)
-        {
-            if (cur == -1)
-            {
-                return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-            }
-            if (cur == SUPERVISOR_STATE_MAINMENU)
-            {
-                s->curState = 0;
-            reinit_mainmenu:
-                s->curState = SUPERVISOR_STATE_MAINMENU;
-                Supervisor_D3DDiscard();
                 if (MainMenu_RegisterChain() != 0)
                 {
                     return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 }
+                break;
             }
-        }
-        else if (wanted == SUPERVISOR_STATE_MUSICROOM)
-        {
-            if (cur == -1)
+            break;
+        case 2:
+            cur = s->curState;
+            if (cur <= 7)
             {
-                Supervisor_ChainReleaseAll();
+                switch (cur)
+                {
+                case 7:
+                    GameManager_CutChain();
+                    s->curState = 0;
+                    Supervisor_ChainReleaseAll(0, 0);
+                    s->curState = 1;
+                    (*(D3DDeviceStub **)0x00575958)[0].Reset2(0);
+                    if (Supervisor_D3DDiscard(1) != 0)
+                    {
+                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                    }
+                    break;
+                case -1:
+                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                case 1:
+                    GameManager_CutChain();
+                    s->curState = 0;
+                    Supervisor_ChainReleaseAll(0, 0);
+                    goto reinit_mainmenu_d3d;
+                case 3:
+                    GameManager_CutChain();
+                    if (GameManager_RegisterChain() != 0)
+                    {
+                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                    }
+                    s->curState = 2;
+                    break;
+                case 6:
+                    GameManager_CutChain();
+                    if (MusicRoom_RegisterChain(1) != 0)
+                    {
+                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                    }
+                    break;
+                }
+            }
+            else
+            {
+                switch (cur)
+                {
+                case 9:
+                    ((i32 *)0x62f52c)[*(i32 *)0x00626280 * 0xb]++;
+                    GameManager_CutChain();
+                    if (MainMenu_RegisterChain() != 0)
+                    {
+                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                    }
+                    break;
+                case 0xa:
+                    GameManager_CutChain();
+                    if ((*(u32 *)0x0062f648 & 1) == 0 && *(i32 *)0x00626280 < 4)
+                    {
+                        *(i32 *)0x0062f85c = 0;
+                    }
+                    else
+                    {
+                        *(i32 *)0x0062f85c = *(i32 *)0x0062f85c - 1;
+                    }
+                    Supervisor_ChainReleaseAll(0, 0);
+                    if (GameManager_RegisterChain() != 0)
+                    {
+                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                    }
+                    s->curState = 2;
+                    break;
+                case 0xb:
+                    *(i32 *)0x00575aa8 = 3;
+                    GameManager_CutChain();
+                    *(i32 *)0x0062f85c = *(i32 *)0x0062f85c - 1;
+                    if (GameManager_RegisterChain() != 0)
+                    {
+                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                    }
+                    s->curState = 2;
+                    break;
+                case 0xc:
+                    *(i32 *)0x00575aa8 = 3;
+                    GameManager_CutChain();
+                    if (GameManager_RegisterChain() != 0)
+                    {
+                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                    }
+                    s->curState = 2;
+                    break;
+                }
+            }
+            break;
+        case 5:
+            cur = s->curState;
+            switch (cur)
+            {
+            case -1:
                 return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-            }
-            if (cur == SUPERVISOR_STATE_MAINMENU)
-            {
+            case 1:
                 s->curState = 0;
-                Supervisor_ChainReleaseAll();
-                goto reinit_mainmenu;
+            reinit_mainmenu_d3d:
+                s->curState = 1;
+                (*(D3DDeviceStub **)0x00575958)[0].Reset2(0);
+                if (Supervisor_D3DDiscard(0) != 0)
+                {
+                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                }
+                break;
             }
-        }
-        else if (wanted == SUPERVISOR_STATE_RESULTSCREEN_FROMGAME)
-        {
-            i32 c = s->curState;
-            if (c == -1)
+            break;
+        case 6:
+            cur = s->curState;
+            switch (cur)
             {
+            case -1:
+                Supervisor_ChainReleaseAll(0, 0);
                 return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-            }
-            if (c == SUPERVISOR_STATE_MAINMENU)
-            {
+            case 1:
                 s->curState = 0;
-                goto reinit_mainmenu;
+                Supervisor_ChainReleaseAll(0, 0);
+                goto reinit_mainmenu_d3d;
             }
-            if (c == SUPERVISOR_STATE_MUSICROOM && ResultScreen_RegisterChain(TRUE) != 0)
+            break;
+        case 8:
+            cur = s->curState;
+            switch (cur)
             {
+            case -1:
                 return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+            case 1:
+                s->curState = 0;
+                goto reinit_mainmenu_d3d;
             }
+            break;
+        case 9:
+            cur = s->curState;
+            switch (cur)
+            {
+            case -1:
+                return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+            case 1:
+                s->curState = 0;
+                goto reinit_mainmenu_d3d;
+            case 6:
+                if (MusicRoom_RegisterChain(1) != 0)
+                {
+                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                }
+                break;
+            }
+            break;
         }
+
+        *(u16 *)0x004b9e5c = 0;
+        *(u16 *)0x004b9e54 = 0;
+        *(u16 *)0x004b9e4c = 0;
     }
 
-    g_IsEigthFrameOfHeldInput = 0;
-    g_LastFrameInput = 0;
-    g_CurFrameInput = 0;
-
-update_calccount:
     s->wantedState = s->curState;
     s->calcCount++;
     if (s->calcCount % 4000 == 3999)
     {
-        if (Supervisor_AutosaveScore() != 0)
+        if ((*(SupAutosaveStub *)0x00575950).AutosaveScore((char *)0x497228, *(i32 *)0x00575c14, *(i32 *)0x00575c10) != 0)
         {
             return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
         }
     }
     return CHAIN_CALLBACK_RESULT_CONTINUE;
 }
+#pragma optimize("", on)
+#else
+ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
+{
+    g_LastFrameInput = g_CurFrameInput;
+    g_CurFrameInput = Controller_GetInput();
+    s->wantedState = s->curState;
+    s->calcCount++;
+    return CHAIN_CALLBACK_RESULT_CONTINUE;
+}
+#endif
+
 
 #pragma optimize("s", off)
 #pragma optimize("s", on)
@@ -469,7 +543,7 @@ void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
     // orig: movsx eax,[0x0062627d]; test eax,eax; jne end
     if (*(i8 *)0x0062627d != 0) // g_NoFpsCounter (replay mode)
     {
-        goto end_block;
+        goto end_block_check_draw;
     }
 
     *(i32 *)0x0135e1f0 = *(i32 *)0x0135e1f0 + (i32)*(u8 *)0x00575a8b + 1;
@@ -480,9 +554,9 @@ void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
         if ((*(i32 *)0x0135e2a4 & 1) == 0)
         {
             *(i32 *)0x0135e2a4 = *(i32 *)0x0135e2a4 | 1;
-            *(i32 *)0x0135e2a0 = timeGetTime_th07();
+            *(i32 *)0x0135e2a0 = timeGetTime();
         }
-        i32 now = timeGetTime_th07();
+        i32 now = timeGetTime();
         if (now < *(i32 *)0x0135e2a0)
         {
             *(i32 *)0x0135e2a0 = now;
@@ -543,10 +617,10 @@ void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
         // QueryPerformanceCounter path
         if (*(i32 *)0x0135e298 == 0)
         {
-            QueryPerformanceCounter_th07((i64 *)0x0135e298);
+            QueryPerformanceCounter((LARGE_INTEGER *)0x0135e298);
         }
         i64 now;
-        QueryPerformanceCounter_th07(&now);
+        QueryPerformanceCounter((LARGE_INTEGER *)&now);
         if (*(i32 *)((u8 *)&now + 0) < *(i32 *)0x0135e298)
         {
             *(i32 *)0x0135e298 = *(i32 *)((u8 *)&now + 0);
@@ -757,17 +831,20 @@ ZunResult Supervisor::PlayAudio(i32 channel, char *path)
 // =====================================================================
 ZunResult Supervisor::PlayMidiFile(char *midiPath)
 {
-    // Orig allocates locals in this order: this[ebp-0x110], midi[ebp-0x10c],
-    // buf[ebp-0x108]. Declaring midi before buf (both function-scope) makes
-    // MSVC place midi adjacent to this and grow the frame to 0x120.
-    MidiOutput *midi;
+    // Orig frame=0x120, locals (verified from disasm):
+    //   [ebp-0x110]=this, [ebp-0x10c]=midi, [ebp-0x108]=buf[0x100],
+    //   [ebp-0x114]=p, [ebp-0x118]=d, [ebp-0x11c]=d2 (dead copy),
+    //   [ebp-0x11d]=c, [ebp-0x4]=dot.
+    // MSVC /Od puts all scalar function-scope locals at the BOTTOM of
+    // the frame ([ebp-0x4] etc.) regardless of declaration order, so we
+    // cannot reproduce midi@0x10c from C++. Body is structurally faithful;
+    // frame layout differs (documented MSVC /Od limitation).
     char buf[0x100];
     if (MUSIC_MODE == MUSIC_MIDI)
     {
-        // orig: check global != 0 first, THEN cache to local [ebp-0x10c].
         if (MIDI_OUTPUT_PTR != 0)
         {
-            midi = MIDI_OUTPUT_PTR;
+            MidiOutput *midi = MIDI_OUTPUT_PTR;
             midi->StopPlayback();
             midi->LoadFile(midiPath);
             midi->Play();
@@ -781,6 +858,7 @@ ZunResult Supervisor::PlayMidiFile(char *midiPath)
         }
         char *p = midiPath;
         char *d = buf;
+        char *d2 = d;
         char c;
         do
         {
@@ -789,13 +867,13 @@ ZunResult Supervisor::PlayMidiFile(char *midiPath)
             p++;
             d++;
         } while (c != 0);
+        (void)d2;
         char *dot = strchr_th07(buf, '.');
         dot[1] = 'w';
         dot[2] = 'a';
         dot[3] = 'v';
         SOUND_PLAYER_PTR->StopStream(2, -1, buf);
-    }
-    return ZUN_SUCCESS;
+    }    return ZUN_SUCCESS;
 }
 
 #pragma optimize("s", off)
@@ -1034,45 +1112,43 @@ ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
 // =====================================================================
 ZunResult Supervisor::LoadConfig(char *configPath)
 {
-    // Zero the config struct (0xe dwords = 0x38 bytes).
-    u32 *cfg = (u32 *)0x00575a68;
-    for (i32 i = 0xe; i != 0; i--)
-    {
-        *cfg = 0;
-        cfg++;
-    }
-    void *buf = Supervisor_ReadConfigBuffer();
+    // Orig frame=0x38 + push esi,edi. Local layout (verified from disasm):
+    //   [ebp-0x38]=this, [ebp-0x34..0x2c]=hdr2[3], [ebp-0x24]=read2,
+    //   [ebp-0x20]=f2, [ebp-0x1c..0x14]=hdr1[3], [ebp-0xc]=read1,
+    //   [ebp-0x8]=f1, [ebp-0x4]=buf.
+    // Declare all locals at function scope in this order so MSVC lays them
+    // out identically.
+    void *buf;
+    HANDLE f1;
+    u32 read1;
+    i32 hdr1[3];
+    HANDLE f2;
+    u32 read2;
+    i32 hdr2[3];
+    char _pad4[4];
+    // Zero config struct: rep stosd of 0xe dwords.
+    memset((void *)0x00575a68, 0, 0xe * 4);
+    buf = Supervisor_ReadConfigBuffer(configPath, 1);
     if (buf == 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496f14);
     }
     else
     {
-        u32 *src = (u32 *)buf;
-        u32 *dst = (u32 *)0x00575a68;
-        for (i32 i = 0xe; i != 0; i--)
-        {
-            *dst = *src;
-            src++;
-            dst++;
-        }
+        memcpy((void *)0x00575a68, buf, 0xe * 4);
         _free_th07(buf);
-        // Read thbgm.dat header (16 bytes).
-        i32 hdr[3];
-        u32 read1;
-        HANDLE f1 = CreateFileA_th07("./thbgm.dat", 0x80000000, 1, 0, 3, 0x8000080, 0);
+        f1 = CreateFileA("./thbgm.dat", 0x80000000, 1, 0, 3, 0x8000080, 0);
         if (f1 != (HANDLE)-1)
         {
-            ReadFile_th07(f1, hdr, 0x10, &read1, 0);
-            CloseHandle_th07(f1);
-            if (hdr[0] != 0x5641575a || hdr[1] != 1 || hdr[2] != 0x700)
+            ReadFile(f1, hdr1, 0x10, (DWORD *)&read1, 0);
+            CloseHandle(f1);
+            if (hdr1[0] != 0x5641575a || hdr1[1] != 1 || hdr1[2] != 0x700)
             {
                 GameErrorContext_LogFmt3((void *)0x00624210, (char *)0x00496ee4, configPath);
                 GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c20);
                 return ZUN_ERROR;
             }
         }
-        // Range validation.
         if (*(u8 *)0x00575a84 < 5 && *(u8 *)0x00575a85 < 4 && *(u8 *)0x00575a86 < 2 &&
             *(u8 *)0x00575a87 < 3 && *(u8 *)0x00575a89 < 6 && *(u8 *)0x00575a88 < 2 &&
             *(u8 *)0x00575a8a < 2 && *(u8 *)0x00575a8b < 3 && *(u8 *)0x00575a8c < 3 &&
@@ -1090,9 +1166,7 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     *(u32 *)0x00575a7c = 0x70002;
     *(i16 *)0x00575a80 = 600;
     *(i16 *)0x00575a82 = 600;
-    i32 hdr2[3];
-    u32 read2;
-    HANDLE f2 = CreateFileA_th07("./thbgm.dat", 0x80000000, 1, 0, 3, 0x8000080, 0);
+    f2 = CreateFileA("./thbgm.dat", 0x80000000, 1, 0, 3, 0x8000080, 0);
     if (f2 == (HANDLE)-1)
     {
         *(u8 *)0x00575a87 = 2;
@@ -1100,8 +1174,8 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     }
     else
     {
-        ReadFile_th07(f2, hdr2, 0x10, &read2, 0);
-        CloseHandle_th07(f2);
+        ReadFile(f2, hdr2, 0x10, (DWORD *)&read2, 0);
+        CloseHandle(f2);
         if (hdr2[0] != 0x5641575a || hdr2[1] != 1 || hdr2[2] != 0x700)
         {
             GameErrorContext_LogFmt3((void *)0x00624210, (char *)0x00496ee4, configPath);
@@ -1114,11 +1188,8 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     *(u8 *)0x00575a89 = 1;
     *(u8 *)0x00575a8a = 0;
     *(u8 *)0x00575a8b = 0;
-    *(u32 *)0x00575a68 = *(u32 *)0x0049ee40;
-    *(u32 *)0x00575a6c = *(u32 *)0x0049ee44;
-    *(u32 *)0x00575a70 = *(u32 *)0x0049ee48;
-    *(u32 *)0x00575a74 = *(u32 *)0x0049ee4c;
-    *(u32 *)0x00575a78 = *(u32 *)0x0049ee50;
+    // Default keymap copy: orig inlines movsd x4 + movsw (18 bytes).
+    memcpy((void *)0x00575a68, (void *)0x0049ee40, 0x12);
     *(u8 *)0x00575a8c = 2;
     *(u8 *)0x00575a8d = 0;
     *(u8 *)0x00575a8e = 1;
@@ -1129,39 +1200,37 @@ apply_opts:
     *(u32 *)0x0049ee48 = *(u32 *)0x00575a70;
     *(u32 *)0x0049ee4c = *(u32 *)0x00575a74;
     *(u32 *)0x0049ee50 = *(u32 *)0x00575a78;
-    u32 opts = *(u32 *)((u8 *)this + 0x14c);
-    if ((opts >> 1 & 1) != 0)
+    if ((*(u32 *)((u8 *)this + 0x14c) >> 1 & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496e64);
     }
-    if ((opts >> 10 & 1) != 0)
+    if ((*(u32 *)((u8 *)this + 0x14c) >> 10 & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496e48);
     }
-    if ((opts >> 2 & 1) != 0)
+    if ((*(u32 *)((u8 *)this + 0x14c) >> 2 & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496e20);
     }
-    if ((opts >> 3 & 1) != 0 || (opts >> 4 & 1) != 0)
+    if ((*(u32 *)((u8 *)this + 0x14c) >> 3 & 1) != 0 || (*(u32 *)((u8 *)this + 0x14c) >> 4 & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496dfc);
     }
-    if ((opts >> 4 & 1) != 0)
+    if ((*(u32 *)((u8 *)this + 0x14c) >> 4 & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496dd0);
     }
-    if ((opts >> 5 & 1) != 0)
+    if ((*(u32 *)((u8 *)this + 0x14c) >> 5 & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496da8);
     }
-    if ((opts >> 6 & 1) != 0)
+    if ((*(u32 *)((u8 *)this + 0x14c) >> 6 & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496d8c);
     }
     *(u32 *)((u8 *)this + 0x16c) = 0;
-    opts = opts & 0xffffff7f;
-    *(u32 *)((u8 *)this + 0x14c) = opts;
-    if ((opts >> 8 & 1) != 0)
+    *(u32 *)((u8 *)this + 0x14c) = *(u32 *)((u8 *)this + 0x14c) & 0xffffff7f;
+    if ((*(u32 *)((u8 *)this + 0x14c) >> 8 & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496d6c);
     }
@@ -1169,23 +1238,23 @@ apply_opts:
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496d4c);
     }
-    if ((opts >> 9 & 1) != 0)
+    if ((*(u32 *)((u8 *)this + 0x14c) >> 9 & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496d24);
     }
-    if ((opts >> 0xb & 1) != 0)
+    if ((*(u32 *)((u8 *)this + 0x14c) >> 0xb & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496cec);
     }
-    if ((opts >> 0xc & 1) != 0)
+    if ((*(u32 *)((u8 *)this + 0x14c) >> 0xc & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496cd0);
     }
-    if ((opts >> 0xd & 1) != 0)
+    if ((*(u32 *)((u8 *)this + 0x14c) >> 0xd & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496cb0);
     }
-    if ((opts >> 0xe & 1) != 0)
+    if ((*(u32 *)((u8 *)this + 0x14c) >> 0xe & 1) != 0)
     {
         GameErrorContext_LogFmt2((void *)0x00624210, (char *)0x00496c98);
         *(u32 *)0x00575abc = 1;
