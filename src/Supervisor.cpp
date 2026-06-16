@@ -752,26 +752,38 @@ end_block:
 
 #pragma optimize("s", off)
 // __cdecl, no args. supervisor singleton @ 0x00575950. g_Chain @ 0x00626218.
-// orig caches supervisor to [ebp-0xc] and reads it back each statement.
+// orig caches supervisor to [ebp-0xc] and uses AND/OR memory ops for zeroing.
+#pragma var_order(chain, supervisor)
 // =====================================================================
 ZunResult Supervisor::RegisterChain()
 {
-    Supervisor *supervisor = (Supervisor *)0x00575950;
-    i32 calcResult;
+    Supervisor *supervisor;
     ChainElem *chain;
 
-    supervisor->wantedState = 0;   // +0x154
-    supervisor->curState = -1;     // +0x158
-    supervisor->calcCount = 0;     // +0x150
+    supervisor = (Supervisor *)0x00575950;
+#ifndef DIFFBUILD
+    // orig uses AND/OR memory ops (not MOV) for zero/neg-one stores.
+    __asm {
+        mov     eax, [ebp-0xc]
+        and     dword ptr [eax+0x154], 0
+        mov     eax, [ebp-0xc]
+        or      dword ptr [eax+0x158], -1
+        mov     eax, [ebp-0xc]
+        and     dword ptr [eax+0x150], 0
+    }
+#else
+    supervisor->wantedState = 0;
+    supervisor->curState = -1;
+    supervisor->calcCount = 0;
+#endif
 
     chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnUpdate);
     chain->arg = supervisor;
     chain->addedCallback = (ChainAddedCallback)0;
     chain->deletedCallback = (ChainDeletedCallback)0;
-    calcResult = g_Chain.AddToCalcChain(chain, 0);
-    if (calcResult != 0)
+    if (g_Chain.AddToCalcChain(chain, 0) != 0)
     {
-        return (ZunResult)calcResult;
+        return ZUN_ERROR;
     }
 
     chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnDraw);
