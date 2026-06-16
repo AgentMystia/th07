@@ -328,51 +328,18 @@ struct D3DDeviceStub
 ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
 {
     i32 wanted, cur1, cur5, cur2, cur6, cur8, cur9;
-#ifndef DIFFBUILD
-    __asm {
-        mov     eax, [0x004b9e44]
-        or      byte ptr [eax+0x2e4d2], 0xff
-        mov     eax, [0x004b9e44]
-        and     dword ptr [eax+0x2e4d8], 0
-        mov     eax, [0x004b9e44]
-        and     dword ptr [eax+0x2e4cc], 0
-        mov     eax, [0x004b9e44]
-        or      byte ptr [eax+0x2e4d1], 0xff
-        mov     eax, [0x004b9e44]
-        or      byte ptr [eax+0x2e4d0], 0xff
-        mov     eax, [0x004b9e44]
-        or      byte ptr [eax+0x2e4d3], 0xff
-        mov     eax, [0x004b9e44]
-        and     dword ptr [eax+0xc], 0
-        mov     eax, [0x004b9e44]
-        and     dword ptr [eax+0x10], 0
-        mov     eax, [0x004b9e44]
-        and     dword ptr [eax+0x8], 0
-        mov     eax, [0x004b9e44]
-        and     dword ptr [eax+0x14], 0
-        mov     eax, [0x004b9e44]
-        or      byte ptr [eax+0x2e4d4], 0xff
-        mov     eax, [0x004b9e44]
-        and     dword ptr [eax+0x4], 0
-        mov     eax, [0x004b9e44]
-        mov     dword ptr [eax], 0x80808080
-        mov     eax, [0x004b9e44]
-        fldz
-        fstp    dword ptr [eax+0x1c]
-        mov     eax, [0x004b9e44]
-        fldz
-        fstp    dword ptr [eax+0x18]
-        mov     ecx, 0x00575c0c
-        mov     byte ptr [ecx], 0xff
-    }
-#else
-    { u8 *a = *(u8**)0x004b9e44; a[0x2e4d2]=0xff; *(u32*)(a+0x2e4d8)=0;
-      *(u32*)(a+0x2e4cc)=0; a[0x2e4d1]=0xff; a[0x2e4d0]=0xff; a[0x2e4d3]=0xff;
-      *(u32*)(a+0xc)=0; *(u32*)(a+0x10)=0; *(u32*)(a+0x8)=0; *(u32*)(a+0x14)=0;
-      a[0x2e4d4]=0xff; *(u32*)(a+0x4)=0; *(u32*)(a+0x0)=0x80808080;
-      *(f32*)(a+0x1c)=0.0f; *(f32*)(a+0x18)=0.0f; }
-    *(u8*)0x00575c0c = 0xff;
-#endif
+    { u8 *a0 = *(u8**)&DAT_004b9e44; a0[0x2e4d2] = 0xff; }
+    { u8 *a1 = *(u8**)&DAT_004b9e44; *(u32*)(a1+0x2e4d8) = 0; }
+    { u8 *a2 = *(u8**)&DAT_004b9e44; *(u32*)(a2+0x2e4cc) = 0; }
+    { u8 *a3 = *(u8**)&DAT_004b9e44; a3[0x2e4d1] = 0xff; }
+    { u8 *a4 = *(u8**)&DAT_004b9e44; a4[0x2e4d0] = 0xff; }
+    { u8 *a5 = *(u8**)&DAT_004b9e44; a5[0x2e4d3] = 0xff; }
+    { u8 *a6 = *(u8**)&DAT_004b9e44; *(u32*)(a6+0xc)=0; *(u32*)(a6+0x10)=0; *(u32*)(a6+0x8)=0; *(u32*)(a6+0x14)=0; }
+    { u8 *a7 = *(u8**)&DAT_004b9e44; a7[0x2e4d4] = 0xff; }
+    { u8 *a8 = *(u8**)&DAT_004b9e44; *(u32*)(a8+0x4)=0; *(u32*)(a8+0x0)=0x80808080; }
+    *(f32*)(*(u8**)&DAT_004b9e44 + 0x1c) = 0.0f;
+    *(f32*)(*(u8**)&DAT_004b9e44 + 0x18) = 0.0f;
+    *(u8*)&DAT_00575c0c = 0xff;
     if (*(void **)&DAT_004bda94 != 0)
     {
         CStreamingSound_UpdateFadeOut();
