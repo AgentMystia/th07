@@ -264,16 +264,24 @@ i32 __fastcall EffectManager::EffectCallbackAttractInit(Effect *effect)
 // EffectCallbackAttract: 256 * (1 - t/60) * dir + anchor. FUN_0041aaf0.
 // Matches th06's EffectCallbackAttract (which used /60.0f). th07 folds the
 // timer's sub-frame into the parameter; th06 read timer.AsFramesFloat().
+// rdata float constants (orig .rdata). Defined as extern so MSVC emits
+// fmul [DAT_addr] matching orig instead of inline __real@ literals.
+extern "C" u8 g_EffectConst256[4];   // DAT_00498a98 = 256.0f
+extern "C" u8 g_EffectConst60[4];    // DAT_00498a48 = 60.0f
 i32 __fastcall EffectManager::EffectCallbackAttract(Effect *effect)
 {
     f32 t;
+    f32 *base = (f32 *)((u8 *)effect + 0x2b8);
 
-    t = 256.0f - ((f32)effect->timer.current + effect->timer.subFrame) * 256.0f / 60.0f;
+    t = *(f32 *)g_EffectConst256 -
+        ((f32)*(i32 *)((u8 *)base + 0x8) + *(f32 *)((u8 *)base + 0x4)) *
+        *(f32 *)g_EffectConst256 / *(f32 *)g_EffectConst60;
 
-    effect->pos1.x = t * effect->pos2.x + effect->position.x;
-    effect->pos1.y = t * effect->pos2.y + effect->position.y;
-    effect->pos1.z = t * effect->pos2.z + effect->position.z;
-    effect->pos1.z = 0.0f;
+    f32 *anchor = (f32 *)((u8 *)effect + 0x294);
+    *(f32 *)((u8 *)effect + 0x248) = t * *(f32 *)((u8 *)anchor + 0x8) + *(f32 *)((u8 *)effect + 0x27c);
+    *(f32 *)((u8 *)effect + 0x244) = t * *(f32 *)((u8 *)anchor + 0x4) + *(f32 *)((u8 *)effect + 0x278);
+    *(f32 *)((u8 *)effect + 0x240) = t * *(f32 *)((u8 *)anchor + 0x0) + *(f32 *)((u8 *)effect + 0x274);
+    *(i32 *)((u8 *)effect + 0x248 + 0x8) = 0;
 
     return EFFECT_CALLBACK_RESULT_DONE;
 }
