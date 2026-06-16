@@ -51,7 +51,7 @@ extern const char TH_SCENE_FMT[];          // "scene %d -> %d\r\n"
 // ---- cross-module stubs (full impls land when those modules reverse) ----
 // Declared as extern C so MSVC emits a reloc CALL that objdiff tolerates.
 extern "C" u16 __fastcall Controller_GetInput();                  // FUN_00430b50
-extern "C" void __fastcall DebugPrint_th(char *fmt, ...);         // FUN_0045e4f0
+extern "C" void __fastcall DebugPrint_th(const char *fmt, ...);         // FUN_0045e4f0
 extern "C" ZunResult __fastcall GameManager_RegisterChain();      // FUN_0042f3c5
 extern "C" void __fastcall GameManager_CutChain();                // FUN_0042f45d
 extern "C" ZunResult __fastcall MainMenu_RegisterChain();         // FUN_0041e820
@@ -74,6 +74,9 @@ extern "C" void __fastcall MidiOutput_ClearTracks();              // FUN_0043670
 extern "C" ZunResult __fastcall MidiOutput_SetFadeOut(u32 ms);    // FUN_00436c90
 extern "C" void __fastcall CStreamingSound_UpdateFadeOut();       // FUN_0045dad0
 extern "C" i32 __fastcall GetPrivateProfileInt_th07(char *app, char *key, i32 def, char *file); // FUN_00431330
+extern "C" void __fastcall Supervisor_D3DDiscard();               // FUN_0045c5d0 (D3DDevice reset)
+extern "C" void __fastcall Supervisor_ChainReleaseAll();          // FUN_00443da0 (ReplayManager release)
+extern "C" void __fastcall Supervisor_SomePulseFlag();            // FUN_00404fe0 (used by EffectManager)
 
 // Chain singleton (orig g_Chain @ 0x00626218).
 extern "C" struct Chain g_Chain;
@@ -101,6 +104,268 @@ void Supervisor::TickTimer(i32 *frames, f32 *subframes)
         *frames = *frames + 1;
     }
 }
+
+#pragma optimize("s", off)
+#pragma optimize("s", on)
+
+// =====================================================================
+// Supervisor::OnUpdate  (FUN_00437c70)
+// __fastcall, ECX = Supervisor*. Per-frame state machine + input poll.
+// Orig resets a cluster of AnmManager current* fields at the top.
+// =====================================================================
+ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
+{
+    // AnmManager per-frame field reset (orig: byte writes to g_AnmManager+0x2e4d0..d4
+    // and dword zero of +0xc..+0x14, +0x4; *0x80808080 to +0; fldz to +0x18/+0x1c).
+    u8 *anm = *(u8 **)0x004b9e44;
+    anm[0x2e4d2] = 0xff;
+    *(u32 *)(anm + 0x2e4d8) = 0;
+    *(u32 *)(anm + 0x2e4cc) = 0;
+    anm[0x2e4d1] = 0xff;
+    anm[0x2e4d0] = 0xff;
+    anm[0x2e4d3] = 0xff;
+    *(u32 *)(anm + 0xc) = 0;
+    *(u32 *)(anm + 0x10) = 0;
+    *(u32 *)(anm + 0x8) = 0;
+    *(u32 *)(anm + 0x14) = 0;
+    anm[0x2e4d4] = 0xff;
+    *(u32 *)(anm + 0x4) = 0;
+    *(u32 *)(anm + 0x0) = 0x80808080;
+    *(f32 *)(anm + 0x1c) = 0.0f;
+    *(f32 *)(anm + 0x18) = 0.0f;
+    *(u8 *)0x00575c0c = 0xff;
+    if (*(void **)0x004bda94 != 0)
+    {
+        CStreamingSound_UpdateFadeOut();
+    }
+
+
+    g_LastFrameInput = g_CurFrameInput;
+    g_CurFrameInput = Controller_GetInput();
+    g_IsEigthFrameOfHeldInput = 0;
+    if (g_LastFrameInput == g_CurFrameInput)
+    {
+        if (0x1d < g_NumOfFramesInputsWereHeld)
+        {
+            g_IsEigthFrameOfHeldInput = (u16)(g_NumOfFramesInputsWereHeld % 8 == 0);
+            if (0x25 < g_NumOfFramesInputsWereHeld)
+            {
+                g_NumOfFramesInputsWereHeld = 0x1e;
+            }
+        }
+        g_NumOfFramesInputsWereHeld++;
+    }
+    else
+    {
+        g_NumOfFramesInputsWereHeld = 0;
+    }
+
+    if (s->wantedState == s->curState)
+    {
+        goto update_calccount;
+    }
+
+    s->wantedState2 = s->wantedState;
+    DebugPrint_th(TH_SCENE_FMT, s->wantedState, s->curState);
+
+    {
+        i32 wanted = s->wantedState;
+        i32 cur = s->curState;
+
+        if (wanted == SUPERVISOR_STATE_INIT)
+        {
+            goto reinit_mainmenu;
+        }
+        else if (wanted == SUPERVISOR_STATE_MAINMENU)
+        {
+            if (cur == -1)
+            {
+                return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+            }
+            if (cur == SUPERVISOR_STATE_GAMEMANAGER)
+            {
+                if (GameManager_RegisterChain() != 0)
+                {
+                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                }
+            }
+            else if (cur == SUPERVISOR_STATE_EXITERROR)
+            {
+                return CHAIN_CALLBACK_RESULT_EXIT_GAME_ERROR;
+            }
+            else if (cur == SUPERVISOR_STATE_RESULTSCREEN)
+            {
+                if (ResultScreen_RegisterChain(NULL) != 0)
+                {
+                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                }
+            }
+            else if (cur == SUPERVISOR_STATE_MUSICROOM)
+            {
+                if (MusicRoom_RegisterChain() != 0)
+                {
+                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                }
+            }
+            else if (cur == SUPERVISOR_STATE_ENDING)
+            {
+                if (Ending_RegisterChain() != 0)
+                {
+                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                }
+            }
+        }
+        else if (wanted == SUPERVISOR_STATE_GAMEMANAGER)
+        {
+            if (cur < SUPERVISOR_STATE_RESULTSCREEN_FROMGAME)
+            {
+                if (cur == SUPERVISOR_STATE_MAINMENU_REPLAY)
+                {
+                    GameManager_CutChain();
+                    s->curState = 0;
+                    Supervisor_D3DDiscard();
+                    s->curState = SUPERVISOR_STATE_MAINMENU;
+                    if (MainMenu_RegisterChain() != 0)
+                    {
+                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                    }
+                }
+                else
+                {
+                    if (cur == -1)
+                    {
+                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                    }
+                    if (cur == SUPERVISOR_STATE_MAINMENU)
+                    {
+                        GameManager_CutChain();
+                        s->curState = 0;
+                        goto reinit_mainmenu;
+                    }
+                    if (cur == SUPERVISOR_STATE_GAMEMANAGER_REINIT)
+                    {
+                        GameManager_CutChain();
+                        if (GameManager_RegisterChain() != 0)
+                        {
+                            return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                        }
+                        s->curState = SUPERVISOR_STATE_GAMEMANAGER;
+                    }
+                    else if (cur == SUPERVISOR_STATE_MUSICROOM)
+                    {
+                        GameManager_CutChain();
+                        if (MusicRoom_RegisterChain() != 0)
+                        {
+                            return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                        }
+                    }
+                }
+            }
+            else if (cur == SUPERVISOR_STATE_ENDING)
+            {
+                GameManager_CutChain();
+                if (Ending_RegisterChain() != 0)
+                {
+                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                }
+            }
+            else if (cur == SUPERVISOR_STATE_ENDING_B)
+            {
+                s->curState = SUPERVISOR_STATE_GAMEMANAGER_REINIT;
+                GameManager_CutChain();
+                if (GameManager_RegisterChain() != 0)
+                {
+                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                }
+                s->curState = SUPERVISOR_STATE_GAMEMANAGER;
+            }
+            else if (cur == SUPERVISOR_STATE_ENDING_C)
+            {
+                s->curState = SUPERVISOR_STATE_GAMEMANAGER_REINIT;
+                GameManager_CutChain();
+                if (GameManager_RegisterChain() != 0)
+                {
+                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                }
+                s->curState = SUPERVISOR_STATE_GAMEMANAGER;
+            }
+        }
+        else if (wanted == SUPERVISOR_STATE_RESULTSCREEN)
+        {
+            if (cur == -1)
+            {
+                return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+            }
+            if (cur == SUPERVISOR_STATE_MAINMENU)
+            {
+                s->curState = 0;
+            reinit_mainmenu:
+                s->curState = SUPERVISOR_STATE_MAINMENU;
+                Supervisor_D3DDiscard();
+                if (MainMenu_RegisterChain() != 0)
+                {
+                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                }
+            }
+        }
+        else if (wanted == SUPERVISOR_STATE_MUSICROOM)
+        {
+            if (cur == -1)
+            {
+                Supervisor_ChainReleaseAll();
+                return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+            }
+            if (cur == SUPERVISOR_STATE_MAINMENU)
+            {
+                s->curState = 0;
+                Supervisor_ChainReleaseAll();
+                goto reinit_mainmenu;
+            }
+        }
+        else if (wanted == SUPERVISOR_STATE_RESULTSCREEN_FROMGAME)
+        {
+            i32 c = s->curState;
+            if (c == -1)
+            {
+                return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+            }
+            if (c == SUPERVISOR_STATE_MAINMENU)
+            {
+                s->curState = 0;
+                goto reinit_mainmenu;
+            }
+            if (c == SUPERVISOR_STATE_MUSICROOM && ResultScreen_RegisterChain(TRUE) != 0)
+            {
+                return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+            }
+        }
+    }
+
+    g_IsEigthFrameOfHeldInput = 0;
+    g_LastFrameInput = 0;
+    g_CurFrameInput = 0;
+
+update_calccount:
+    s->wantedState = s->curState;
+    s->calcCount++;
+    if (s->calcCount % 4000 == 3999)
+    {
+        if (Supervisor_AutosaveScore() != 0)
+        {
+            return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+        }
+    }
+    return CHAIN_CALLBACK_RESULT_CONTINUE;
+}
+
+#pragma optimize("s", off)
+#pragma optimize("s", on)
+
+
+#pragma optimize("s", off)
+#pragma optimize("s", on)
+
+
 
 #pragma optimize("s", off)
 #pragma optimize("s", on)
