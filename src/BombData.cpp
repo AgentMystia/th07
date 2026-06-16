@@ -234,7 +234,85 @@ void __fastcall BombData::ReimuABombDraw(Player *) {}
 void __fastcall BombData::MarisaABombCalc(Player *) {}
 void __fastcall BombData::MarisaBBombCalc(Player *) {}
 void __fastcall BombData::SakuyaABombCalc(Player *) {}
-void __fastcall BombData::SakuyaABombDraw(Player *) {}
+
+// =====================================================================
+// SakuyaABombDraw  (FUN_0040aba0)  -- 880 bytes
+// Loops 8 entries (stride 0x1428); each draws 4 sub-sprites. The AnmVm anm
+// pointer is @ player+i*0x1428+0x16c04. Source pos @ +0x16a60; velocity/delta
+// scratch @ +0x16bec. Block 0 copies pos; blocks 1-3 subtract scaled deltas
+// and add small offsets. rdata: 0x498b54 (0.83), 0x498c68 (offset), 0x498b08
+// (offset). scale pairs: 3.05, 2.2, 2.2(none), 1.0.
+// =====================================================================
+void __fastcall BombData::SakuyaABombDraw(Player *p)
+{
+    Supervisor_BombPreDraw();
+    for (i32 i = 0; i < 8; i++)
+    {
+        u8 *anm = reinterpret_cast<u8 *>(p) + i * 0x1428 + 0x16c04;
+        u8 *src = reinterpret_cast<u8 *>(p) + i * 0x1428 + 0x16a60;
+        // block 0
+        *(i32 *)(anm + 0x1c8 + 0) = *(i32 *)(src + 0);
+        *(i32 *)(anm + 0x1c8 + 4) = *(i32 *)(src + 4);
+        *(i32 *)(anm + 0x1c8 + 8) = *(i32 *)(src + 8);
+        *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+        *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+        *(u32 *)(anm + 0x1d0) = 0;
+        *(u32 *)(anm + 0x18) = 0x404ccccd;
+        *(u32 *)(anm + 0x1c) = 0x404ccccd;
+        ANM_MGR->Draw3(reinterpret_cast<i32 *>(anm));
+        // block 1: delta = *(0x16bec) * 0.83
+        {
+            u8 *d = reinterpret_cast<u8 *>(p) + i * 0x1428 + 0x16bec;
+            f32 dz = *(f32 *)(d + 8) * *reinterpret_cast<f32 *>(0x498b54);
+            f32 dy = *(f32 *)(d + 4) * *reinterpret_cast<f32 *>(0x498b54);
+            f32 dx = *(f32 *)(d + 0) * *reinterpret_cast<f32 *>(0x498b54);
+            *(f32 *)(anm + 0x1c8) -= dx;
+            *(f32 *)(anm + 0x1cc) -= dy;
+            *(f32 *)(anm + 0x1d0) -= dz;
+            *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x498c68);
+            *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x498c68);
+            *(u32 *)(anm + 0x1d0) = 0;
+            *(u32 *)(anm + 0x18) = 0x400ccccd;
+            *(u32 *)(anm + 0x1c) = 0x400ccccd;
+            ANM_MGR->Draw3(reinterpret_cast<i32 *>(anm));
+        }
+        // block 2: delta = *(0x16bec) * 2
+        {
+            u8 *d = reinterpret_cast<u8 *>(p) + i * 0x1428 + 0x16bec;
+            f32 dz = *(f32 *)(d + 8) * 2.0f;
+            f32 dy = *(f32 *)(d + 4) * 2.0f;
+            f32 dx = *(f32 *)(d + 0) * 2.0f;
+            *(f32 *)(anm + 0x1c8) -= dx;
+            *(f32 *)(anm + 0x1cc) -= dy;
+            *(f32 *)(anm + 0x1d0) -= dz;
+            *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x498b08);
+            *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x498b08);
+            *(u32 *)(anm + 0x1d0) = 0;
+            *(u32 *)(anm + 0x18) = 0x400ccccd;
+            *(u32 *)(anm + 0x1c) = 0x400ccccd;
+            ANM_MGR->Draw3(reinterpret_cast<i32 *>(anm));
+        }
+        // block 3: delta = *(0x16bec) * 2
+        {
+            u8 *d = reinterpret_cast<u8 *>(p) + i * 0x1428 + 0x16bec;
+            f32 dz = *(f32 *)(d + 8) * 2.0f;
+            f32 dy = *(f32 *)(d + 4) * 2.0f;
+            f32 dx = *(f32 *)(d + 0) * 2.0f;
+            *(f32 *)(anm + 0x1c8) -= dx;
+            *(f32 *)(anm + 0x1cc) -= dy;
+            *(f32 *)(anm + 0x1d0) -= dz;
+            *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x498c68);
+            *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x498c68);
+            *(u32 *)(anm + 0x1d0) = 0;
+            *(u32 *)(anm + 0x18) = 0x3f800000;
+            *(u32 *)(anm + 0x1c) = 0x3f800000;
+            ANM_MGR->Draw3(reinterpret_cast<i32 *>(anm));
+        }
+        // orig advances anm by 0x24c (but this draw only uses 1 AnmVm slot;
+        // the increment is the loop-end bookkeeping).
+        anm += 0x24c;
+    }
+}
 void __fastcall BombData::SakuyaBBombCalc(Player *) {}
 
 // =====================================================================
@@ -325,7 +403,52 @@ void __fastcall BombData::ReimuABombCalc2(Player *) {}
 void __fastcall BombData::YoumuBBombCalc(Player *) {}
 void __fastcall BombData::MarisaABombCalc2(Player *) {}
 void __fastcall BombData::SakuyaABombCalc2(Player *) {}
-void __fastcall BombData::SakuyaABombDraw2(Player *) {}
+
+// =====================================================================
+// SakuyaABombDraw2  (FUN_0040e280)  -- 0x195 bytes
+// Loops 2 entries; for each active one: draws 1 AnmVm then an inner loop
+// j=3..0x1f (step 4) drawing AnmVm-with-rotated-frame. The frame counter byte
+// @ sub+0x373 is advanced by `frame += j; frame = frame - (frame*j >> 5)`.
+// =====================================================================
+void __fastcall BombData::SakuyaABombDraw2(Player *p)
+{
+    Supervisor_BombPreDraw();
+    u8 *sub = reinterpret_cast<u8 *>(p) + 0x16a4c;
+    for (i32 i = 0; i < 2; i++)
+    {
+        if (*(i32 *)sub != 0)
+        {
+            i32 frame = *(u8 *)(sub + 0x373);
+            // first draw
+            *(i32 *)(sub + 0x380 + 0) = *(i32 *)(sub + 0x14 + 0);
+            *(i32 *)(sub + 0x380 + 4) = *(i32 *)(sub + 0x14 + 4);
+            *(i32 *)(sub + 0x380 + 8) = *(i32 *)(sub + 0x14 + 8);
+            *(f32 *)(sub + 0x380) += *reinterpret_cast<f32 *>(0x0062f864);
+            *(f32 *)(sub + 0x384) += *reinterpret_cast<f32 *>(0x0062f868);
+            *(i32 *)(sub + 0x388) = 0;
+            ANM_MGR->Draw3(reinterpret_cast<i32 *>(sub + 0x1b8));
+            // inner loop: j = 3, 7, 11, ..., 0x1f (step 4)
+            for (i32 j = 3; j < 0x20; j += 4)
+            {
+                u8 *src = sub + j * 0xc + 0x20;
+                *(i32 *)(sub + 0x380 + 0) = *(i32 *)(src + 0);
+                *(i32 *)(sub + 0x380 + 4) = *(i32 *)(src + 4);
+                *(i32 *)(sub + 0x380 + 8) = *(i32 *)(src + 8);
+                // orig: frame += (frame*j) signed-div-32 trick
+                i32 prod = frame * j;
+                i32 carry = (prod >> 31) & 0x1f;
+                frame = frame - ((prod + carry) >> 5);
+                *(u8 *)(sub + 0x373) = (u8)frame;
+                *(f32 *)(sub + 0x380) += *reinterpret_cast<f32 *>(0x0062f864);
+                *(f32 *)(sub + 0x384) += *reinterpret_cast<f32 *>(0x0062f868);
+                *(i32 *)(sub + 0x388) = 0;
+                ANM_MGR->Draw3(reinterpret_cast<i32 *>(sub + 0x1b8));
+            }
+            *(u8 *)(sub + 0x373) = (u8)frame;
+        }
+        sub += SUB_STRIDE_B;
+    }
+}
 
 // =====================================================================
 // ReimuCBombDraw  (FUN_00408e10)  -- 0x398 bytes
