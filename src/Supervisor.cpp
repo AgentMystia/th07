@@ -63,6 +63,17 @@ extern "C" void __fastcall DebugPrint_th(const char *fmt, ...);         // FUN_0
 extern "C" ZunResult __cdecl MainMenu_RegisterChain();            // FUN_0041e820
 extern "C" ZunResult __fastcall MusicRoom_RegisterChain(i32 b);   // FUN_0044a302 (ECX=b)
 extern "C" ZunResult __cdecl Ending_RegisterChain();              // FUN_0043b4db
+extern "C" i32 __fastcall Supervisor_AutosaveScore(char *p1, i32 p2, i32 p3);
+extern "C" i32 __fastcall Supervisor_D3DDiscard(i32 mode);
+extern "C" void __fastcall Supervisor_SomeCleanup1();
+extern "C" void __fastcall Supervisor_ReleaseAnm0();
+extern "C" void __fastcall Supervisor_MidiClearTracks();
+extern "C" void __fastcall Supervisor_Cleanup3();
+extern "C" void __fastcall Supervisor_HeapFreeAll();
+extern "C" void __fastcall Supervisor_SomeCleanup4();
+extern "C" void __fastcall Supervisor_SomeCleanup5();
+extern "C" void __fastcall Supervisor_ChainReleaseAll(i32 a, i32 b);
+extern "C" void __cdecl Supervisor_LogStr1(char *fmt, ...);
 extern "C" ZunResult __fastcall ResultScreen_RegisterChain(i32 b);// FUN_0041c1b0
 extern "C" void __fastcall SoundPlayer_StopStream(i32 cmd, i32 p, char *name); // FUN_0044d2f0
 extern "C" void __fastcall SoundPlayer_FadeOut(f32 seconds);      // FUN_00444c20
@@ -369,7 +380,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
     if (s->wantedState != s->curState)
     {
         wanted = s->wantedState;
-        Supervisor::DebugPrint((char *)&DAT_00497230, s->wantedState, s->curState);
+        Supervisor_LogStr1((char *)&DAT_00497230, s->wantedState, s->curState);
 
         switch (wanted)
         {
@@ -419,10 +430,10 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                 case 7:
                     GameManager::CutChain();
                     s->curState = 0;
-                    ReplayManager::SaveReplay((char*)0, (char*)0);
+                    Supervisor_ChainReleaseAll(0, 0);
                     s->curState = 1;
                     (*(D3DDeviceStub **)0x00575958)[0].lpVtbl->Reset((*(D3DDeviceStub **)0x00575958), 0);
-                    if (Supervisor::D3DDiscard(1) != 0)
+                    if (Supervisor_D3DDiscard(1) != 0)
                     {
                         return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     }
@@ -432,7 +443,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                 case 1:
                     GameManager::CutChain();
                     s->curState = 0;
-                    ReplayManager::SaveReplay((char*)0, (char*)0);
+                    Supervisor_ChainReleaseAll(0, 0);
                     goto reinit_mainmenu_d3d;
                 case 3:
                     GameManager::CutChain();
@@ -473,7 +484,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                     {
                         *(i32 *)&DAT_0062f85c = *(i32 *)&DAT_0062f85c - 1;
                     }
-                    ReplayManager::SaveReplay((char*)0, (char*)0);
+                    Supervisor_ChainReleaseAll(0, 0);
                     if (GameManager::RegisterChain() != 0)
                     {
                         return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
@@ -513,7 +524,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             reinit_mainmenu_d3d:
                 s->curState = 1;
                 (*(D3DDeviceStub **)0x00575958)[0].lpVtbl->Reset((*(D3DDeviceStub **)0x00575958), 0);
-                if (Supervisor::D3DDiscard(0) != 0)
+                if (Supervisor_D3DDiscard(0) != 0)
                 {
                     return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 }
@@ -525,11 +536,11 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             switch (cur6)
             {
             case -1:
-                ReplayManager::SaveReplay((char*)0, (char*)0);
+                Supervisor_ChainReleaseAll(0, 0);
                 return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
             case 1:
                 s->curState = 0;
-                ReplayManager::SaveReplay((char*)0, (char*)0);
+                Supervisor_ChainReleaseAll(0, 0);
                 goto reinit_mainmenu_d3d;
             }
             break;
@@ -572,7 +583,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
     s->calcCount++;
     if (s->calcCount % 4000 == 3999)
     {
-        if (Supervisor::AutosaveScore((char *)&DAT_00497228, *(i32 *)&DAT_00575c14, *(i32 *)&DAT_00575c10) != 0)
+        if (Supervisor_AutosaveScore((char *)&DAT_00497228, *(i32 *)&DAT_00575c14, *(i32 *)&DAT_00575c10) != 0)
         {
             return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
         }
@@ -1663,7 +1674,7 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     if (f2 == (HANDLE)-1)
     {
         *(u8 *)((DAT_00575a68 + 0x1f)) = 2;
-        Supervisor::DebugPrint((char *)&DAT_00496ebc);
+        Supervisor_LogStr1((char *)&DAT_00496ebc);
     }
     else
     {

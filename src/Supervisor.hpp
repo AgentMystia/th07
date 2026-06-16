@@ -206,17 +206,6 @@ struct Supervisor
 
     static ZunResult __fastcall SetupDInput(Supervisor *s);
 
-    // Internal helper statics (mapped in config/mapping.csv).
-    static void DebugPrint(char *fmt, ...);
-    static i32 D3DDiscard(i32 mode);
-    static i32 AutosaveScore(char *p1, i32 p2, i32 p3);
-    static void SomeCleanup1();
-    static void ReleaseAnm0();
-    static void HeapFreeAll();
-    static void SomeCleanup4();
-    static void SomeCleanup5();
-    static void MidiClearTracks();
-    static void Cleanup3();
 
     ZunResult LoadConfig(char *path);
 
