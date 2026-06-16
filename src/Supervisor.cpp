@@ -79,7 +79,7 @@ extern "C" void __fastcall Supervisor_ChainReleaseAll();          // FUN_00443da
 extern "C" void __fastcall Supervisor_SomePulseFlag();            // FUN_00404fe0 (used by EffectManager)
 
 // ---- thiscall callee stubs (ECX = singleton pointer) ----
-struct MidiOutputStub
+struct MidiOutput
 {
     void StopPlayback();                       // FUN_00436b30
     ZunResult LoadFile(char *path);            // FUN_004369c0
@@ -88,7 +88,7 @@ struct MidiOutputStub
     ZunResult SetFadeOut(u32 ms);              // FUN_00436c90
     ZunResult ParseFile(i32 idx);              // FUN_00436790
 };
-struct SoundPlayerStub
+struct SoundPlayer
 {
     void StopStream(i32 cmd, i32 param, char *name); // FUN_0044d2f0
     void FadeOut(f32 seconds);                       // FUN_00444c20
@@ -457,8 +457,8 @@ ZunResult Supervisor::RegisterChain()
 // musicMode @ 0x00575a87, opts @ 0x00575a9c, midiOutput @ 0x00575acc.
 #define MUSIC_MODE (*(u8 *)0x00575a87)
 #define CFG_OPTS (*(u32 *)0x00575a9c)
-#define MIDI_OUTPUT_PTR (*(MidiOutputStub **)0x00575acc)
-#define SOUND_PLAYER_PTR (*(SoundPlayerStub **)0x004ba0d8)
+#define MIDI_OUTPUT_PTR (*(MidiOutput **)0x00575acc)
+#define SOUND_PLAYER_PTR (*(SoundPlayer **)0x004ba0d8)
 
 // =====================================================================
 // Supervisor::ReadMidiFile  (FUN_0043a05f)
