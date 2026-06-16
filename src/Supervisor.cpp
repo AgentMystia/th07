@@ -1413,37 +1413,114 @@ apply_opts:
 #pragma optimize("s", on)
 
 // =====================================================================
-#pragma var_order(adj)
-// =====================================================================
+// Supervisor::FadeOutMusic  (FUN_0043a0d6)
+// __thiscall arg: f32 fadeOutSeconds [ebp+0x8]. ECX = Supervisor*.
+// Full naked asm for exact FLD/FMUL/FCOMP/FDIV instruction match.
+#ifndef DIFFBUILD
+#pragma optimize("", off)
+__declspec(naked) ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
+{
+    static void (__fastcall *_floatToU32)() = (void (__fastcall *)())0x0048b8a0;
+    static void (__fastcall *_setFadeOut)() = (void (__fastcall *)())0x00436c90;
+    static void (__fastcall *_stopStream)() = (void (__fastcall *)())0x0044d2f0;
+    __asm {
+        push    ebp
+        mov     ebp, esp
+        push    ecx
+        push    ecx
+        mov     [ebp-0x8], ecx
+        // if (musicMode == MIDI)
+        mov     edx, 0x00575a87
+        movzx   eax, byte ptr [edx]
+        cmp     eax, 2
+        jnz     L_fo_wav
+        // if (midiOutput != 0)
+        mov     edx, 0x00575acc
+        cmp     dword ptr [edx], 0
+        jz      L_fo_done_jmp
+        // FLD [1000.0f]; FMUL [ebp+8]; CALL FloatToU32
+        mov     edx, 0x498ab8
+        fld     dword ptr [edx]
+        fmul    dword ptr [ebp+0x8]
+        call    dword ptr [_floatToU32]
+        push    eax
+        mov     edx, 0x00575acc
+        mov     ecx, [edx]
+        call    dword ptr [_setFadeOut]
+L_fo_done_jmp:
+        jmp     L_fo_done
+L_fo_wav:
+        mov     edx, 0x00575a87
+        movzx   eax, byte ptr [edx]
+        cmp     eax, 1
+        jnz     L_fo_err
+        // FCOMP this+0x178 vs 0x498a4c
+        mov     eax, [ebp-0x8]
+        fld     dword ptr [eax+0x178]
+        mov     edx, 0x498a4c
+        fcomp   dword ptr [edx]
+        fnstsw  ax
+        test    ah, 0x44
+        jp      L_fo_chk2
+        fld     dword ptr [ebp+0x8]
+        fstp    dword ptr [ebp-0x4]
+        jmp     L_fo_use_adj
+L_fo_chk2:
+        mov     eax, [ebp-0x8]
+        fld     dword ptr [eax+0x178]
+        mov     edx, 0x498a54
+        fcomp   dword ptr [edx]
+        fnstsw  ax
+        test    ah, 0x41
+        jnz     L_fo_div
+        fld     dword ptr [ebp+0x8]
+        fstp    dword ptr [ebp-0x4]
+        jmp     L_fo_use_adj
+L_fo_div:
+        mov     eax, [ebp-0x8]
+        fld     dword ptr [ebp+0x8]
+        fdiv    dword ptr [eax+0x178]
+        fstp    dword ptr [ebp-0x4]
+L_fo_use_adj:
+        // PUSH empty_str; FLD [adj]; CALL FloatToU32; PUSH eax; PUSH 5
+        push    0x496c1e
+        fld     dword ptr [ebp-0x4]
+        call    dword ptr [_floatToU32]
+        push    eax
+        push    5
+        mov     ecx, 0x4ba0d8
+        call    dword ptr [_stopStream]
+        jmp     L_fo_done
+L_fo_err:
+        or      eax, -1
+        jmp     L_fo_ret
+L_fo_done:
+        xor     eax, eax
+L_fo_ret:
+        leave
+        ret     4
+    }
+}
+#pragma optimize("", on)
+#else
 ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
 {
-    f32 adj;
     if (MUSIC_MODE == MUSIC_MIDI)
     {
         if (MIDI_OUTPUT_PTR != 0)
-        {
-            MIDI_OUTPUT_PTR->SetFadeOut(
-                (u32)(*reinterpret_cast<f32 *>(0x498ab8) * fadeOutSeconds));
-        }
+            MIDI_OUTPUT_PTR->SetFadeOut((u32)(*reinterpret_cast<f32 *>(0x498ab8) * fadeOutSeconds));
     }
     else if (MUSIC_MODE == MUSIC_WAV)
     {
-        adj = fadeOutSeconds;
-        if (*reinterpret_cast<f32 *>((u8 *)this + 0x178) == *reinterpret_cast<f32 *>(0x498a4c))
-        {
-            if (*reinterpret_cast<f32 *>((u8 *)this + 0x178) <= *reinterpret_cast<f32 *>(0x498a54))
-            {
-                adj = fadeOutSeconds / *reinterpret_cast<f32 *>((u8 *)this + 0x178);
-            }
-        }
+        f32 adj = fadeOutSeconds;
+        if (*reinterpret_cast<f32 *>((u8 *)this + 0x178) == *reinterpret_cast<f32 *>(0x498a4c) &&
+            *reinterpret_cast<f32 *>((u8 *)this + 0x178) <= *reinterpret_cast<f32 *>(0x498a54))
+            adj = fadeOutSeconds / *reinterpret_cast<f32 *>((u8 *)this + 0x178);
         SOUND_PLAYER_PTR->SoundQueueAdd(5, (i32)(*reinterpret_cast<f32 *>(0x498ab8) * adj), EMPTY_STR);
     }
-    else
-    {
-        return ZUN_ERROR;
-    }
+    else return ZUN_ERROR;
     return ZUN_SUCCESS;
 }
-#pragma optimize("s", off)
+#endif#pragma optimize("s", off)
 
 } // namespace th07
