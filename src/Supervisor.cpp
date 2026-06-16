@@ -1633,7 +1633,7 @@ ZunResult Supervisor::LoadConfig(char *configPath)
     buf = Supervisor_ReadConfigBuffer(configPath, 1);
     if (buf == 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496f14);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496f14);
     }
     else
     {
@@ -1646,8 +1646,8 @@ ZunResult Supervisor::LoadConfig(char *configPath)
             CloseHandle(f1);
             if (hdr1_0 != 0x5641575a || hdr1_1 != 1 || hdr1_2 != 0x700)
             {
-                GameErrorContext_LogFmt3((void *)&DAT_00624210, (char *)&DAT_00496ee4, configPath);
-                GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496c20);
+                (*(GameErrorContext *)&DAT_00624210).Fatal((char *)&DAT_00496ee4, configPath);
+                (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496c20);
                 return ZUN_ERROR;
             }
         }
@@ -1659,7 +1659,7 @@ ZunResult Supervisor::LoadConfig(char *configPath)
         {
             goto apply_opts;
         }
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496e88);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496e88);
     }
     // Defaults.
     *(u8 *)(DAT_00575a68 + 0x1c) = 2;
@@ -1680,8 +1680,8 @@ ZunResult Supervisor::LoadConfig(char *configPath)
         CloseHandle(f2);
         if (hdr2_0 != 0x5641575a || hdr2_1 != 1 || hdr2_2 != 0x700)
         {
-            GameErrorContext_LogFmt3((void *)&DAT_00624210, (char *)&DAT_00496ee4, configPath);
-            GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496c20);
+            (*(GameErrorContext *)&DAT_00624210).Fatal((char *)&DAT_00496ee4, configPath);
+            (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496c20);
             return ZUN_ERROR;
         }
         *(u8 *)((DAT_00575a68 + 0x1f)) = 1;
@@ -1704,69 +1704,69 @@ apply_opts:
     *(u32 *)&DAT_0049ee50 = *(u32 *)((DAT_00575a68 + 0x10));
     if ((*(u32 *)((u8 *)this + 0x14c) >> 1 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496e64);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496e64);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 10 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496e48);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496e48);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 2 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496e20);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496e20);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 3 & 1) != 0 || (*(u32 *)((u8 *)this + 0x14c) >> 4 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496dfc);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496dfc);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 4 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496dd0);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496dd0);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 5 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496da8);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496da8);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 6 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496d8c);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496d8c);
     }
     *(u32 *)((u8 *)this + 0x16c) = 0;
     *(u32 *)((u8 *)this + 0x14c) = *(u32 *)((u8 *)this + 0x14c) & 0xffffff7f;
     if ((*(u32 *)((u8 *)this + 0x14c) >> 8 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496d6c);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496d6c);
     }
     if (*(i8 *)((u8 *)this + 0x13a) != 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496d4c);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496d4c);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 9 & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496d24);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496d24);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 0xb & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496cec);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496cec);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 0xc & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496cd0);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496cd0);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 0xd & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496cb0);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496cb0);
     }
     if ((*(u32 *)((u8 *)this + 0x14c) >> 0xe & 1) != 0)
     {
-        GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496c98);
+        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496c98);
         *(u32 *)((DAT_00575a68 + 0x54)) = 1;
     }
     if (Supervisor_ValidateSize(0x38) == 0)
     {
         return ZUN_SUCCESS;
     }
-    GameErrorContext_LogFmt3((void *)&DAT_00624210, (char *)&DAT_00496c78, configPath);
-    GameErrorContext_LogFmt2((void *)&DAT_00624210, (char *)&DAT_00496c20);
+    (*(GameErrorContext *)&DAT_00624210).Fatal((char *)&DAT_00496c78, configPath);
+    (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496c20);
     return ZUN_ERROR;
 }
 #pragma optimize("s", off)
