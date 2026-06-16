@@ -505,3 +505,28 @@ orig 用 `e8 xx xx xx xx`（near CALL + reloc32），naked asm 的 `call dword p
 - 对多 CALL 函数（DeletedCallback/OnUpdate/LoadConfig）：hybrid C++ + inline asm
   （C++ calls for e8, inline asm for frame control）
 - 对 DrawFpsCounter：naked 需要修复 fdivp 和减少 EDX 中间变量
+
+## Session 2026-06-17 最终状态：avg 86.61%, 8/13 >=90%
+
+### 从 65.8% → 86.61% (+20.8 分), 3/13 → 8/13 >=90%
+
+### 关键技术
+1. **`#pragma var_order`**: 控制 MSVC /Od 局部变量栈布局顺序
+2. **`__declspec(naked)` + static 函数指针**: 精确控制帧布局和指令序列
+3. **DAT_ extern 变量**: 使 MSVC 生成 dir32 reloc 匹配 orig delinked obj 的 DAT_ 符号名
+4. **`generate_objdiff_objs.py` 改进**: demangle 跨模块 C++ mangled 符号 + DAT_ 下划线剥离
+5. **C++ class method calls**: GameManager::RegisterChain() 生成正确的 ?RegisterChain@GameManager@th07@@ mangled reloc
+6. **GameManager.hpp g_Supervisor 冲突修复**: 删除重复 `extern void *g_Supervisor` 声明
+7. **mapping.csv 扩展**: 新增 21 个函数映射使 ExportDelinker 产生 th07:: mangled reloc 名
+
+### 未达 90% 的根因（供下个会话参考）
+- **OnUpdate (64.59%)**: MSVC /Od 创建不可控的临时变量（8 个额外 dwords），
+  导致帧 0x40 vs orig 0x44，this@[-0x20] vs orig [-0x28]。所有 ebp 相对偏移不匹配。
+  naked asm 可精确控制帧但 ff15 CALL 与 orig e8 CALL opcode 不同（DIFF_REPLACE，部分匹配）。
+- **LoadConfig (58.61%)**: 类似的帧布局差异 + DAT_ 数据地址 reloc 名不完全匹配。
+- **DrawFpsCounter (75.03%)**: FPU 栈表达式差异 + f32 局部变量多 16B 帧。
+
+### 下个会话建议
+1. 对 OnUpdate/LoadConfig 尝试完全 naked asm（接受 ff15 CALL 的 DIFF_REPLACE 部分匹配）
+2. 修复 `generate_objdiff_objs.py` 将 ff15 indirect call reloc 映射到 orig 符号名
+3. 在 objdiff.json 中配置符号映射规则
