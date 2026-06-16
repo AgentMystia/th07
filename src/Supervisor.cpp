@@ -671,6 +671,105 @@ ZunResult Supervisor::ReadMidiFile(u32 midiFileIdx)
     return ZUN_SUCCESS;
 }
 
+// =====================================================================
+// Supervisor::PlayAudio  (FUN_00439dd0)
+// __fastcall args: i32 channel, char *path. ECX = Supervisor* (unused body).
+// MIDI path: MidiOutput::LoadFile(this, path, channel) @ 0x436650 (2 stack
+// args). WAV path: copy path bytes into local buffer [ebp-0x108], locate
+// '.', overwrite 4 bytes at that pos with ".wav" (0x2e,0x77,0x61,0x76), then
+// SoundPlayer::StopStream(1, channel, modifiedPath) @ 0x44d2f0.
+// Returns 0 always (orig: XOR EAX,EAX at both tails; the WAV tail has an
+// extra `INC EAX` => returns 1).
+// =====================================================================
+extern "C" char *__cdecl strchr_th07(char *s, i32 ch); // 0x0047d4b0 (__cdecl, 2 stack args)
+struct MidiOutput2
+{
+    void LoadFile2(char *path, i32 channel); // 0x00436650 (2 stack args)
+};
+ZunResult Supervisor::PlayAudio(i32 channel, char *path)
+{
+    if (MUSIC_MODE == MUSIC_MIDI)
+    {
+        if (MIDI_OUTPUT_PTR != 0)
+        {
+            (*(MidiOutput2 **)0x00575acc)[0].LoadFile2(path, channel);
+        }
+        return ZUN_SUCCESS;
+    }
+    if (MUSIC_MODE != MUSIC_WAV)
+    {
+        return (ZunResult)1; // orig WAV tail: XOR EAX,EAX; INC EAX
+    }
+    // WAV path: copy path into local buffer, find '.', write ".wav".
+    // Orig keeps two dst pointer locals (d and d2) plus a byte local; mirror
+    // that so the stack frame and copy loop match byte-for-byte.
+    char buf[0x100];
+    char *p = path;
+    char *d = buf;
+    char *d2 = d;
+    char c;
+    do
+    {
+        c = *p;
+        *d2 = c;
+        p++;
+        d2++;
+    } while (c != 0);
+    char *dot = strchr_th07(buf, '.');
+    dot[1] = 'w';
+    dot[2] = 'a';
+    dot[3] = 'v';
+    SOUND_PLAYER_PTR->StopStream(1, channel, buf);
+    return (ZunResult)1;
+}
+
+// =====================================================================
+// Supervisor::PlayMidiFile  (FUN_00439f4d)
+// __fastcall arg: char *midiPath. ECX = Supervisor* (unused body).
+// MIDI path: MidiOutput::StopPlayback; LoadFile(midiPath); Play().
+// WAV path: copy path into local buffer, append ".wav" at '.', then
+// SoundPlayer::StopStream(2, -1, modifiedPath).
+// =====================================================================
+ZunResult Supervisor::PlayMidiFile(char *midiPath)
+{
+    if (MUSIC_MODE == MUSIC_MIDI)
+    {
+        // orig: check global != 0 first, THEN cache to local [ebp-0x10c].
+        if (MIDI_OUTPUT_PTR != 0)
+        {
+            MidiOutput *midi = MIDI_OUTPUT_PTR;
+            midi->StopPlayback();
+            midi->LoadFile(midiPath);
+            midi->Play();
+        }
+    }
+    else
+    {
+        if (MUSIC_MODE != MUSIC_WAV)
+        {
+            return ZUN_ERROR;
+        }
+        char buf[0x100];
+        char *p = midiPath;
+        char *d = buf;
+        char *d2 = d;
+        char c;
+        do
+        {
+            c = *p;
+            *d2 = c;
+            p++;
+            d2++;
+        } while (c != 0);
+        char *dot = strchr_th07(buf, '.');
+        dot[1] = 'w';
+        dot[2] = 'a';
+        dot[3] = 'v';
+        SOUND_PLAYER_PTR->StopStream(2, -1, buf);
+    }
+    return ZUN_SUCCESS;
+}
+
 #pragma optimize("s", off)
 #pragma optimize("s", on)
 

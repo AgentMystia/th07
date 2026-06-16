@@ -198,7 +198,7 @@ struct Supervisor
 
 
     ZunResult ReadMidiFile(u32 midiFileIdx);
-    i32 PlayMidiFile(char *midiPath);
+    ZunResult PlayMidiFile(char *midiPath);
     ZunResult PlayAudio(i32 channel, char *path);
     ZunResult StopAudio(i32 channel);
     ZunResult SetupMidiPlayback();
