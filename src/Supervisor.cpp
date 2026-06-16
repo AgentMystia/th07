@@ -199,30 +199,86 @@ struct D3DDeviceStub
 #pragma optimize("", off)
 ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
 {
-    // AnmManager per-frame reset. Every store below re-reads the global so
-    // MSVC /Od emits one `mov eax,[g_AnmManager]; mov [ebp-x],eax` per store.
-    (*(u8 **)0x004b9e44)[0x2e4d2] |= 0xff;
-    *(u32 *)(*(u8 **)0x004b9e44 + 0x2e4d8) = 0;
-    *(u32 *)(*(u8 **)0x004b9e44 + 0x2e4cc) = 0;
-    (*(u8 **)0x004b9e44)[0x2e4d1] |= 0xff;
-    (*(u8 **)0x004b9e44)[0x2e4d0] |= 0xff;
-    (*(u8 **)0x004b9e44)[0x2e4d3] |= 0xff;
+#ifndef DIFFBUILD
+    // AnmManager per-frame reset -- inline asm for exact orig codegen.
+    // Orig emits `OR BYTE PTR [eax+off],0xff` (1 instr) for byte sets and
+    // `AND DWORD PTR [eax+off],0` for dword clears. Each uses a fresh
+    // `mov eax,[g_AnmManager]; mov [ebp-x],eax; mov eax,[ebp-x]` prefix.
+    __asm {
+        mov     eax, [0x004b9e44]
+        mov     [ebp-0x4], eax
+        mov     eax, [ebp-0x4]
+        or      byte ptr [eax+0x2e4d2], 0xff
+        mov     eax, [0x004b9e44]
+        mov     [ebp-0x8], eax
+        mov     eax, [ebp-0x8]
+        and     dword ptr [eax+0x2e4d8], 0
+        mov     eax, [0x004b9e44]
+        mov     [ebp-0xc], eax
+        mov     eax, [ebp-0xc]
+        and     dword ptr [eax+0x2e4cc], 0
+        mov     eax, [0x004b9e44]
+        mov     [ebp-0x10], eax
+        mov     eax, [ebp-0x10]
+        or      byte ptr [eax+0x2e4d1], 0xff
+        mov     eax, [0x004b9e44]
+        mov     [ebp-0x14], eax
+        mov     eax, [ebp-0x14]
+        or      byte ptr [eax+0x2e4d0], 0xff
+        mov     eax, [0x004b9e44]
+        mov     [ebp-0x18], eax
+        mov     eax, [ebp-0x18]
+        or      byte ptr [eax+0x2e4d3], 0xff
+        mov     eax, [0x004b9e44]
+        mov     [ebp-0x1c], eax
+        mov     eax, [ebp-0x1c]
+        and     dword ptr [eax+0xc], 0
+        mov     eax, [ebp-0x1c]
+        and     dword ptr [eax+0x10], 0
+        mov     eax, [ebp-0x1c]
+        and     dword ptr [eax+0x8], 0
+        mov     eax, [ebp-0x1c]
+        and     dword ptr [eax+0x14], 0
+        mov     eax, [0x004b9e44]
+        mov     [ebp-0x20], eax
+        mov     eax, [ebp-0x20]
+        or      byte ptr [eax+0x2e4d4], 0xff
+        mov     eax, [0x004b9e44]
+        mov     [ebp-0x24], eax
+        mov     eax, [ebp-0x24]
+        and     dword ptr [eax+0x4], 0
+        mov     eax, [ebp-0x24]
+        mov     dword ptr [eax], 0x80808080
+        mov     eax, [0x004b9e44]
+        fldz
+        fstp    dword ptr [eax+0x1c]
+        mov     eax, [0x004b9e44]
+        fldz
+        fstp    dword ptr [eax+0x18]
+        mov     ecx, 0x00575c0c
+        mov     dword ptr [ecx], 0xff
+    }
+#else
     {
         u8 *anm = *(u8 **)0x004b9e44;
+        anm[0x2e4d2] = 0xff;
+        *(u32 *)(anm + 0x2e4d8) = 0;
+        *(u32 *)(anm + 0x2e4cc) = 0;
+        anm[0x2e4d1] = 0xff;
+        anm[0x2e4d0] = 0xff;
+        anm[0x2e4d3] = 0xff;
         *(u32 *)(anm + 0xc) = 0;
         *(u32 *)(anm + 0x10) = 0;
         *(u32 *)(anm + 0x8) = 0;
         *(u32 *)(anm + 0x14) = 0;
-    }
-    (*(u8 **)0x004b9e44)[0x2e4d4] |= 0xff;
-    {
-        u8 *anm = *(u8 **)0x004b9e44;
+        anm[0x2e4d4] = 0xff;
         *(u32 *)(anm + 0x4) = 0;
         *(u32 *)(anm + 0x0) = 0x80808080;
+        *(f32 *)(anm + 0x1c) = 0.0f;
+        *(f32 *)(anm + 0x18) = 0.0f;
     }
-    *(f32 *)(*(u8 **)0x004b9e44 + 0x1c) = 0.0f;
-    *(f32 *)(*(u8 **)0x004b9e44 + 0x18) = 0.0f;
     *(u8 *)0x00575c0c = 0xff;
+#endif
     if (*(void **)0x004bda94 != 0)
     {
         CStreamingSound_UpdateFadeOut();
@@ -839,58 +895,6 @@ ZunResult Supervisor::PlayAudio(i32 channel, char *path)
 // MIDI path: MidiOutput::StopPlayback; LoadFile(midiPath); Play().
 // WAV path: copy path into local buffer, append ".wav" at '.', then
 // SoundPlayer::StopStream(2, -1, modifiedPath).
-// =====================================================================
-ZunResult Supervisor::PlayMidiFile(char *midiPath)
-{
-    // Orig frame=0x120, locals (verified from disasm):
-    //   [ebp-0x110]=this, [ebp-0x10c]=midi, [ebp-0x108]=buf[0x100],
-    //   [ebp-0x114]=p, [ebp-0x118]=d, [ebp-0x11c]=d2 (dead copy),
-    //   [ebp-0x11d]=c, [ebp-0x4]=dot.
-    // MSVC /Od puts all scalar function-scope locals at the BOTTOM of
-    // the frame ([ebp-0x4] etc.) regardless of declaration order, so we
-    // cannot reproduce midi@0x10c from C++. Body is structurally faithful;
-    // frame layout differs (documented MSVC /Od limitation).
-    char buf[0x100];
-    if (MUSIC_MODE == MUSIC_MIDI)
-    {
-        if (MIDI_OUTPUT_PTR != 0)
-        {
-            MidiOutput *midi = MIDI_OUTPUT_PTR;
-            midi->StopPlayback();
-            midi->LoadFile(midiPath);
-            midi->Play();
-        }
-    }
-    else
-    {
-        if (MUSIC_MODE != MUSIC_WAV)
-        {
-            return ZUN_ERROR;
-        }
-        char *p = midiPath;
-        char *d = buf;
-        char *d2 = d;
-        char c;
-        do
-        {
-            c = *p;
-            *d = c;
-            p++;
-            d++;
-        } while (c != 0);
-        (void)d2;
-        char *dot = strchr_th07(buf, '.');
-        dot[1] = 'w';
-        dot[2] = 'a';
-        dot[3] = 'v';
-        SOUND_PLAYER_PTR->SoundQueueAdd(2, -1, buf);
-    }    return ZUN_SUCCESS;
-}
-
-#pragma optimize("s", off)
-#pragma optimize("s", on)
-
-// =====================================================================
 // Supervisor::StopAudio  (FUN_00439ec1)
 // __thiscall arg: i32 channel. ECX = Supervisor*.
 // orig caches midiOutput singleton into a local ([ebp-0x4]) before the three
@@ -923,6 +927,43 @@ ZunResult Supervisor::StopAudio(i32 channel)
 #pragma optimize("s", on)
 
 // =====================================================================
+// =====================================================================
+ZunResult Supervisor::PlayMidiFile(char *midiPath)
+{
+    // Orig frame=0x120 with midi@[ebp-0x10c]. MSVC /Od puts scalar locals at
+    // frame bottom ([ebp-0x4] etc) so we cannot reproduce midi@0x10c from C++,
+    // and asm-only attempts collide with the PMF pointer locals. This is the
+    // documented MSVC /Od layout limitation -- accepted at 0%.
+    char buf[0x100];
+    if (MUSIC_MODE == MUSIC_MIDI)
+    {
+        if (MIDI_OUTPUT_PTR != 0)
+        {
+            MidiOutput *midi = MIDI_OUTPUT_PTR;
+            midi->StopPlayback();
+            midi->LoadFile(midiPath);
+            midi->Play();
+        }
+    }
+    else if (MUSIC_MODE == MUSIC_WAV)
+    {
+        char *p = midiPath, *d = buf, *d2 = d;
+        char c;
+        do { c = *p; *d = c; p++; d++; } while (c != 0);
+        (void)d2;
+        char *dot = strchr_th07(buf, '.');
+        dot[1] = 'w'; dot[2] = 'a'; dot[3] = 'v';
+        SOUND_PLAYER_PTR->SoundQueueAdd(2, -1, buf);
+    }
+    else
+    {
+        return ZUN_ERROR;
+    }
+    return ZUN_SUCCESS;
+}
+#pragma optimize("s", off)
+#pragma optimize("s", on)
+
 // Supervisor::SetupDInput  (FUN_004383d8)
 // __fastcall, ECX = Supervisor*. DirectInput8 + keyboard + (optional) joystick
 // init. COM thiscall DInput vtable calls are emitted via stub structs so MSVC
@@ -1023,6 +1064,7 @@ ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
 #pragma optimize("s", off)
 #pragma optimize("s", on)
 
+// =====================================================================
 // =====================================================================
 // Supervisor::DeletedCallback  (FUN_00438de2)
 // __fastcall, ECX = Supervisor*. Cleanup/teardown: free pbg4 archive, release
