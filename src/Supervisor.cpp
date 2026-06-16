@@ -197,13 +197,14 @@ struct D3DDeviceStub
     D3DDeviceStubVtbl *lpVtbl;
 };
 #pragma optimize("", off)
+#pragma var_order(wanted, cur1, cur5, cur2, cur6, cur8, cur9, _pad)
 ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
 {
+    i32 wanted;
+    i32 cur1, cur5, cur2, cur6, cur8, cur9;
+    i32 _pad;
 #ifndef DIFFBUILD
     // AnmManager per-frame reset -- inline asm for exact orig codegen.
-    // Orig emits `OR BYTE PTR [eax+off],0xff` (1 instr) for byte sets and
-    // `AND DWORD PTR [eax+off],0` for dword clears. Each uses a fresh
-    // `mov eax,[g_AnmManager]; mov [ebp-x],eax; mov eax,[ebp-x]` prefix.
     __asm {
         mov     eax, [0x004b9e44]
         mov     [ebp-0x4], eax
@@ -284,7 +285,6 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
         CStreamingSound_UpdateFadeOut();
     }
 
-    i32 wanted, cur;
     if (*(i8 *)0x0062627d == 0)
     {
         *(u16 *)0x004b9e54 = *(u16 *)0x004b9e4c;
@@ -323,8 +323,8 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
         case 0:
             goto reinit_mainmenu_d3d;
         case 1:
-            cur = s->curState;
-            switch (cur)
+            cur1 = s->curState;
+            switch (cur1)
             {
             case -1:
                 return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
@@ -358,10 +358,10 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             }
             break;
         case 2:
-            cur = s->curState;
-            if (cur <= 7)
+            cur2 = s->curState;
+            if (cur2 <= 7)
             {
-                switch (cur)
+                switch (cur2)
                 {
                 case 7:
                     GameManager_CutChain();
@@ -400,7 +400,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             }
             else
             {
-                switch (cur)
+                switch (cur2)
                 {
                 case 9:
                     ((i32 *)0x62f52c)[*(i32 *)0x00626280 * 0xb]++;
@@ -450,8 +450,8 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             }
             break;
         case 5:
-            cur = s->curState;
-            switch (cur)
+            cur5 = s->curState;
+            switch (cur5)
             {
             case -1:
                 return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
@@ -468,8 +468,8 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             }
             break;
         case 6:
-            cur = s->curState;
-            switch (cur)
+            cur6 = s->curState;
+            switch (cur6)
             {
             case -1:
                 Supervisor_ChainReleaseAll(0, 0);
@@ -481,8 +481,8 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             }
             break;
         case 8:
-            cur = s->curState;
-            switch (cur)
+            cur8 = s->curState;
+            switch (cur8)
             {
             case -1:
                 return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
@@ -492,8 +492,8 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             }
             break;
         case 9:
-            cur = s->curState;
-            switch (cur)
+            cur9 = s->curState;
+            switch (cur9)
             {
             case -1:
                 return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
@@ -519,9 +519,6 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
     s->calcCount++;
     if (s->calcCount % 4000 == 3999)
     {
-        // orig: mov ecx,0x575950; push x3; call AutosaveScore. We use the
-        // __fastcall extern (ECX=first arg) -- but orig wants ECX=g_Supervisor
-        // constant, so pass it explicitly. objdiff tolerates the reloc CALL.
         if (Supervisor_AutosaveScore((char *)0x497228, *(i32 *)0x00575c14, *(i32 *)0x00575c10) != 0)
         {
             return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
@@ -529,6 +526,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
     }
     return CHAIN_CALLBACK_RESULT_CONTINUE;
 }
+
 #pragma optimize("", on)
 #else
 ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
