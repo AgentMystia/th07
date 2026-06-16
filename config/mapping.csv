@@ -221,3 +221,6 @@ th07::CMyFont::Clean,0x431a5c,0x71,__fastcall,,i32,CMyFont*
 th07::CMyFont::InitWrapper,0x431ace,0x5e,__fastcall,,i32,u32,u32,i32
 th07::CMyFont::Init,0x431b2d,0x1be,__thiscall,,i32,CMyFont*,i32,i32,i32
 th07::CMyFont::Print,0x4322a3,0x31b,__fastcall,,void,u32,i32,char*
+th07::Pbg4Parser::Reset,0x45f2c0,0x7b,__fastcall,,void,
+th07::Pbg4Parser::SetIndex,0x45f270,0x42,__fastcall,,void,i32
+th07::Pbg4Parser::AdvanceNode,0x45f460,0x85,__fastcall,,void,i32
