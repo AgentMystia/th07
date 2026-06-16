@@ -85,6 +85,7 @@ FadeOutMusic 33.29%, ReadMidiFile 18.24%, DrawFpsCounter 2.48%（仅 early-retur
 - **🔑🔑🔑 读取 orig 数据表发现真实函数地址**：g_Effects 表（34 entry × 12 bytes）在 .data 段，含所有 effect callback 的真实 VA。用 ghidra `inspect_memory_content` 读 0x49efc0，解析每 entry 的 update/init 指针，即可定位所有 callback 地址。EffectManager EffectUpdateCallback4 0%→99.19% 仅靠此（原映射 0x41ad10 错，真实 0x41a750）。
 - **🔑🔑 thiscall callee 用 struct-method stub**：跨模块 __thiscall 调用（如 MidiOutput::SetFadeOut），声明 `struct MidiOutput { ZunResult SetFadeOut(u32); }` + `(*(MidiOutput**)0x575acc)->SetFadeOut(...)` 生成 `mov ecx,[singleton]; call`。Supervisor StopAudio 62%→84.5% 仅靠此。
 - **🔑 rdata 浮点常量必须 extern 全局引用**：orig 用 `fmul [DAT_00498a98]`（.rdata 段全局 256.0f），C++ 字面量 `256.0f` 生成 `fmul [__real@43800000]`（不同 reloc）。解决：`extern "C" u8 g_Const256[4];` + `*(f32*)g_Const256`。EffectCallbackAttract 45%→54% 靠此。
+- **🔑 成员方法默认 __thiscall，勿误用 __fastcall**：orig 成员方法只 ECX=this，其余走栈。若声明 `__fastcall`，MSVC 把第 2 参数放 EDX（orig 不期望），match 暴跌。SpawnParticles 88.88%→90.25% 仅靠移除 `__fastcall`（改回默认 __thiscall）。
 - **objdiff 符号命名限制**：CALL 密集函数（RegisterChain 74.9%, OnUpdate 44%, SpawnParticles 88.9%）即使指令 0 差异也卡在符号名层面——orig reloc 用 `th07::X::Y` mangled 或 `dir32 DAT_addr`，reimpl 用不同符号名。这是当前 objdiff 的固有限制，需在 objdiff 层面做符号映射或重命名 reimpl 全局匹配 orig DAT_ 才能突破。
 
 ### 本 session 累计成果
