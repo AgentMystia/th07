@@ -230,7 +230,85 @@ void __fastcall BombData::YoumuABombDraw(Player *p)
 // --- Remaining callbacks: stubs (not yet ported — large calc bodies) ---
 void __fastcall BombData::ReimuCBombCalc(Player *) {}
 void __fastcall BombData::ReimuABombCalc(Player *) {}
-void __fastcall BombData::ReimuABombDraw(Player *) {}
+
+// =====================================================================
+// ReimuABombDraw  (FUN_00409990)  -- 1088 bytes
+// Loops 8 entries (stride 0x1428). Each draws 4 sub-sprites (anm advances
+// 0x24c). Every sub-sprite: pos = src(player+i*0x1428+0x16a60) + delta(anm+0x230),
+// stored to anm+0x1c8, nudged by focus offset, Draw2 (FUN_0044f770). Orig is
+// fully unrolled (4 copies); we mirror that.
+// =====================================================================
+void __fastcall BombData::ReimuABombDraw(Player *p)
+{
+    Supervisor_BombPreDraw();
+    for (i32 i = 0; i < 8; i++)
+    {
+        if (*(i32 *)(reinterpret_cast<u8 *>(p) + i * 0x1428 + 0x16a4c) != 0)
+        {
+            u8 *anm = reinterpret_cast<u8 *>(p) + i * 0x1428 + 0x16c04;
+            f32 *src = reinterpret_cast<f32 *>(reinterpret_cast<u8 *>(p) + i * 0x1428 + 0x16a60);
+            // sub-sprite 0
+            {
+                f32 *delta = reinterpret_cast<f32 *>(anm + 0x230);
+                f32 x = src[0] + delta[0];
+                f32 y = src[1] + delta[1];
+                f32 z = src[2] + delta[2];
+                *(f32 *)(anm + 0x1c8) = x;
+                *(f32 *)(anm + 0x1cc) = y;
+                *(f32 *)(anm + 0x1d0) = z;
+                *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+                *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+                *(i32 *)(anm + 0x1d0) = 0;
+                ANM_MGR->Draw2(reinterpret_cast<i32 *>(anm));
+            }
+            anm += 0x24c;
+            // sub-sprite 1
+            {
+                f32 *delta = reinterpret_cast<f32 *>(anm + 0x230);
+                f32 x = src[0] + delta[0];
+                f32 y = src[1] + delta[1];
+                f32 z = src[2] + delta[2];
+                *(f32 *)(anm + 0x1c8) = x;
+                *(f32 *)(anm + 0x1cc) = y;
+                *(f32 *)(anm + 0x1d0) = z;
+                *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+                *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+                *(i32 *)(anm + 0x1d0) = 0;
+                ANM_MGR->Draw2(reinterpret_cast<i32 *>(anm));
+            }
+            anm += 0x24c;
+            // sub-sprite 2
+            {
+                f32 *delta = reinterpret_cast<f32 *>(anm + 0x230);
+                f32 x = src[0] + delta[0];
+                f32 y = src[1] + delta[1];
+                f32 z = src[2] + delta[2];
+                *(f32 *)(anm + 0x1c8) = x;
+                *(f32 *)(anm + 0x1cc) = y;
+                *(f32 *)(anm + 0x1d0) = z;
+                *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+                *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+                *(i32 *)(anm + 0x1d0) = 0;
+                ANM_MGR->Draw2(reinterpret_cast<i32 *>(anm));
+            }
+            anm += 0x24c;
+            // sub-sprite 3
+            {
+                f32 *delta = reinterpret_cast<f32 *>(anm + 0x230);
+                f32 x = src[0] + delta[0];
+                f32 y = src[1] + delta[1];
+                f32 z = src[2] + delta[2];
+                *(f32 *)(anm + 0x1c8) = x;
+                *(f32 *)(anm + 0x1cc) = y;
+                *(f32 *)(anm + 0x1d0) = z;
+                *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+                *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+                *(i32 *)(anm + 0x1d0) = 0;
+                ANM_MGR->Draw2(reinterpret_cast<i32 *>(anm));
+            }
+        }
+    }
+}
 void __fastcall BombData::MarisaABombCalc(Player *) {}
 void __fastcall BombData::MarisaBBombCalc(Player *) {}
 void __fastcall BombData::SakuyaABombCalc(Player *) {}
