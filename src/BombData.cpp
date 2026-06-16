@@ -236,9 +236,90 @@ void __fastcall BombData::MarisaBBombCalc(Player *) {}
 void __fastcall BombData::SakuyaABombCalc(Player *) {}
 void __fastcall BombData::SakuyaABombDraw(Player *) {}
 void __fastcall BombData::SakuyaBBombCalc(Player *) {}
-void __fastcall BombData::SakuyaBBombDraw(Player *) {}
+
+// =====================================================================
+// SakuyaBBombDraw  (FUN_0040b5d0)  -- 512 bytes
+// Loops 0x18 entries (stride 0x1428); each draws 3 sub-sprites from src
+// @ sub+0x14 / +0x44 / +0x74 with distinct scale constants. anm = sub+0x1b8
+// (single AnmVm, reused per sub-sprite before advancing).
+// scale z/x/y pairs: (0.3/3.05), (0.32/2.2), (0.34/1.3).
+// =====================================================================
+void __fastcall BombData::SakuyaBBombDraw(Player *p)
+{
+    Supervisor_BombPreDraw();
+    u8 *sub = reinterpret_cast<u8 *>(p) + 0x16a4c;
+    for (i32 i = 0; i < 0x18; i++)
+    {
+        if (*(i32 *)sub != 0)
+        {
+            u8 *anm = sub + 0x1b8;
+            // sub-sprite 0 (src sub+0x14)
+            *(i32 *)(anm + 0x1c8 + 0) = *(i32 *)(sub + 0x14 + 0);
+            *(i32 *)(anm + 0x1c8 + 4) = *(i32 *)(sub + 0x14 + 4);
+            *(i32 *)(anm + 0x1c8 + 8) = *(i32 *)(sub + 0x14 + 8);
+            *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+            *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+            *(u32 *)(anm + 0x1d0) = 0x3e99999a;
+            *(u32 *)(anm + 0x18) = 0x404ccccd;
+            *(u32 *)(anm + 0x1c) = 0x404ccccd;
+            ANM_MGR->Draw3(reinterpret_cast<i32 *>(anm));
+            // sub-sprite 1 (src sub+0x44)
+            *(i32 *)(anm + 0x1c8 + 0) = *(i32 *)(sub + 0x44 + 0);
+            *(i32 *)(anm + 0x1c8 + 4) = *(i32 *)(sub + 0x44 + 4);
+            *(i32 *)(anm + 0x1c8 + 8) = *(i32 *)(sub + 0x44 + 8);
+            *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+            *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+            *(u32 *)(anm + 0x1d0) = 0x3ea3d70a;
+            *(u32 *)(anm + 0x18) = 0x400ccccd;
+            *(u32 *)(anm + 0x1c) = 0x400ccccd;
+            ANM_MGR->Draw3(reinterpret_cast<i32 *>(anm));
+            // sub-sprite 2 (src sub+0x74)
+            *(i32 *)(anm + 0x1c8 + 0) = *(i32 *)(sub + 0x74 + 0);
+            *(i32 *)(anm + 0x1c8 + 4) = *(i32 *)(sub + 0x74 + 4);
+            *(i32 *)(anm + 0x1c8 + 8) = *(i32 *)(sub + 0x74 + 8);
+            *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+            *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+            *(u32 *)(anm + 0x1d0) = 0x3eae147b;
+            *(u32 *)(anm + 0x18) = 0x3fa66666;
+            *(u32 *)(anm + 0x1c) = 0x3fa66666;
+            ANM_MGR->Draw3(reinterpret_cast<i32 *>(anm));
+        }
+        sub += SUB_STRIDE_B;
+    }
+}
 void __fastcall BombData::ReimuBBombCalc(Player *) {}
-void __fastcall BombData::ReimuBBombDraw(Player *) {}
+
+// =====================================================================
+// ReimuBBombDraw  (FUN_0040bca0)  -- 384 bytes
+// Loops 3 entries (anm advances 0x24c). Per-bomb start angle @ player+i*0x1428
+// +0x16a54 (read as i32 -> f32). Copies player pos, nudges X/Y by cos/sin(angle)
+// * spriteScale, sets angle+flags, nudges by focus offset, Draw3.
+// =====================================================================
+void __fastcall BombData::ReimuBBombDraw(Player *p)
+{
+    Supervisor_BombPreDraw();
+    for (i32 i = 0; i < 3; i++)
+    {
+        u8 *anm = reinterpret_cast<u8 *>(p) + i * 0x1428 + 0x16c04;
+        f32 ang = *(f32 *)(reinterpret_cast<u8 *>(p) + i * 0x1428 + 0x16a54);
+        f32 *pos = reinterpret_cast<f32 *>(p) + (0x930 / 4);
+        *(f32 *)(anm + 0x1c8) = pos[0];
+        *(f32 *)(anm + 0x1cc) = pos[1];
+        *(f32 *)(anm + 0x1d0) = pos[2];
+        f32 c = ZunCos(ang);
+        *(f32 *)(anm + 0x1c8) += c * *reinterpret_cast<f32 *>(*(i32 *)(anm + 0x1e4) + 0x2c) * *reinterpret_cast<f32 *>(anm + 0x1c) / *reinterpret_cast<f32 *>(0x498a70);
+        f32 s = ZunSin(ang);
+        *(f32 *)(anm + 0x1cc) += s * *reinterpret_cast<f32 *>(*(i32 *)(anm + 0x1e4) + 0x2c) * *reinterpret_cast<f32 *>(anm + 0x1c) / *reinterpret_cast<f32 *>(0x498a70);
+        f32 na = ZunAngleNormalize(*(i32 *)&ang, 0x3fc90fdb);
+        *(f32 *)(anm + 0x8) = na;
+        *(i32 *)(anm + 0x1c0) |= 4;
+        *(f32 *)(anm + 0x1c8) += *reinterpret_cast<f32 *>(0x0062f864);
+        *(f32 *)(anm + 0x1cc) += *reinterpret_cast<f32 *>(0x0062f868);
+        *(i32 *)(anm + 0x1d0) = 0;
+        ANM_MGR->Draw3(reinterpret_cast<i32 *>(anm));
+        anm += 0x24c;
+    }
+}
 void __fastcall BombData::YoumuABombCalc(Player *) {}
 void __fastcall BombData::ReimuABombCalc2(Player *) {}
 void __fastcall BombData::YoumuBBombCalc(Player *) {}
