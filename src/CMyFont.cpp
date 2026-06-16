@@ -33,21 +33,21 @@ CMyFont *__fastcall CMyFont::Reset()
 
 i32 __fastcall CMyFont::Clean()
 {
-    i32 hdc = (i32)this->hdc;
-    if (hdc != 0)
+    if (this->hdc != 0)
     {
-        SelectObject((HDC)hdc, (HGDIOBJ)this->prevObj);
-        DeleteDC((HDC)hdc);
+        SelectObject((HDC)this->hdc, (HGDIOBJ)this->prevObj);
+        DeleteDC((HDC)this->hdc);
         DeleteObject((HGDIOBJ)this->hbitmap);
         this->format = -1;
         this->width = 0;
         this->height = 0;
-        this->stride = 0;
+        this->hdc = 0;
         this->hbitmap = 0;
         this->prevObj = 0;
         this->bits = 0;
+        return 1;
     }
-    return hdc != 0;
+    return 0;
 }
 
 #pragma optimize("s", off)
