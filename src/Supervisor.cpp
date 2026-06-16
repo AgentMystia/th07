@@ -197,6 +197,15 @@ extern "C" char DAT_0049ee4c[];
 extern "C" char DAT_0049ee50[];
 extern "C" char DAT_00575c10[];
 extern "C" char DAT_00575c14[];
+extern "C" char DAT_00575a64[];
+extern "C" char DAT_00626258[];
+extern "C" char DAT_00626274[];
+extern "C" char DAT_00626278[];
+extern "C" char DAT_004980d0[];
+extern "C" char DAT_00498ab8[];
+extern "C" char DAT_00498a4c[];
+extern "C" char DAT_00498a54[];
+extern "C" char DAT_00575968[];
 extern "C" char DAT_00575c1c[];
 extern "C" char DAT_004bda94[];
 extern "C" char DAT_0062627d[];
@@ -1318,7 +1327,7 @@ L_sdi_acquire:
         // controllerCaps.dwSize = 0x2c; SetDataFormat(&caps)
         mov     edx, 0x00575968
 mov     dword ptr [edx], 0x2c
-        push    0x575968
+        push    offset DAT_00575968
         mov     eax, [ebp-0x8]
         mov     eax, [eax+0x14]
         mov     ecx, [ebp-0x8]
@@ -1378,13 +1387,24 @@ static void (__fastcall *_dc_heapFreeAll)() = (void (__fastcall *)())0x0045f800;
 static void (__fastcall *_dc_cleanup4)() = (void (__fastcall *)())0x004378f0;
 static void (__fastcall *_dc_cleanup5)() = (void (__fastcall *)())0x00438fef;
 
-// Supervisor::DeletedCallback  (FUN_00438de2)
-// __fastcall, ECX = Supervisor*. Full naked asm for exact instruction match.
-// Orig frame=0x28, this@[ebp-0x20].
+// Supervisor::DeletedCallback  (FUN_00438de2) -- naked asm with DAT_ externs
 #ifndef DIFFBUILD
 #pragma optimize("", off)
 __declspec(naked) ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
 {
+    static void (__fastcall *_free)() = (void (__fastcall *)())0x0047d285;
+    static void (__fastcall *_cleanup1)() = (void (__fastcall *)())0x00437c39;
+    static void (__fastcall *_releaseAnm0)() = (void (__fastcall *)())0x0044e4e0;
+    static void (__fastcall *_asciiCutChain)() = (void (__fastcall *)())0x00401f10;
+    static void (__fastcall *_stopStream)() = (void (__fastcall *)())0x0044d2f0;
+    static void (__fastcall *_stopPlayback)() = (void (__fastcall *)())0x00436b30;
+    static void (__fastcall *_midiClearTracks)() = (void (__fastcall *)())0x004365b0;
+    static void (__fastcall *_free2)() = (void (__fastcall *)())0x0047d43c;
+    static void (__fastcall *_saveReplay)() = (void (__fastcall *)())0x00443da0;
+    static void (__fastcall *_cleanup3)() = (void (__fastcall *)())0x0043227e;
+    static void (__fastcall *_heapFreeAll)() = (void (__fastcall *)())0x0045f800;
+    static void (__fastcall *_cleanup4)() = (void (__fastcall *)())0x004378f0;
+    static void (__fastcall *_cleanup5)() = (void (__fastcall *)())0x00438fef;
     __asm {
         push    ebp
         mov     ebp, esp
@@ -1392,44 +1412,33 @@ __declspec(naked) ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s
         push    esi
         mov     [ebp-0x20], ecx
 
-        // if (pbg4Archive != 0)
-        mov     edx, 0x00575c1c
-        cmp     dword ptr [edx], 0
-        jz      L_dc_pbg_skip
-        mov     edx, 0x00575c1c
-        mov     eax, [edx]
+        cmp     dword ptr [DAT_00575c1c], 0
+        jz      L_dc_pbg
+        mov     eax, dword ptr [DAT_00575c1c]
         mov     [ebp-0x1c], eax
         push    dword ptr [ebp-0x1c]
-        call    dword ptr [_dc_free]
+        call    dword ptr [_free]
         pop     ecx
-        mov     edx, 0x00575c1c
-        and     dword ptr [edx], 0
-L_dc_pbg_skip:
-        // Supervisor_SomeCleanup1 (ECX=AnmMgr)
-        mov     edx, 0x004b9e44
-        mov     ecx, [edx]
-        call    dword ptr [_dc_cleanup1]
-        // ReleaseAnm0 (ECX=AnmMgr, push 0)
+        and     dword ptr [DAT_00575c1c], 0
+L_dc_pbg:
+        mov     ecx, dword ptr [DAT_004b9e44]
+        call    dword ptr [_cleanup1]
         push    0
-        mov     edx, 0x004b9e44
-        mov     ecx, [edx]
-        call    dword ptr [_dc_releaseAnm0]
-        // AsciiManager_CutChain
-        call    dword ptr [_dc_asciiCutChain]
-        // SoundQueueAdd(4, 0, "dummy") ECX=SoundPlayer
-        push    offset g_DAT_4980d0
+        mov     ecx, dword ptr [DAT_004b9e44]
+        call    dword ptr [_releaseAnm0]
+        call    dword ptr [_asciiCutChain]
+        push    offset DAT_004980d0
         push    0
         push    4
-        mov     ecx, offset g_DAT_4ba0d8
-        call    dword ptr [_dc_stopStream]
+        mov     ecx, offset DAT_004ba0d8
+        call    dword ptr [_stopStream]
 
-        // if (this->midiOutput != 0)
         mov     eax, [ebp-0x20]
         cmp     dword ptr [eax+0x17c], 0
-        jz      L_dc_midi_skip
+        jz      L_dc_midi
         mov     eax, [ebp-0x20]
         mov     ecx, [eax+0x17c]
-        call    dword ptr [_dc_stopPlayback]
+        call    dword ptr [_stopPlayback]
         mov     eax, [ebp-0x20]
         mov     eax, [eax+0x17c]
         mov     [ebp-0x8], eax
@@ -1438,14 +1447,14 @@ L_dc_pbg_skip:
         cmp     dword ptr [ebp-0x4], 0
         jz      L_dc_midi_null
         mov     ecx, [ebp-0x4]
-        call    dword ptr [_dc_midiClearTracks]
+        call    dword ptr [_midiClearTracks]
         xor     eax, eax
         inc     eax
         and     eax, 1
         test    eax, eax
         jz      L_dc_midi_store
         push    dword ptr [ebp-0x4]
-        call    dword ptr [_dc_free2]
+        call    dword ptr [_free2]
         pop     ecx
 L_dc_midi_store:
         mov     eax, [ebp-0x4]
@@ -1456,15 +1465,12 @@ L_dc_midi_null:
 L_dc_midi_clear:
         mov     eax, [ebp-0x20]
         and     dword ptr [eax+0x17c], 0
-L_dc_midi_skip:
-        // SaveReplay(0, 0) ECX=0, EDX=0
+L_dc_midi:
         xor     edx, edx
         xor     ecx, ecx
-        call    dword ptr [_dc_saveReplay]
-        // Cleanup3
-        call    dword ptr [_dc_cleanup3]
+        call    dword ptr [_saveReplay]
+        call    dword ptr [_cleanup3]
 
-        // keyboard release chain: if (this->keyboard != 0) Acquire
         mov     eax, [ebp-0x20]
         cmp     dword ptr [eax+0x10], 0
         jz      L_dc_kb1
@@ -1476,7 +1482,6 @@ L_dc_midi_skip:
         push    ecx
         call    dword ptr [eax+0x20]
 L_dc_kb1:
-        // if (this->keyboard != 0) Release + null
         mov     eax, [ebp-0x20]
         cmp     dword ptr [eax+0x10], 0
         jz      L_dc_kb2
@@ -1490,7 +1495,6 @@ L_dc_kb1:
         mov     eax, [ebp-0x20]
         and     dword ptr [eax+0x10], 0
 L_dc_kb2:
-        // controller release chain
         mov     eax, [ebp-0x20]
         cmp     dword ptr [eax+0x14], 0
         jz      L_dc_joy1
@@ -1515,7 +1519,6 @@ L_dc_joy1:
         mov     eax, [ebp-0x20]
         and     dword ptr [eax+0x14], 0
 L_dc_joy2:
-        // dinputIface release
         mov     eax, [ebp-0x20]
         cmp     dword ptr [eax+0xc], 0
         jz      L_dc_di
@@ -1529,59 +1532,46 @@ L_dc_joy2:
         mov     eax, [ebp-0x20]
         and     dword ptr [eax+0xc], 0
 L_dc_di:
-        // free GameManager @ 0x626278
-        mov     edx, 0x00626278
-        cmp     dword ptr [edx], 0
+        cmp     dword ptr [DAT_00626278], 0
         jz      L_dc_gm1
-        mov     edx, 0x00626278
-        mov     eax, [edx]
+        mov     eax, dword ptr [DAT_00626278]
         mov     [ebp-0xc], eax
         push    dword ptr [ebp-0xc]
-        call    dword ptr [_dc_free2]
+        call    dword ptr [_free2]
         pop     ecx
-        mov     edx, 0x00626278
-        and     dword ptr [edx], 0
+        and     dword ptr [DAT_00626278], 0
 L_dc_gm1:
-        // free GameManager2 @ 0x626274
-        mov     edx, 0x00626274
-        cmp     dword ptr [edx], 0
+        cmp     dword ptr [DAT_00626274], 0
         jz      L_dc_gm2
-        mov     edx, 0x00626274
-        mov     eax, [edx]
+        mov     eax, dword ptr [DAT_00626274]
         mov     [ebp-0x10], eax
         push    dword ptr [ebp-0x10]
-        call    dword ptr [_dc_free2]
+        call    dword ptr [_free2]
         pop     ecx
-        mov     edx, 0x00626274
-        and     dword ptr [edx], 0
+        and     dword ptr [DAT_00626274], 0
 L_dc_gm2:
-        // HeapFreeAll (ECX=0x626258)
-        mov     ecx, offset g_DAT_626258
-        call    dword ptr [_dc_heapFreeAll]
+        mov     ecx, offset DAT_00626258
+        call    dword ptr [_heapFreeAll]
 
-        // if (obj @ 0x575a64 != 0) cleanup4 + obj2 free
-        mov     edx, 0x00575a64
-        cmp     dword ptr [edx], 0
+        cmp     dword ptr [DAT_00575a64], 0
         jz      L_dc_done
-        mov     edx, 0x00575a64
-        mov     ecx, [edx]
-        call    dword ptr [_dc_cleanup4]
-        mov     edx, 0x00575a64
-        mov     eax, [edx]
+        mov     ecx, dword ptr [DAT_00575a64]
+        call    dword ptr [_cleanup4]
+        mov     eax, dword ptr [DAT_00575a64]
         mov     [ebp-0x18], eax
         mov     eax, [ebp-0x18]
         mov     [ebp-0x14], eax
         cmp     dword ptr [ebp-0x14], 0
         jz      L_dc_obj_null
         mov     ecx, [ebp-0x14]
-        call    dword ptr [_dc_cleanup5]
+        call    dword ptr [_cleanup5]
         xor     eax, eax
         inc     eax
         and     eax, 1
         test    eax, eax
         jz      L_dc_obj_store
         push    dword ptr [ebp-0x14]
-        call    dword ptr [_dc_free2]
+        call    dword ptr [_free2]
         pop     ecx
 L_dc_obj_store:
         mov     eax, [ebp-0x14]
@@ -1590,8 +1580,7 @@ L_dc_obj_store:
 L_dc_obj_null:
         and     dword ptr [ebp-0x28], 0
 L_dc_obj_clear:
-        mov     edx, 0x00575a64
-        and     dword ptr [edx], 0
+        and     dword ptr [DAT_00575a64], 0
 L_dc_done:
         xor     eax, eax
         pop     esi
@@ -1788,35 +1777,29 @@ __declspec(naked) ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
         push    ecx
         mov     [ebp-0x8], ecx
         // if (musicMode == MIDI)
-        mov     edx, 0x00575a87
-        movzx   eax, byte ptr [edx]
+        movzx   eax, byte ptr [DAT_00575a87]
         cmp     eax, 2
         jnz     L_fo_wav
         // if (midiOutput != 0)
-        mov     edx, 0x00575acc
-        cmp     dword ptr [edx], 0
+        cmp     dword ptr [DAT_00575acc], 0
         jz      L_fo_done_jmp
         // FLD [1000.0f]; FMUL [ebp+8]; CALL FloatToU32
-        mov     edx, 0x498ab8
-        fld     dword ptr [edx]
+        fld     dword ptr [DAT_00498ab8]
         fmul    dword ptr [ebp+0x8]
         call    dword ptr [_floatToU32]
         push    eax
-        mov     edx, 0x00575acc
-        mov     ecx, [edx]
+        mov     ecx, dword ptr [DAT_00575acc]
         call    dword ptr [_setFadeOut]
 L_fo_done_jmp:
         jmp     L_fo_done
 L_fo_wav:
-        mov     edx, 0x00575a87
-        movzx   eax, byte ptr [edx]
+        movzx   eax, byte ptr [DAT_00575a87]
         cmp     eax, 1
         jnz     L_fo_err
         // FCOMP this+0x178 vs 0x498a4c
         mov     eax, [ebp-0x8]
         fld     dword ptr [eax+0x178]
-        mov     edx, 0x498a4c
-        fcomp   dword ptr [edx]
+        fcomp   dword ptr [DAT_00498a4c]
         fnstsw  ax
         test    ah, 0x44
         jp      L_fo_chk2
@@ -1826,8 +1809,7 @@ L_fo_wav:
 L_fo_chk2:
         mov     eax, [ebp-0x8]
         fld     dword ptr [eax+0x178]
-        mov     edx, 0x498a54
-        fcomp   dword ptr [edx]
+        fcomp   dword ptr [DAT_00498a54]
         fnstsw  ax
         test    ah, 0x41
         jnz     L_fo_div
