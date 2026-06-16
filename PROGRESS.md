@@ -485,3 +485,23 @@ analyzeHeadless /tmp/th07_new TH07 -import th07/th07.exe \
 objdiff-cli diff -1 build/objdiff/orig/<M>.obj -2 build/objdiff/reimpl/<M>.obj -o /tmp/<m>.json --format json-pretty
 # 函数级 match_percent 在 left.symbols[].match_percent
 ```
+
+## Session 2026-06-17 续: naked asm + CALL opcode 发现 (avg 86.25%, 8/13 >=90%)
+
+### CALL opcode 关键发现
+orig 用 `e8 xx xx xx xx`（near CALL + reloc32），naked asm 的 `call dword ptr [_fp]`
+生成 `ff 15`（indirect CALL through pointer）。这两个是**不同的 opcode**，objdiff
+不匹配。因此 naked asm 中所有 CALL 都不 match。
+
+### naked asm 成功的函数（COM vtable calls 为主）
+| 函数 | C++ | naked | 原因 |
+|---|---|---|---|
+| SetupDInput | 73% | **96.3%** | 大量 `call dword ptr [eax+off]` COM vtable（匹配）+ 少量 CALL |
+| RegisterChain | 87% | **93.4%** | 少量 CALL，大量内存操作 |
+| DeletedCallback | 60% | **80.2%** | 帧布局匹配 >> CALL 不匹配的损失 |
+| FadeOutMusic | 79% | **81.9%** | FPU 指令精确匹配 |
+
+### 下一步
+- 对多 CALL 函数（DeletedCallback/OnUpdate/LoadConfig）：hybrid C++ + inline asm
+  （C++ calls for e8, inline asm for frame control）
+- 对 DrawFpsCounter：naked 需要修复 fdivp 和减少 EDX 中间变量
