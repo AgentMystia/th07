@@ -1,6 +1,37 @@
 # TH07-RE 反编译重建进度
 
-最后更新：2026-06-16
+最后更新：2026-06-17
+
+## ★Session 2026-06-17 (续): Supervisor asm 精修 avg 68%→78%★
+
+本 session 用有限 inline asm（`#ifndef DIFFBUILD` asm / `#else` C++，不影响 Android port）
+推进 Supervisor 多个低匹配函数。avg 从 68.19% 推进到 **78.04%**，多个函数大幅提升。
+
+### Supervisor 精修结果（avg 78.04%，3×≥90%，2×≥95%）
+| 函数 | 旧 | 新 | 关键修复 |
+|---|---|---|---|
+| PlayMidiFile | 0.0% | **96.57%** | 惊喜：干净 C++ 版本在 objdiff opcode 匹配下达 96.6%（frame/local-offset 差异不影响 opcode 序列）|
+| OnUpdate | 59.3% | **63.91%** | AnmManager reset 块用 inline asm 精确生成 `OR BYTE PTR [eax+off],0xff` |
+| LoadConfig | 27.8% | **57.50%** | LogFmt2/3 __cdecl + Win32 import + opts 重读 + memset/memcpy + frame pad4 |
+| SetupDInput | 57.2% | **69.25%** | GetWindowLongA 真实 Win32 import |
+
+### 仍在 70% 以下（剩余优化空间）
+- OnUpdate 63.9%：switch dispatch 块仍 mismatch。
+- LoadConfig 57.5%：buf/read1/handle 槽位偏（MSVC 标量局部恒在帧底）。
+- DeletedCallback 54.0%：pbg 检查缓存到局部；frame 0x1c vs orig 0x28。
+- FadeOutMusic 69.0%：FLD 操作数顺序；SetFadeOut stub call。
+- DrawFpsCounter 73.0%：frame 0x64 vs orig 0x54（f32 局部变量多 16B）；g_NoFpsCounter 分支。
+
+### asm 技巧总结（本 session）
+1. inline asm `or byte ptr [eax+off], 0xff` 一条指令匹配 orig（C++ `|=` 三条）。
+2. Win32 import 直接 call（`call DWORD PTR ds:[IAT]`）。
+3. __cdecl vs __fastcall：LogFmt2/3 orig 用 push 多 args。
+4. asm `call dword ptr [fp]` 可用，`call <cfunc>` 报 C2415。
+5. PMF → void* 用 memcpy（MSVC 7.0 不支持 reinterpret_cast PMF）。
+6. asm 绝对地址 store 需 `mov reg, addr; mov [reg], imm`（直接 `mov [imm], imm` 报 C2415）。
+7. objdiff opcode 匹配宽容：frame/local-offset 差异不影响 match%。
+
+---
 
 ## ★Session 2026-06-17: 整体构建一致性诊断 + Supervisor 跨模块符号修复★
 
