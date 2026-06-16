@@ -185,3 +185,17 @@ th07::GameManager::OnUpdate,0x42d8d5,0x8fe,__fastcall,,ChainCallbackResult,GameM
 th07::GameManager::OnDraw,0x42e1d4,0x23,__fastcall,,ChainCallbackResult,GameManager*
 th07::GameManager::AddedCallback,0x42e83e,0xaa5,__fastcall,,ZunResult,GameManager*
 th07::GameManager::DeletedCallback,0x42f2e4,0xe0,__fastcall,,ZunResult,GameManager*
+th07::Supervisor::RegisterChain,0x439000,0xa4,__cdecl,,ZunResult
+th07::Supervisor::OnUpdate,0x437c70,0x6aa,__fastcall,,ChainCallbackResult,Supervisor*
+th07::Supervisor::OnDraw,0x43831b,0x13,__fastcall,,ChainCallbackResult,Supervisor*
+th07::Supervisor::AddedCallback,0x438986,0x45b,__fastcall,,ZunResult,Supervisor*
+th07::Supervisor::DeletedCallback,0x438de2,0x20d,__fastcall,,ZunResult,Supervisor*
+th07::Supervisor::DrawFpsCounter,0x4390a5,0x35b,__fastcall,,void,i32
+th07::Supervisor::TickTimer,0x43958d,0x6d,__thiscall,,void,i32*,f32*
+th07::Supervisor::SetupDInput,0x4383d8,0x28f,__fastcall,,ZunResult,Supervisor*
+th07::Supervisor::LoadConfig,0x4398b6,0x519,__thiscall,,ZunResult,Supervisor*,char*
+th07::Supervisor::PlayAudio,0x439dd0,0xf0,__fastcall,,ZunResult,i32,char*
+th07::Supervisor::StopAudio,0x439ec1,0x8b,__thiscall,,ZunResult,Supervisor*,i32
+th07::Supervisor::PlayMidiFile,0x439f4d,0x111,__fastcall,,i32,char*
+th07::Supervisor::FadeOutMusic,0x43a0d6,0xb6,__thiscall,,ZunResult,Supervisor*,f32
+th07::Supervisor::ReadMidiFile,0x43a05f,0x76,__fastcall,,ZunResult,u32,char*

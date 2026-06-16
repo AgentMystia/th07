@@ -52,7 +52,7 @@ struct D3DVIEWPORT8_FAKE
 
 struct D3DPRESENT_PARAMETERS_FAKE
 {
-    u32 fields[14];
+    u32 fields[13];
 
 };
 
@@ -69,9 +69,6 @@ struct DIDEVCAPS_FAKE
     u32 dwFFDriverVersion;
     u32 dwFFSamplePeriod;
     u32 dwFFMinTimeResolution;
-    u32 dwFirmwareRevisionH;
-    u32 dwHardwareRevisionH;
-
 };
 
 
@@ -200,8 +197,8 @@ struct Supervisor
     static void DrawFpsCounter(i32 drawArg);
 
 
-    ZunBool ReadMidiFile(u32 midiFileIdx, char *path);
-    i32 PlayMidiFile(i32 midiFileIdx);
+    ZunResult ReadMidiFile(u32 midiFileIdx);
+    i32 PlayMidiFile(char *midiPath);
     ZunResult PlayAudio(i32 channel, char *path);
     ZunResult StopAudio(i32 channel);
     ZunResult SetupMidiPlayback();
