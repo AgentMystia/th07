@@ -75,6 +75,29 @@ def demangle_msvc(sym):
         return sym
 
 
+
+
+# Map known typed global names to their DAT_ address equivalents.
+# This makes objdiff compare them correctly against orig delinked symbols.
+SYMBOL_MAP = {
+    b"th07::g_Supervisor": b"DAT_00575950",
+    b"th07::g_AnmManager": b"DAT_004b9e44",
+    b"th07::g_Chain": b"DAT_00626218",
+    b"th07::g_CurFrameInput": b"DAT_004b9e4c",
+    b"th07::g_LastFrameInput": b"DAT_004b9e54",
+    b"th07::g_IsEigthFrameOfHeldInput": b"DAT_004b9e5c",
+    b"th07::g_NumOfFramesInputsWereHeld": b"DAT_004b9e60",
+    b"th07::g_ControllerMapping": b"DAT_00575a68",  # Actually starts at a different addr
+    b"th07::g_Pbg4Archive": b"DAT_00575c1c",
+    b"th07::g_Pbg4ArchiveName": b"DAT_00575c14",
+    b"th07::g_GameErrorContext": b"DAT_00624210",
+    b"th07::g_GameManager": b"DAT_00626278",
+}
+
+def map_symbol(sym):
+    """Map known typed global names to DAT_ address equivalents."""
+    return SYMBOL_MAP.get(sym, sym)
+
 def sym_prefix(full_sym, prefix):
     return full_sym == prefix or full_sym.startswith(prefix + b"::")
 
@@ -116,10 +139,10 @@ def rename_symbols(filename):
             # This is a function definition in our module -- rename it
             offset = obj.string_table.append(demangled_sym)
             sym_obj.name = b"\0\0\0\0" + struct.pack("I", offset)
-        elif sym != demangled_sym:
-            # This is a mangled cross-module reference -- demangle it so it
-            # matches the orig delinked obj's demangled symbol names
-            offset = obj.string_table.append(demangled_sym)
+        elif sym != demangled_sym or demangled_sym in SYMBOL_MAP:
+            # This is a mangled/mapped cross-module reference -- demangle+map it
+            mapped = map_symbol(demangled_sym)
+            offset = obj.string_table.append(mapped)
             sym_obj.name = b"\0\0\0\0" + struct.pack("I", offset)
 
     if not reimpl_folder.exists():

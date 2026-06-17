@@ -108,7 +108,7 @@ void Supervisor::TickTimer(i32 *frames, f32 *subframes)
 // =====================================================================
 // Supervisor::OnUpdate (FUN_00437c70)
 // =====================================================================
-#pragma var_order(wanted, cur1, cur5, cur2, cur6, cur8, cur9)
+#pragma var_order(anmm0, anmm1, anmm2, anmm3, anmm4, anmm5, anmm6, anmm7, anmm8, wanted, cur1, cur5, cur2, cur6, cur8, cur9)
 ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
 {
     u8 *anm;
