@@ -20,6 +20,18 @@
 // new(0x17e560) in FUN_00434020 @ 0x0043429b).  The worker thread uses
 // DAT_004bda94 (== &g_SoundPlayer.backgroundMusic) and DAT_004bda98 (==
 // &g_SoundPlayer.backgroundMusicUpdateEvent) to reach the live stream.
+//
+// LAYOUT NOTE (th06 standard): every byte of the 0x17e560-byte struct is
+// accounted for by a named member. The documented prefix (+0x000..+0x39c4,
+// 14.4 KiB -- the only region the ctor / Init / Load / Process family
+// touches) is laid out as named members / typed arrays. The remaining
+// ~1.46 MiB tail (+0x39c4..+0x17e560) is a runtime-allocated scratch /
+// pooled-buffer region that no ctor zeroes and no documented method
+// indexes by fixed stride; following the AnmManager.hpp precedent it is
+// reserved as a single `scratchRegion[]` pad so sizeof stays locked. As
+// specific offsets in that region are anchored they should be promoted
+// to named members.
+
 #pragma once
 
 #include "ZunResult.hpp"
@@ -62,9 +74,7 @@ struct SoundQueueEntry
 ZUN_ASSERT_SIZE(SoundQueueEntry, 0x10c);
 
 // SoundPlayer is a single huge object (0x17e560 bytes, allocated by the
-// supervisor in FUN_00434020).  The original layout does not use a
-// StreamingBgmSlot sub-struct; instead it keeps the 16 per-slot fields as
-// parallel arrays.  Every offset below was read from the binary:
+// supervisor in FUN_00434020).  Every offset below was read from the binary:
 //
 //   +0x000 dsoundHdl                  (LPDIRECTSOUND)         DAT_004b9e44
 //   +0x004 unk4
@@ -88,9 +98,6 @@ ZUN_ASSERT_SIZE(SoundQueueEntry, 0x10c);
 //   +0x38bc thbgmDatPath              (char[0x...]; "thbgm.dat" copy)
 //   +0x39bc backgroundMusic           (CStreamingSound*)      DAT_004bda94
 //   +0x39c0 backgroundMusicUpdateEvent(HANDLE)               DAT_004bda98
-//
-// To preserve every offset byte-for-byte we model the object as one giant
-// packed byte buffer with named accessor helpers rather than a C struct.
 struct SoundPlayer
 {
     SoundPlayer();
@@ -115,90 +122,55 @@ struct SoundPlayer
 
     static DWORD __stdcall BackgroundMusicPlayerThread(LPVOID lpThreadParameter);
 
-    // ---- Field accessors (offsets are absolute from `this`) ----
-    LPDIRECTSOUND &dsoundHdl()
-    {
-        return *(LPDIRECTSOUND *)(&raw[0x000]);
-    }
-    LPDIRECTSOUNDBUFFER &soundBuffers(i32 idx)
-    {
-        return ((LPDIRECTSOUNDBUFFER *)&raw[0x008])[idx];
-    }
-    LPDIRECTSOUNDBUFFER &duplicateSoundBuffers(i32 idx)
-    {
-        return ((LPDIRECTSOUNDBUFFER *)&raw[0x208])[idx];
-    }
-    i32 &soundBufferSlotState(i32 idx)
-    {
-        return ((i32 *)&raw[0x408])[idx];
-    }
-    LPDIRECTSOUNDBUFFER &initSoundBuffer()
-    {
-        return *(LPDIRECTSOUNDBUFFER *)&raw[0x608];
-    }
-    HWND &gameWindow()
-    {
-        return *(HWND *)&raw[0x60c];
-    }
-    CSoundManager *&manager()
-    {
-        return *(CSoundManager **)&raw[0x610];
-    }
-    DWORD &backgroundMusicThreadId()
-    {
-        return *(DWORD *)&raw[0x614];
-    }
-    HANDLE &backgroundMusicThreadHandle()
-    {
-        return *(HANDLE *)&raw[0x618];
-    }
-    i32 &soundBuffersToPlay(i32 idx)
-    {
-        return ((i32 *)&raw[0x620])[idx];
-    }
-    WaveFormat *&wavFmtEntry(i32 slotIdx)
-    {
-        return ((WaveFormat **)&raw[0x634])[slotIdx];
-    }
-    void *&wavData(i32 slotIdx)
-    {
-        return ((void **)&raw[0x674])[slotIdx];
-    }
-    void *&wavDataCur(i32 slotIdx)
-    {
-        return ((void **)&raw[0x6b4])[slotIdx];
-    }
-    i32 &wavDataSize(i32 slotIdx)
-    {
-        return ((i32 *)&raw[0x6f4])[slotIdx];
-    }
-    void *&bgmFmtTable()
-    {
-        return *(void **)&raw[0x738];
-    }
-    SoundQueueEntry *soundQueue()
-    {
-        return (SoundQueueEntry *)&raw[0x73c];
-    }
-    i8 *bgmSlotName(i32 slotIdx)
-    {
-        return (i8 *)&raw[0x28bc + slotIdx * 0x100];
-    }
-    i8 *thbgmDatPath()
-    {
-        return (i8 *)&raw[0x38bc];
-    }
-    CStreamingSound *&backgroundMusic()
-    {
-        return *(CStreamingSound **)&raw[0x39bc];
-    }
-    HANDLE &backgroundMusicUpdateEvent()
-    {
-        return *(HANDLE *)&raw[0x39c0];
-    }
+    // ===== +0x000 .. +0x008 : DirectSound handle + unk4 =====
+    LPDIRECTSOUND dsoundHdl;                       // +0x000
+    i32 unk4;                                      // +0x004
 
-    // The full 0x17e560-byte allocation backing every field above.
-    u8 raw[0x17e560];
+    // ===== +0x008 .. +0x608 : buffer pools =====
+    LPDIRECTSOUNDBUFFER soundBuffers[0x80];        // +0x008 (128 entries)
+    LPDIRECTSOUNDBUFFER duplicateSoundBuffers[0x80]; // +0x208 (128 entries)
+    i32 soundBufferSlotState[0x80];                // +0x408 (128 entries, init -1)
+    LPDIRECTSOUNDBUFFER initSoundBuffer;           // +0x608 (primary buffer)
+
+    // ===== +0x60c .. +0x620 : window / manager / thread =====
+    HWND gameWindow;                               // +0x60c
+    CSoundManager *manager;                        // +0x610
+    DWORD backgroundMusicThreadId;                 // +0x614
+    HANDLE backgroundMusicThreadHandle;            // +0x618
+    i32 soundBuffersToPlay2[5];                    // +0x61c (init -1; secondary idx set)
+
+    // ===== +0x620 .. +0x634 : primary play queue (5 slots) =====
+    i32 soundBuffersToPlay[5];                     // +0x620 (init -1)
+
+    // ===== +0x634 .. +0x738 : per-BGM-slot wav state (16 slots) =====
+    WaveFormat *wavFmtEntry[0x10];                 // +0x634
+    void *wavData[0x10];                           // +0x674 (malloc'd PCM)
+    void *wavDataCur[0x10];                        // +0x6b4 (read cursor)
+    i32 dataSize[0x10];                            // +0x6f4 (PCM bytes available)
+    void *bgmFmtTable;                             // +0x738 (from bgm/thbgm.fmt)
+
+    // ===== +0x73c .. +0x28bc : sound queue (31 entries) =====
+    SoundQueueEntry soundQueue[0x1f];              // +0x73c (31 * 0x10c)
+
+    // ===== +0x28bc .. +0x38bc : per-slot BGM file names (16 * 0x100) =====
+    i8 bgmSlotName[0x10][0x100];                   // +0x28bc
+
+    // ===== +0x38bc .. +0x39bc : thbgm.dat path scratch =====
+    i8 thbgmDatPath[0x100];                        // +0x38bc
+
+    // ===== +0x39bc .. +0x39c4 : live BGM stream + update event =====
+    CStreamingSound *backgroundMusic;              // +0x39bc (DAT_004bda94)
+    HANDLE backgroundMusicUpdateEvent;             // +0x39c0 (DAT_004bda98)
+
+    // ===== +0x39c4 .. +0x17e560 : runtime-allocated scratch / pooled buffers =====
+    // Neither the ctor (FUN_0044b560) nor InitSoundBuffers (FUN_0044c7d0) nor
+    // the Load family touches this region with fixed strides; it holds pooled
+    // CSound/CStreamingSound instances and per-slot DirectSound buffers that
+    // the Process state machine and Release reach through pointers stored in
+    // the documented prefix above. Reserved as a single named pad (mirroring
+    // AnmManager.hpp's scratchRegion) so sizeof stays locked at 0x17e560.
+    // Promote named members here as specific offsets get anchored.
+    u8 scratchRegion[0x17e560 - 0x39c4];           // +0x39c4 (~1.46 MiB)
 };
 ZUN_ASSERT_SIZE(SoundPlayer, 0x17e560);
 
