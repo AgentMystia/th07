@@ -251,10 +251,12 @@ struct Supervisor
     u32 startupTimeBeforeMenuMusic;   // 0x190 DAT_00575ae0（timeGetTime）
     u32 lastFrameTime;                // 0x194 DAT_00575ae4
     u8 unk198_to_caps[0x1b0 - 0x198]; // 0x198..0x1af
-    D3DCAPS8_FAKE d3dCaps;
+    D3DCAPS8_FAKE d3dCaps;             // 0x1b0..0x2b0 (0x100 bytes; mirrors Win32 D3DCAPS8)
 
 
-    u8 tail[0x2c8 - (0x1b0 + sizeof(D3DCAPS8_FAKE))];
+    // +0x2b0..+0x2c8 trailing 0x18 bytes. Not yet anchored to specific fields;
+    // reserved as a named pad so sizeof stays locked at 0x2c8.
+    u8 unk_2b0[0x2c8 - 0x2b0];
 };
 
 

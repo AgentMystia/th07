@@ -24,6 +24,7 @@
 // buffers because th07's AnmVm definition is owned by the AnmManager
 // module; AsciiManager only needs to know where they live.
 
+#include "AnmVm.hpp"
 #include "Chain.hpp"
 #include "ZunResult.hpp"
 #include "diffbuild.hpp"
@@ -146,27 +147,33 @@ struct AsciiManager
     //                            screenshake AnmVm at +0x11c and the
     //                            pendingInterrupt word at +0x1f4)
     //   0xa09c  popups[723]    (AsciiManagerPopup[723], 0xfd90)
-    u8 vm0[0x24c];
-    u8 vm1[0x24c];
-    u8 scoreLabelVm[0x24c];
-    u8 scoreDigitVm[0x24c];
-    u8 grazeLabelVm[0x24c];
-    u8 pointLabelVm[4][0x24c];
-    u8 unk14ac[0x10];
-    AsciiManagerString strings[256];
-    i32 numStrings;
-    D3DCOLOR color;
-    D3DXVECTOR2 scale;
-    u32 isGui;
-    u32 isSelected;
-    u32 unk74d4;
-    i32 charWidth;
-    i32 nextPopupIndex1;
-    i32 nextPopupIndex2;
-    u32 _pad74e4;
-    u8 gameMenu[0x194c];
-    u8 retryMenu[0x1268];
-    AsciiManagerPopup popups[723];
+    AnmVm vm0;                                // +0x000 ASCII text rendering
+    AnmVm vm1;                                // +0x24c popup rendering
+    AnmVm scoreLabelVm;                       // +0x498
+    AnmVm scoreDigitVm;                       // +0x6e4
+    AnmVm grazeLabelVm;                       // +0x930
+    AnmVm pointLabelVm[4];                    // +0xb7c (4 * 0x24c = 0x930 -> ends 0x14ac)
+    u8 unk14ac[0x10];                         // +0x14ac 16-byte gap
+    AsciiManagerString strings[256];          // +0x14bc (256 * 0x60 = 0x6000)
+    i32 numStrings;                           // +0x74bc
+    D3DCOLOR color;                           // +0x74c0
+    D3DXVECTOR2 scale;                        // +0x74c4
+    u32 isGui;                                // +0x74cc
+    u32 isSelected;                           // +0x74d0
+    u32 unk74d4;                              // +0x74d4
+    i32 charWidth;                            // +0x74d8 (= 14)
+    i32 nextPopupIndex1;                      // +0x74dc
+    i32 nextPopupIndex2;                      // +0x74e0
+    u32 unk74e4;                              // +0x74e4
+    // Pause/quit menu state machine (0x194c bytes). The StageMenu methods take
+    // an AsciiManager* and read this region via fixed offsets; interior layout
+    // is opaque until those methods are reversed.
+    u8 gameMenu[0x194c];                      // +0x74e8
+    // Retry menu state machine (0x1268 bytes). Contains the screenshake AnmVm
+    // at +0x11c within this block (== AsciiManager + 0x9e50) and the
+    // pendingInterrupt word at +0x1f4 within (== AsciiManager + 0xa028).
+    u8 retryMenu[0x1268];                     // +0x8e34
+    AsciiManagerPopup popups[723];            // +0xa09c (723 * 0x28 = 0xfd90)
 };
 ZUN_ASSERT_SIZE(AsciiManager, 0x19e2c);
 

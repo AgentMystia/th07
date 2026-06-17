@@ -101,26 +101,26 @@ struct GameManager
 
     // +0xd (rankForceFlag / DAT_0062627d) lives inside the pad below; accessed
     // via raw offset in code (splitting flag0c to expose it would break the i32).
-    u8 pad18[0x93d8 - 0x18];     // +0x18 opaque (entity arrays, extend records @0x8454/0x845a)
+    u8 unk_18[0x93d8 - 0x18];     // +0x18 opaque (entity arrays, extend records @0x8454/0x845a)
 
     // --- control-word block (+0x93d8..+0x9644) — all load-bearing ---
     u32 statusBitfield;          // +0x93d8 (DAT_0062f648) bit0=extra,bit1=paused,bit2=chain-reg,bit3=practice,bit4=clr-on-success
     u8 unk_93dc;                 // +0x93dc pause-request flag (OnDraw: if !=0 -> =2)
     u8 unk_93dd;                 // +0x93dd pause-latch companion (cleared at AddedCallback success)
-    u8 pad93de[2];               // +0x93de (difficultySelector byte lives here as +0x93de)
+    u8 unk_93de[2];              // +0x93de (difficultySelector byte lives here as +0x93de)
     i32 pauseFrameCounter;       // +0x93e0 pause-watched-frame counter (thresholds 0x1fa4/0x1b6c/0x120c by difficultySelector)
-    u8 pad93e4[0x95e4 - 0x93e4]; // +0x93e4 opaque
+    u8 unk_93e4[0x95e4 - 0x93e4]; // +0x93e4 opaque
     u16 randSeedWord;            // +0x95e4 written from DAT_0049fe20 (AddedCallback)
-    u8 pad95e6[2];               // +0x95e6
+    u8 unk_95e6[2];              // +0x95e6
     i32 frameCounter;            // +0x95e8 (DAT_0062f858) zeroed by RegisterChain/DeletedCallback; ++per tick
     i32 playCount;               // +0x95ec ++1 at AddedCallback tail; picks ECL script
-    u8 pad95f0[0x95f4 - 0x95f0]; // +0x95f0
+    u8 unk_95f0[0x95f4 - 0x95f0]; // +0x95f0
     i32 anmColorSetup[8];        // +0x95f4 Anm/sprite color setup (FUN_0042d657)
     f32 randSumFloat;            // +0x9614 from randSum+seed (FUN_004012b0)
     i32 extendThresholdA;        // +0x9618 primary extend threshold
     i32 extendThresholdB;        // +0x961c secondary extend threshold
     i32 initScoreMirror;         // +0x9620 = *(scoreSub+0x88)
-    u8 pad9624[4];               // +0x9624
+    u8 unk_9624[4];              // +0x9624
     i32 counter9628;             // +0x9628 cleared 0 at AddedCallback init
     u32 rankCounter;             // +0x962c rank-up counter (mod 2/3/4/5/6 gating)
     i32 stageColorA;             // +0x9634 stage color dword 1
@@ -133,7 +133,7 @@ struct GameManager
     ChainElem drawChainNode;     // +0x9664 draw-chain node (cb=OnDraw, Added/Deleted=NULL, arg=&this)
 
     // --- tail (+0x9684..+0x9700) ---
-    u8 tail[GAME_MANAGER_SIZE - 0x9684]; // +0x9684 chain-control blocks; highest xref +0x96e8
+    u8 unk_9684[GAME_MANAGER_SIZE - 0x9684]; // +0x9684 chain-control blocks; highest xref +0x96e8
 
     // --- methods (chain lifecycle) ---
     static ZunResult RegisterChain();
