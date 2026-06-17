@@ -27,8 +27,22 @@ with open("config/mapping.csv") as f:
 
 with open("config/implemented.csv") as f:
     implemented_csv = csv.reader(f)
+    import sys as _sys
+    skipped = 0
     for func in implemented_csv:
+        # Some entries in implemented.csv are inherited from the th06 template
+        # and refer to functions that don't exist in th07's mapping.csv (or use
+        # names that have since changed). Skip those silently rather than crash;
+        # they simply have no stub to generate.
+        if func[0] not in mapping_obj:
+            skipped += 1
+            continue
         mapping_obj[func[0]]["implemented"] = True
+    if skipped:
+        _sys.stderr.write(
+            "generate_stubs: skipped " + str(skipped)
+            + " implemented.csv entries not present in mapping.csv\n"
+        )
 
 
 f = open("config/stubbed.csv")

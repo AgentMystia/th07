@@ -157,6 +157,6 @@ extern u32  g_SupervisorRedrawFlag; // @ 0x00575ae4
 extern void *g_SupervisorSound;  // @ 0x004ba0d8 (sound-queue side; ECX for ProcessQueue)
 extern void *g_MidiOutput;       // @ 0x00575acc (MidiOutput*)
 extern void *g_COleDispParams;   // @ 0x01347938 (enemy/disp singleton)
-extern void *g_EffectManager;    // @ 0x0134ce18 (EffectManager; Reset target)
+// g_EffectManager is declared (typed) in EffectManager.hpp via DIFFABLE_EXTERN.
 
 }; // namespace th07

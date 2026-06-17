@@ -39,34 +39,34 @@ DIFFABLE_STATIC_ARRAY_ASSIGN(CharacterPowerBulletData, 1, g_CharacterPowerBullet
 
 DIFFABLE_STATIC_ARRAY_ASSIGN(CharacterPowerData, 9, g_CharacterPowerDataReimuA) = {
     {0, 0, g_CharacterPowerBulletDataReimuARank1},
-    {0, 0, nullptr},
-    {0, 0, nullptr},
-    {0, 0, nullptr},
-    {0, 0, nullptr},
-    {0, 0, nullptr},
-    {0, 0, nullptr},
-    {0, 0, nullptr},
-    {0, 0, nullptr},
+    {0, 0, 0},
+    {0, 0, 0},
+    {0, 0, 0},
+    {0, 0, 0},
+    {0, 0, 0},
+    {0, 0, 0},
+    {0, 0, 0},
+    {0, 0, 0},
 };
 
 // ReimuB / MarisaA / MarisaB placeholder tables omitted for brevity; add them
 // once the real th07 layout is recovered.
 DIFFABLE_STATIC_ARRAY_ASSIGN(CharacterPowerData, 9, g_CharacterPowerDataReimuB) = {
-    {0, 0, nullptr}, {0, 0, nullptr}, {0, 0, nullptr},
-    {0, 0, nullptr}, {0, 0, nullptr}, {0, 0, nullptr},
-    {0, 0, nullptr}, {0, 0, nullptr}, {0, 0, nullptr},
+    {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
+    {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
+    {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
 };
 
 DIFFABLE_STATIC_ARRAY_ASSIGN(CharacterPowerData, 9, g_CharacterPowerDataMarisaA) = {
-    {0, 0, nullptr}, {0, 0, nullptr}, {0, 0, nullptr},
-    {0, 0, nullptr}, {0, 0, nullptr}, {0, 0, nullptr},
-    {0, 0, nullptr}, {0, 0, nullptr}, {0, 0, nullptr},
+    {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
+    {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
+    {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
 };
 
 DIFFABLE_STATIC_ARRAY_ASSIGN(CharacterPowerData, 9, g_CharacterPowerDataMarisaB) = {
-    {0, 0, nullptr}, {0, 0, nullptr}, {0, 0, nullptr},
-    {0, 0, nullptr}, {0, 0, nullptr}, {0, 0, nullptr},
-    {0, 0, nullptr}, {0, 0, nullptr}, {0, 0, nullptr},
+    {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
+    {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
+    {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
 };
 } // namespace BulletData
 } // namespace th07

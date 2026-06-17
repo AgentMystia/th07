@@ -21,16 +21,16 @@ def build(build_type, verbose=False, jobs=1, target=None):
     if target is not None:
         ninja_args += [target]
     elif build_type == BuildType.TESTS:
-        ninja_args += ["build/th06e-tests.exe"]
+        ninja_args += ["build/th07e-tests.exe"]
     elif build_type == BuildType.DLLBUILD:
-        ninja_args += ["build/th06e.dll"]
+        ninja_args += ["build/th07e.dll"]
     elif build_type == BuildType.OBJDIFFBUILD:
         ninja_args += ["objdiff"]
     else:
-        ninja_args += ["build/th06e.exe"]
+        ninja_args += ["build/th07e.exe"]
 
     # Then, run the build. We use run_windows_program to automatically go through
-    # wine if running on linux/macos. scripts/th06run.bat will setup PATH and other
+    # wine if running on linux/macos. scripts/th07run.bat will setup PATH and other
     # environment variables for the MSVC toolchain to work before calling ninja.
     run_windows_program(
         [str(SCRIPTS_DIR / "th07run.bat"), "ninja"] + ninja_args,
@@ -40,7 +40,7 @@ def build(build_type, verbose=False, jobs=1, target=None):
 
 def main():
     parser = argparse.ArgumentParser(
-        "th06-build", formatter_class=argparse.RawTextHelpFormatter
+        "th07-build", formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "--build-type",
@@ -71,9 +71,9 @@ def main():
         nargs="?",
         help=textwrap.dedent("""
         Ninja target to build. Default depends on the build type:
-          - Normal and diff builds will build th06e.exe
-          - dll builds will build th06e.dll
-          - Test builds will build th06e-tests.exe
+          - Normal and diff builds will build th07e.exe
+          - dll builds will build th07e.dll
+          - Test builds will build th07e-tests.exe
           - objdiff builds will build all the object files necessary for objdiff.
     """),
     )
