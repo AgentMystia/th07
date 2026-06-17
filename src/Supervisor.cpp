@@ -456,20 +456,9 @@ ZunResult Supervisor::RegisterChain()
     ChainElem *chain;
     i32 calcResult;
 
-#ifndef DIFFBUILD
-    __asm {
-        mov eax, supervisor
-        and dword ptr [eax+0x154], 0
-        mov eax, supervisor
-        or dword ptr [eax+0x158], -1
-        mov eax, supervisor
-        and dword ptr [eax+0x150], 0
-    }
-#else
     supervisor->wantedState = 0;
     supervisor->curState = -1;
     supervisor->calcCount = 0;
-#endif
 
     chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnUpdate);
     chain->arg = supervisor;
