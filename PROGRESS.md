@@ -99,13 +99,40 @@ owning 模块的 .cpp 里定义。
 
 ### P2：抛光接近达标模块（80–90%）
 
-- **Player 89%**：ScoreGraze 71.69% / CalcItemBoxCollision 61.08%（浮点栈布局，
+- **Player 89.04%**：ScoreGraze 71.78% / CalcItemBoxCollision 61.15%（浮点栈布局，
   orig 用大量 f32 临时 + 三层 copy，MSVC /Od 栈分配难精确重建）
 - **EffectManager 84%**：OnDraw 65.34% / EffectCallbackAttract 54.93% /
   EffectManager(ctor) 35.40%
 - **AsciiManager 73%**：DrawStrings 49.66% / DrawPopups 1.34%（大函数）
 - **CMyFont 70.75%**：Print 2.20%（GDI 渲染大函数）
 - **SoundPlayer 71%**：ProcessSoundQueues 9.86% / SoundPlayer(ctor) 11.56%
+
+### P0.5：raw address 全量迁移到 typed C++（对齐 th06 标准）
+
+项目宪法（AGENTS.md §2）已升级为纯 typed C++ 标准——禁止 raw 绝对地址。`src/Player.cpp`
+已作为范本完成迁移（35 处 raw address → 零，match% 89.00→**89.04%**，证明 typed C++
+不比 raw address 差）。剩余文件按密度从高到低迁移：
+
+| 文件 | raw addr 数 | 状态 |
+|---|---|---|
+| `src/Player.cpp` | 35 → **0** | ✅ 完成（范本）|
+| `src/Supervisor.cpp` | 161 | 待迁移（singleton member + rdata string + code addr）|
+| `src/GameManager.cpp` | 146 | 待迁移（singleton member + data global）|
+| `src/BombData.cpp` | 102 | 待迁移（data global float const + singleton member）|
+| `src/ScreenEffect.cpp` | 46 | 待迁移（singleton member + rdata string）|
+| `src/AsciiManager.cpp` | 43 | 待迁移（singleton member）|
+| `src/EffectManager.cpp` | 28 | 待迁移（data global float const）|
+| 其余 hpp/cpp | ~131 | 待迁移（零散）|
+
+**迁移规则**（详见 AGENTS.md §2 + Player.cpp 范本）：
+- singleton member（`0x575aa8`）→ `g_Supervisor.curState`（查 hpp 偏移注释）
+- rdata string（`0x496fe0`）→ 字符串字面量 `"bgm/thbgm.fmt"`
+- rdata float const（`0x498a54`）→ `extern "C" const f32 g_X = 1.0f;` + SYMBOL_MAP
+- data global（`0x4d44f8`）→ `extern "C" i32 g_BombIsActive;` + SYMBOL_MAP
+- code addr（`0x438668`）→ typed extern 声明 `Supervisor_Callback6()`
+- ECX 单例参数（`0x4ba0d8`）→ `&g_SoundPlayer`
+
+每文件迁移后编译 + objdiff 验证（`python3 scripts/build.py --build-type=objdiffbuild --object-name <M>.obj`）。
 
 ## 关键技术事实（th06→th07 差异，供实现参考）
 

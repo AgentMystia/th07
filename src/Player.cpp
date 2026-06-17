@@ -9,13 +9,15 @@
 // mapped back to their orig DAT_ addresses by generate_objdiff_objs.py's
 // SYMBOL_MAP, so the byte-comparison still works without code divergence.
 //
-// Cross-module call conventions (all verified from orig disassembly):
-//   g_Chain methods   : __thiscall, ECX = &g_Chain @ 0x00626218
-//   EffectManager     : __thiscall, ECX = 0x012fe250 (spawn singletons)
-//   SoundPlayer       : __thiscall, ECX = 0x004ba0d8
-//   AnmManager        : __thiscall, ECX = *0x004b9e44 (deref'd pointer)
-//   GameManager method: __thiscall, ECX = 0x00626270 (g_GameManager object)
-//   scoreSub fields   : reached via g_ScoreSubObj (= g_GameManager+0x8 = orig 0x00626278)
+// Cross-module call conventions (all verified from orig disassembly; addresses
+// here are documentation only -- the code below reaches every singleton through
+// typed C++ externs, never through a raw address cast):
+//   g_Chain            : __thiscall, ECX = &g_Chain          (orig 0x00626218)
+//   EffectManager      : __thiscall, ECX = spawn singletons  (orig 0x012fe250)
+//   SoundPlayer        : __thiscall, ECX = g_SoundPlayerObj  (orig 0x004ba0d8)
+//   AnmManager         : __thiscall, ECX = *g_AnmManagerFilesObj (orig 0x004b9e44)
+//   GameManager method : __thiscall, ECX = g_GameManagerScoreObj (orig 0x00626270)
+//   scoreSub fields    : via g_ScoreSubObj (= g_GameManager+0x8, orig 0x00626278)
 //
 // To emit the exact orig call sequence (PUSH args; MOV ECX,this; CALL) for the
 // not-yet-reversed singletons, they are declared as struct-method stubs and
@@ -38,6 +40,26 @@ DIFFABLE_STATIC(Player, g_Player);
 
 // OnDrawLowPrio callee (kept as C++ extern; OnDrawLowPrio is plain C++).
 extern "C" void __fastcall Player_DrawBulletExplosions(Player *p); // FUN_0043d790
+
+// ---- Game-state globals (orig .data/.bss); defined by their owning modules.
+//      Named typed externs so MSVC emits [glob] memory operands matching orig;
+//      generate_objdiff_objs.py SYMBOL_MAP maps each to its orig DAT_ address.
+extern "C" i32 g_BombIsActive;             // DAT_004d44f8 (bombInfo.isInUse)
+extern "C" u32 g_GuiSpriteFlags;           // DAT_0049fbf4
+extern "C" i32 g_Cherry;                   // DAT_012fe0d0
+extern "C" i32 g_ScoreFrame;               // DAT_0062f88c
+extern "C" u16 g_GuiCounter1;              // DAT_0134d476
+extern "C" u32 g_GuiCounter2;              // DAT_013542ec
+// Stride-0x24c array of u16 Gui counter slots, 3 used (index 0,1,2). Base u8
+// array so the stride arithmetic stays explicit and matches orig indexing.
+extern "C" u8 g_GuiCounterSlots[0x24c * 4]; // DAT_0134db5a base, stride 0x24c
+
+// rdata float constants -> named const f32 (EffectManager.cpp pattern), so MSVC
+// emits fld/fmul DWORD PTR [glob] matching orig's memory operand form.
+extern "C" const f32 g_PlayerConst1p0 = 1.0f;          // DAT_00498a54
+extern "C" const f32 g_PlayerConst0p99 = 0.99f;        // DAT_00498a70 (0x3F7D70A4)
+extern "C" const f32 g_PlayerConstHalfPi = 1.5707963267948966f; // DAT_00498a9c (PI/2)
+
 
 // ---- thiscall callee stubs (full classes land when those modules reverse) ----
 // Declared as struct methods so MSVC emits the exact orig call sequence.
@@ -194,8 +216,8 @@ ZunResult __fastcall Player::DeletedCallback(Player *p)
 {
     (void)p;
     i32 doRelease;
-    if (*reinterpret_cast<i32 *>(0x575aa8) != 3 && *reinterpret_cast<i32 *>(0x575aa8) != 0xb &&
-        *reinterpret_cast<i32 *>(0x575aa8) != 0xc)
+    if (g_Supervisor.curState != 3 && g_Supervisor.curState != 0xb &&
+        g_Supervisor.curState != 0xc)
     {
         doRelease = 1;
     }
@@ -206,13 +228,13 @@ ZunResult __fastcall Player::DeletedCallback(Player *p)
     if (doRelease != 0)
     {
         ANM_MGR->ReleaseAnm(10);
-        *reinterpret_cast<u16 *>(0x134d476) = 0x63;
-        *reinterpret_cast<u32 *>(0x13542ec) = 0x63;
+        g_GuiCounter1 = 0x63;
+        g_GuiCounter2 = 0x63;
         // orig indexes a stride-0x24c Gui counter array with literal 0/1/2
         // (xor/mov reg,imm; imul reg,reg,0x24c; mov word,[base+reg]). C++ form.
-        *reinterpret_cast<u16 *>(0x134db5a + 0 * 0x24c) = 0x63;
-        *reinterpret_cast<u16 *>(0x134db5a + 1 * 0x24c) = 0x63;
-        *reinterpret_cast<u16 *>(0x134db5a + 2 * 0x24c) = 0x63;
+        *reinterpret_cast<u16 *>(g_GuiCounterSlots + 0 * 0x24c) = 0x63;
+        *reinterpret_cast<u16 *>(g_GuiCounterSlots + 1 * 0x24c) = 0x63;
+        *reinterpret_cast<u16 *>(g_GuiCounterSlots + 2 * 0x24c) = 0x63;
     }
     if (*reinterpret_cast<void **>(&g_Player.raw[0xb7e70]) != 0)
     {
@@ -243,7 +265,7 @@ f32 Player::AngleToPlayer(D3DXVECTOR3 *pos)
     f32 result;
     if (relY == 0.0f && relX == 0.0f)
     {
-        result = *reinterpret_cast<f32 *>(0x498a9c); // PI/2
+        result = g_PlayerConstHalfPi; // PI/2
     }
     else
     {
@@ -268,7 +290,7 @@ i32 Player::CalcItemBoxCollision(D3DXVECTOR3 *center, D3DXVECTOR3 *size)
         return 0;
     }
 
-    f32 scale = *reinterpret_cast<f32 *>(0x498a54) / *reinterpret_cast<f32 *>(0x498a70);
+    f32 scale = g_PlayerConst1p0 / g_PlayerConst0p99;
     D3DXVECTOR3 half;
     half.z = size->z * scale;
     half.y = size->y * scale;
@@ -315,7 +337,7 @@ i32 Player::CalcItemBoxCollision(D3DXVECTOR3 *center, D3DXVECTOR3 *size)
 // =============================================================================
 void Player::ScoreGraze(D3DXVECTOR3 *center)
 {
-    i32 bombActive = *reinterpret_cast<i32 *>(0x4d44f8); // bombInfo.isInUse
+    i32 bombActive = g_BombIsActive; // bombInfo.isInUse
     if (bombActive == 0)
     {
         if (SCORE_SUB_I32(0x14) < 9999)
@@ -334,7 +356,7 @@ void Player::ScoreGraze(D3DXVECTOR3 *center)
     sum.y = pc->y + center->y;
     sum.x = pc->x + center->x;
 
-    f32 scale = *reinterpret_cast<f32 *>(0x498a54) / *reinterpret_cast<f32 *>(0x498a70);
+    f32 scale = g_PlayerConst1p0 / g_PlayerConst0p99;
     D3DXVECTOR3 particlePos;
     particlePos.z = sum.z * scale;
     particlePos.y = sum.y * scale;
@@ -357,15 +379,15 @@ void Player::ScoreGraze(D3DXVECTOR3 *center)
     }
 
     g_GameManagerScore->AddGrazeScoreOnly(6);
-    u32 guiFlags = *reinterpret_cast<u32 *>(0x49fbf4);
+    u32 guiFlags = g_GuiSpriteFlags;
     guiFlags = (guiFlags & 0xffffff3f) | 0x80;
-    *reinterpret_cast<u32 *>(0x49fbf4) = guiFlags;
+    g_GuiSpriteFlags = guiFlags;
     g_SoundPlayer->PlaySoundByIdx(0x1e, 0);
 
-    i32 cherry = *reinterpret_cast<i32 *>(0x12fe0d0);
-    i32 scoreFrame = *reinterpret_cast<i32 *>(0x62f88c);
+    i32 cherry = g_Cherry;
+    i32 scoreFrame = g_ScoreFrame;
     cherry = cherry + 0x9c4 + (scoreFrame - SCORE_SUB_I32(0x88)) / 0x5dc * 0x14;
-    *reinterpret_cast<i32 *>(0x12fe0d0) = cherry;
+    g_Cherry = cherry;
 
     SCORE_SUB_I32(0x4) = SCORE_SUB_I32(0x4) + 0x7d0 / 0xa;
 

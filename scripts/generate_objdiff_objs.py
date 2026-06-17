@@ -99,6 +99,17 @@ SYMBOL_MAP = {
     b"_g_EffectConst256": b"DAT_00498a98",  # 256.0f
     b"_g_EffectConst60": b"DAT_00498a48",   # 60.0f
     b"_g_EffectConst240": b"DAT_00498b50",  # 240.0f
+    # Player.cpp game-state globals + rdata float constants.
+    b"_g_BombIsActive": b"DAT_004d44f8",
+    b"_g_GuiSpriteFlags": b"DAT_0049fbf4",
+    b"_g_Cherry": b"DAT_012fe0d0",
+    b"_g_ScoreFrame": b"DAT_0062f88c",
+    b"_g_GuiCounter1": b"DAT_0134d476",
+    b"_g_GuiCounter2": b"DAT_013542ec",
+    b"_g_GuiCounterSlots": b"DAT_0134db5a",
+    b"_g_PlayerConst1p0": b"DAT_00498a54",
+    b"_g_PlayerConst0p99": b"DAT_00498a70",
+    b"_g_PlayerConstHalfPi": b"DAT_00498a9c",
 }
 
 def map_symbol(sym):

@@ -14,64 +14,72 @@
 - **编译器**：MSVC 7.0（VS.NET 2002）via wine。
   `/MT /EHsc /Gs /DNDEBUG /Zi /Od /Oi /Ob1 /Gy`（**无 /G5 无 /Op 无 /GS**，与 th06 不同）。
 
-## 2. 核心原则：诚实重建（单一代码路径）
+## 2. 核心原则：诚实重建（纯 typed C++，对齐 th06 标准）
 
-> **objdiff 验证的就是运行的代码。** 绝不让 objdiff 路径与运行路径分离。
+> **写标准 C++，让代码自己能跑。** objdiff 是验证工具，不是目标。
+> th06 用纯 typed C++（零 raw address、字符串字面量、浮点字面量）达到 ~97% match——
+> 这证明标准 C++ 本身就足够好，不需要任何地址作弊。
 
-### 【禁止】—— objdiff 作弊形式（2026-06-17 polish 确立）
+### 【禁止】—— 一律改为 typed C++ 等价物
 
-| 作弊形式 | 为什么是作弊 |
-|---|---|
-| **函数级 `#ifdef DIFFBUILD` 分裂** | objdiff 路径与运行路径函数体不同，验证的不是运行的 |
-| **inline asm / `__declspec(naked)`** | 手写 asm 让 objdiff 看到的指令与 C++ 语义脱节；项目当前零 asm，保持 |
-| **DAT_ 常量槽**（`extern "C" u8 g_Const[4]`）| 只为生成特定 reloc，无运行意义；改用 `extern "C" const f32` + SYMBOL_MAP |
-| **`nullptr`** | MSVC 7.0 不支持 C++11；用 `0` |
+| 禁止形式 | 为什么禁止 | 正确做法 |
+|---|---|---|
+| **函数级 `#ifdef DIFFBUILD` 分裂** | objdiff 路径与运行路径函数体不同 | 单一代码路径 |
+| **inline asm / `__declspec(naked)`** | asm 让验证与语义脱节；项目零 asm，保持 | 纯 C++ 表达式 |
+| **DAT_ 常量槽**（`extern "C" u8 g_X[4]`）| 只为 reloc 作弊 | `extern "C" const f32` 或直接字面量 |
+| **raw 绝对地址访问游戏状态**（`(*(T*)0x575aa8)`、`*reinterpret_cast<T*>(0xADDR)`）| 不可移植、跑不起来、非 th06 风格 | typed 成员访问 `g_Supervisor.curState` |
+| **raw 绝对地址访问 rdata 字符串**（`(char*)0x496fe0`）| 同上 | 字符串字面量 `"bgm/thbgm.fmt"` |
+| **raw 绝对地址作函数参数**（`(void*)0x4ba0d8`）| 同上 | typed 全局 `&g_SoundPlayer` |
+| **raw 绝对地址调用函数**（`((void(*)())0x438668)()`）| 同上 | typed extern 声明 `Supervisor_Callback6()` |
+| **`nullptr`** | MSVC 7.0 不支持 C++11 | `0` |
 
-### 【允许】—— 合法工具与技巧
+**零例外**：D3D 设备、rdata 字符串、一切——全部走 typed C++。
+`g_Supervisor.d3dDevice->Present()` 而非 `(*(IDirect3DDevice8**)0x575958)->Present()`。
+
+### 【允许】—— 标准 C++ 工具
 
 | 工具 | 用途 | 备注 |
 |---|---|---|
-| `DIFFABLE_STATIC/EXTERN` 宏 | 全局变量定义 | **仅影响变量定义**（diffbuild 用 extern "C" 引用原 exe 全局、normal 用真实定义），**不分裂函数代码**。与 th06 一致 |
-| `#pragma var_order` | 控制 MSVC /Od 局部变量栈布局 | 通过 `scripts/pragma_var_order.cpp` 的 naked shim 注入 |
-| raw-offset field access | `*(T*)((u8*)this + OFF)` | 当 hpp struct 偏移与 orig 不符时绕过 |
-| memset/memcpy intrinsics | 生成 `rep stosd`/`rep movsd` | 匹配 orig 的批量初始化 |
-| 去局部缓存 | 每次重读全局而非缓存到 `[ebp-x]` | 匹配 orig 的重读 idiom |
-| early-return 控制流 | 每分支独立 return | 匹配 orig 的 `OR EAX,-1`/`MOV EAX,-2` 错误路径 |
-| `(u16)param` cast | 生成 `movzx` 而非 `mov+and` | 比 `& 0xFFFF` 更精确 |
-| raw 绝对地址 | `(*(T*)0xADDR)` | **仅限** D3D 设备、rdata 字符串字面量等 orig 唯一形式单例；游戏状态对象（g_Supervisor 等）用 typed C++ global |
+| **typed C++ 全局/成员访问** | `g_Supervisor.curState`、`g_GameManager.arcadeRegionSize.x` | **首选**，对齐 th06 |
+| **字符串字面量** | `"th07.cfg"`、`"data/text.anm"` | 接受 reloc 名差异（th06 也这么做）|
+| **浮点/整数字面量** | `256.0f`、`ZUN_PI`、`0xff000000u` | 接受 `__real@` vs `DAT_` 差异 |
+| `DIFFABLE_STATIC/EXTERN` 宏 | 全局变量定义 | **仅影响变量定义**，不分裂函数代码。与 th06 一致 |
+| `#pragma var_order` | 控制 MSVC /Od 局部栈布局 | 通过 `scripts/pragma_var_order.cpp` 注入 |
+| raw-offset field access | `*(T*)((u8*)this + OFF)` | 仅当 struct 字段类型不匹配且无法改 hpp 时；首选改 hpp |
+| memset/memcpy intrinsics | 生成 `rep stosd`/`rep movsd` | 匹配 orig 批量初始化 |
+| 去局部缓存 | 每次重读全局 | 匹配 orig 重读 idiom |
+| early-return 控制流 | 每分支独立 return | 匹配 orig 错误路径 |
+| `(u16)param` cast | 生成 `movzx` | 比 `& 0xFFFF` 精确 |
 
-### th06 标杆对照（已验证）
+### th06 标杆对照（已验证——th06 的真实做法）
 
-th06 自己用 `DIFFABLE_*` 宏和 inline asm，但方式**诚实**：
-- `DIFFABLE_*` 只影响**全局变量定义**，不分裂函数代码 ✓（th07 继承）
-- inline asm（ZunMath.hpp fsincos）**无条件**，两种 build 都走 ✓
-- th06 的 `#ifndef DIFFBUILD`（AnmManager.cpp）只包**数据表定义**，不是函数 ✓
+th06 达到 ~97% objdiff match，用的是：
+- **纯 typed C++ 成员访问**：`g_Supervisor.d3dDevice->Present(0,0,0,0)`、
+  `g_GameManager.arcadeRegionSize.x`、`g_SoundPlayer.PlaySoundByIdx(SOUND_1UP, 0)`——
+  **零 raw address**
+- **字符串字面量**：`g_AnmManager->LoadSurface(0, "data/title/th06logo.jpg")`——
+  直接字面量，不 cast rdata 地址
+- **浮点字面量**：`256.0f - effect->timer.AsFramesFloat() * 256.0f / 60.0f`——
+  直接字面量，不 extern DAT_ 常量
+- **`DIFFABLE_*` 宏**：只影响全局变量定义，不分裂函数代码 ✓
+- **无 SYMBOL_MAP**：th06 的 `generate_objdiff_objs.py` 只 demangle 函数符号，
+  不重命名跨模块引用——typed C++ 自然匹配
 
-th07 之前的错误：把 th06 的"数据表守卫"误用为"函数代码分裂"，把"无条件 asm"改成"守卫的 asm"。polish session 已纠正。
+th07 应完全对齐：typed C++ + 字面量。SYMBOL_MAP 不是常规手段。
 
-## 3. SYMBOL_MAP 恢复机制（关键）
+## 3. objdiff 与符号处理（对齐 th06）
 
-typed C++ global 经 `scripts/generate_objdiff_objs.py` 的 `SYMBOL_MAP` 映射回 orig
-DAT_ 地址，让 objdiff 正确比较，**无需代码分裂**。
+objdiff 验证 typed C++ 编译出的 .obj 与 orig delinked .obj 的字节差异。
+`scripts/generate_objdiff_objs.py` demangle 函数符号（与 th06 一致）。
 
-```python
-# scripts/generate_objdiff_objs.py
-SYMBOL_MAP = {
-    b"th07::g_Supervisor": b"DAT_00575950",
-    b"th07::g_AnmManager": b"DAT_004b9e44",
-    b"_g_EffectConst256": b"DAT_00498a98",  # extern "C" const f32，COFF 符号带前导 _
-    # 新迁移的 global 按需添加
-}
-```
-
-**迁移新 global 时**：声明为 typed C++ global（`extern Foo g_FooObj;`），在 owning
-模块定义，然后在 SYMBOL_MAP 加 `demangled_name -> DAT_xxxxxxxx` 条目。objdiff 端
-自动恢复匹配。
+`SYMBOL_MAP`（可选辅助）：少数情况下 typed global 的 mangled 名无法自然匹配 orig
+DAT_ 符号时，可在 SYMBOL_MAP 加映射。但**这不是常规手段**——th06 无 SYMBOL_MAP 也达 97%。
+首选是 typed C++ 自然匹配，SYMBOL_MAP 仅作兜底。
 
 ## 4. objdiff 工作流（验收）
 
 1. **分析 orig**：ghidra-mcp `disassemble_function {address}`（权威）/ `decompile_function`（参考，注意误导：地址当值/+1漏标/逗号表达式/switch vs CMP链）
-2. **写 C++**：参考 `src/Player.cpp`（最干净范本）、`src/Supervisor.cpp`（含 AddedCallback 正确逆向实例）
+2. **写 C++**：参考 `src/Player.cpp`、`src/Supervisor.cpp`（typed C++ 范本）
 3. **编译单模块**：`python3 scripts/build.py --build-type=objdiffbuild --object-name <Module>.obj`
 4. **objdiff**：
    ```bash
@@ -103,23 +111,22 @@ rm -rf /tmp/th07_new && mkdir -p /tmp/th07_new && \
 - 不认 UTF-8 中文注释（无 BOM 也无效）→ **源码注释必须英文**。
 - callback `__fastcall`（th07 第四大差异，非 th06 的 `__cdecl`）。
 - `extern "C"` 必须文件级（C2598），不能在函数体内。
-- **禁止 inline asm / naked / DAT_ 常量槽 extern / 函数级 `#ifdef DIFFBUILD` 分裂**（见 §2）。
+- **禁止 inline asm / naked / DAT_ 常量槽 extern / 函数级 `#ifdef DIFFBUILD` 分裂 / raw 绝对地址**（见 §2）。
 
 ## 7. 当前状态（详见 PROGRESS.md）
 
 - **objdiff**：23 模块跟踪，228 函数，mean 75.81%，10 模块 ≥90%
 - **normal build**：全部 .cpp 编译通过；链接需 183 个跨模块符号实现（见 PROGRESS.md P0）
-- **最近里程碑**（2026-06-17 polish）：消除全部 objdiff 作弊代码（4 处 DIFFBUILD 分裂、5 处 inline asm、4 处 DAT_ extern），实现 Supervisor::AddedCallback（boot-critical）
+- **进行中**：raw address 全量迁移到 typed C++（对齐 th06 标准；692 处 → 目标零）
 
 ## 8. 关键参考文件
 
 | 文件 | 用途 |
 |---|---|
 | `PROGRESS.md` | 进度、每模块 match%、剩余工作（**必读**）|
-| `src/Player.cpp` | 干净范本（stub struct / SYMBOL_MAP / 单一路径）|
-| `src/Supervisor.cpp` | 干净范本（含 AddedCallback boot-critical 逆向实例）|
+| `src/Player.cpp` / `src/Supervisor.cpp` | typed C++ 范本 |
 | `src/diffbuild.hpp` | DIFFABLE_* 宏（全局变量定义，th06 继承）|
-| `scripts/generate_objdiff_objs.py` | SYMBOL_MAP 符号恢复 |
+| `scripts/generate_objdiff_objs.py` | 函数符号 demangle + 可选 SYMBOL_MAP |
 | `scripts/pragma_var_order.cpp` | #pragma var_order 注入工具 |
 | `config/mapping.csv` | ghidra 符号→地址映射 |
 | `objdiff.json` | objdiff 配置 |
