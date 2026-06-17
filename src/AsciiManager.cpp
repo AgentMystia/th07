@@ -54,6 +54,8 @@ extern "C" u8 g_AsciiIsInRetryMenu;      // 0x62f64d
 extern "C" u32 g_GameManagerStatusBitfield;  // 0x62f648
 extern "C" f32 g_AsciiPopupOffsetX;      // 0x62f864
 extern "C" f32 g_AsciiPopupOffsetY;      // 0x62f868
+extern "C" const f32 g_AsciiC0x498a50;   // rdata float
+extern "C" const f32 g_AsciiC0x498a80;   // rdata float
 
 
 struct AnmMgrStub
@@ -246,7 +248,7 @@ ChainCallbackResult AsciiManager::OnUpdate(AsciiManager *mgr)
                 continue;
             }
             // orig: FLD [0x498a50]; FMUL [0x575ac8]; FSUBR popup.position.y
-            popup->position.y -= *(f32 *)0x498a50 * SUP_FRAMERATE_MULT;
+            popup->position.y -= g_AsciiC0x498a50 * SUP_FRAMERATE_MULT;
             // Inline ZunTimer::Tick: timer @ popup+0x18 (previous/subFrame/current).
             u8 *timer = (u8 *)popup + 0x18;
             *(i32 *)(timer + 0) = *(i32 *)(timer + 8);   // previous = current
@@ -540,22 +542,22 @@ void AsciiManager::DrawStrings()
             if (guiString == 0)
             {
                 // Full-screen viewport (0,0,640,480)
-                *(u32 *)0x575a18 = 0;
-                *(u32 *)0x575a1c = 0;
-                *(u32 *)0x575a20 = 640;
-                *(u32 *)0x575a24 = 480;
-                (*(IDirect3DDevice8 **)0x575958)->SetViewport((D3DVIEWPORT8 *)0x575a18);
+                g_Supervisor.viewport.X = 0;
+                g_Supervisor.viewport.Y = 0;
+                g_Supervisor.viewport.Width = 640;
+                g_Supervisor.viewport.Height = 480;
+                ((IDirect3DDevice8 *)g_Supervisor.d3dDevice)->SetViewport((D3DVIEWPORT8 *)&g_Supervisor.viewport);
             }
             else
             {
                 // Arcade-region viewport via GetArcadeRegionCoordinate calls
                 // (FUN_0048b8a0 returns the coordinate; 4 calls for X/Y/W/H)
                 extern i32 GetArcadeRegionCoordinate_48b8a0();
-                *(i32 *)0x575a18 = GetArcadeRegionCoordinate_48b8a0();
-                *(i32 *)0x575a1c = GetArcadeRegionCoordinate_48b8a0();
-                *(i32 *)0x575a20 = GetArcadeRegionCoordinate_48b8a0();
-                *(i32 *)0x575a24 = GetArcadeRegionCoordinate_48b8a0();
-                (*(IDirect3DDevice8 **)0x575958)->SetViewport((D3DVIEWPORT8 *)0x575a18);
+                g_Supervisor.viewport.X = GetArcadeRegionCoordinate_48b8a0();
+                g_Supervisor.viewport.Y = GetArcadeRegionCoordinate_48b8a0();
+                g_Supervisor.viewport.Width = GetArcadeRegionCoordinate_48b8a0();
+                g_Supervisor.viewport.Height = GetArcadeRegionCoordinate_48b8a0();
+                ((IDirect3DDevice8 *)g_Supervisor.d3dDevice)->SetViewport((D3DVIEWPORT8 *)&g_Supervisor.viewport);
             }
         }
 
@@ -564,7 +566,7 @@ void AsciiManager::DrawStrings()
         {
             if (*text == '\n')
             {
-                *(f32 *)(thisBase + 0x1cc) = *(f32 *)0x498a80 * stringPtr->scale.y + *(f32 *)(thisBase + 0x1cc);
+                *(f32 *)(thisBase + 0x1cc) = g_AsciiC0x498a80 * stringPtr->scale.y + *(f32 *)(thisBase + 0x1cc);
                 *(f32 *)(thisBase + 0x1c8) = stringPtr->position.x;
             }
             else if (*text == ' ')

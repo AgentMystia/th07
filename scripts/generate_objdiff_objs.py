@@ -231,6 +231,10 @@ SYMBOL_MAP = {
     b"_g_AsciiPopupOffsetX": b"DAT_0062F864",
     b"_g_AsciiPopupOffsetY": b"DAT_0062F868",
     b"_g_AsciiAnmMgr": b"DAT_004B9E44",
+    # AsciiManager/EffectManager final rdata + state globals (Part C.7).
+    b"_g_AsciiC0x498a50": b"DAT_00498A50",
+    b"_g_AsciiC0x498a80": b"DAT_00498A80",
+    b"_g_EffectMgrPlayModeA": b"DAT_00575A8C",
 }
 
 def map_symbol(sym):

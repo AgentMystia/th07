@@ -74,6 +74,7 @@ void __fastcall Anm_ReleaseAnm(i32 fileId);
 // the per-frame integrator used by ZunTimer::Tick; the "somePulseFlag"
 // helper (FUN_00404fe0) gates OnUpdate's modulo-300 fast-exit.
 extern f32 g_Supervisor_effectiveFramerateMultiplier;
+extern "C" u8 g_EffectMgrPlayModeA;  // 0x575a8c playModeA
 void __fastcall Supervisor_TickTimer(i32 *current, f32 *subFrame);
 i32 __fastcall Supervisor_SomePulseFlag(void);
 
@@ -670,12 +671,12 @@ ChainCallbackResult __fastcall EffectManager::OnDraw(EffectManager *mgr)
     u8 *mgrBytes = (u8 *)mgr;
     Effect *cur = *(Effect **)(mgrBytes + 0x490e0);
     i32 alternator = 0;
-    if (*(u8 *)0x00575a8c != 0)
+    if (g_EffectMgrPlayModeA != 0)
     {
         while (cur != 0)
         {
             alternator = alternator + 1;
-            if (!(*(u8 *)0x00575a8c == 1 && (alternator & 1) == 0))
+            if (!(g_EffectMgrPlayModeA == 1 && (alternator & 1) == 0))
             {
                 if (*(i8 *)((u8 *)cur + 0x2cd) == 0x14)
                 {
