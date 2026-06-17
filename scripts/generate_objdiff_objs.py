@@ -205,6 +205,23 @@ SYMBOL_MAP = {
     b"_g_GameMgrG0x62f630": b"DAT_0062F630",
     b"_g_GameMgrG0x62f63c": b"DAT_0062F63C",
     b"_g_GameMgrG0x62f654": b"DAT_0062F654",
+    # BombData.cpp rdata floats + game-state globals (Part C.3).
+    b"_g_BombC0x498a64": b"DAT_00498A64",
+    b"_g_BombC0x498a70": b"DAT_00498A70",
+    b"_g_BombC0x498a8c": b"DAT_00498A8C",
+    b"_g_BombC0x498b08": b"DAT_00498B08",
+    b"_g_BombC0x498b2c": b"DAT_00498B2C",
+    b"_g_BombC0x498b54": b"DAT_00498B54",
+    b"_g_BombC0x498c68": b"DAT_00498C68",
+    b"_g_BombC0x498c74": b"DAT_00498C74",
+    b"_g_BombC0x498c7c": b"DAT_00498C7C",
+    b"_g_BombC0x498c80": b"DAT_00498C80",
+    b"_g_BombC0x498ce4": b"DAT_00498CE4",
+    b"_g_BombC0x498ce8": b"DAT_00498CE8",
+    b"_g_BombC0x498768": b"DAT_00498768",
+    b"_g_BombG0x62f864": b"DAT_0062F864",
+    b"_g_BombG0x62f868": b"DAT_0062F868",
+    b"_g_BombDataAnmMgr": b"DAT_004B9E44",
 }
 
 def map_symbol(sym):
