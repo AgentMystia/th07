@@ -220,6 +220,7 @@ extern "C" char DAT_0135dff0[];
 extern "C" char DAT_0135e0f0[];
 extern "C" char s___02ffps_00496fa0[];
 extern "C" char s__2d_00496f9c[];
+extern "C" char DAT_00626218[];
 extern "C" char DAT_00575c1c[];
 extern "C" char DAT_004bda94[];
 extern "C" char DAT_0062627d[];
@@ -904,7 +905,27 @@ L_df_ret:
 }
 #pragma optimize("", on)
 #else
-void __fastcall Supervisor::DrawFpsCounter(i32 drawArg) { (void)drawArg; }
+void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
+{
+    static u32 frameCount = 0;
+    static DWORD lastTime = 0;
+    static char fpsBuf[256];
+    DWORD now = timeGetTime();
+    frameCount += 1 + (u32)*(u8 *)&DAT_00575a8b;
+    if (now - lastTime >= 500)
+    {
+        f32 elapsed = (f32)(now - lastTime) / 1000.0f;
+        f32 fps = frameCount / elapsed;
+        lastTime = now;
+        frameCount = 0;
+        sprintf(fpsBuf, "%.02ffps", fps);
+        if (*(i32 *)&DAT_00575ab8 == 0 && drawArg != 0)
+        {
+            D3DXVECTOR3 pos = { 512.0f, 464.0f, 0.0f };
+            (*(AsciiManager **)&DAT_0134ce18)->AddString(&pos, fpsBuf);
+        }
+    }
+}
 #endif
 #pragma optimize("s", off)
 // Supervisor::RegisterChain (FUN_00439000)
@@ -932,18 +953,18 @@ ZunResult Supervisor::RegisterChain()
     supervisor->curState = -1;
     supervisor->calcCount = 0;
 #endif
-    chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnUpdate);
+    chain = ((Chain *)&DAT_00626218)->CreateElem((ChainCallback)Supervisor::OnUpdate);
     chain->arg = supervisor;
     chain->addedCallback = (ChainAddedCallback)0;
     chain->deletedCallback = (ChainDeletedCallback)0;
-    calcResult = g_Chain.AddToCalcChain(chain, 0);
+    calcResult = ((Chain *)&DAT_00626218)->AddToCalcChain(chain, 0);
     if (calcResult != 0)
     {
         return (ZunResult)calcResult;
     }
-    chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnDraw);
+    chain = ((Chain *)&DAT_00626218)->CreateElem((ChainCallback)Supervisor::OnDraw);
     chain->arg = supervisor;
-    g_Chain.AddToDrawChain(chain, 0xf);
+    ((Chain *)&DAT_00626218)->AddToDrawChain(chain, 0xf);
     return ZUN_SUCCESS;
 }
 #pragma optimize("s", off)
@@ -1403,7 +1424,31 @@ L_sdi_ret:
 #else
 ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
 {
-    if ((*(u32 *)((u8 *)s + 0x14c) >> 0xb & 1) != 0) return ZUN_ERROR;
+    HINSTANCE hInst = (HINSTANCE)GetWindowLongA(s->hwndGameWindow, GWL_HINSTANCE);
+    if ((s->cfg.opts >> GCOS_NO_DIRECTINPUT_PAD & 1) != 0) return ZUN_ERROR;
+    if (DirectInput8Create(hInst, DIRECTINPUT_VERSION, IID_IDirectInput8A,
+                           (LPVOID *)&s->dinputIface, NULL) < 0)
+    {
+        s->dinputIface = NULL;
+        return ZUN_ERROR;
+    }
+    if (((IDirectInput8A *)s->dinputIface)->CreateDevice(GUID_SysKeyboard,
+                                                          (LPDIRECTINPUTDEVICE8A *)&s->keyboard, NULL) < 0)
+    {
+        if (s->dinputIface) { ((IDirectInput8A *)s->dinputIface)->Release(); s->dinputIface = NULL; }
+        return ZUN_ERROR;
+    }
+    ((IDirectInputDevice8A *)s->keyboard)->SetDataFormat(&c_dfDIKeyboard);
+    ((IDirectInputDevice8A *)s->keyboard)->SetCooperativeLevel(s->hwndGameWindow,
+                                                                DISCL_NONEXCLUSIVE | DISCL_FOREGROUND | DISCL_NOWINKEY);
+    ((IDirectInputDevice8A *)s->keyboard)->Acquire();
+    ((IDirectInput8A *)s->dinputIface)->EnumDevices(DI8DEVCLASS_GAMECTRL,
+                                                      (LPDIENUMDEVICESCALLBACKA)Supervisor_EnumKeybdCallback, NULL, DIEDFL_ATTACHEDONLY);
+    if (s->controller)
+    {
+        ((IDirectInputDevice8A *)s->controller)->SetDataFormat(&c_dfDIJoystick2);
+        ((IDirectInputDevice8A *)s->controller)->SetCooperativeLevel(s->hwndGameWindow, DISCL_EXCLUSIVE | DISCL_FOREGROUND);
+    }
     return ZUN_SUCCESS;
 }
 #endif
@@ -1632,6 +1677,69 @@ L_dc_done:
 #else
 ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
 {
+    void *pbg;
+    if (*(void **)&DAT_00575c1c != NULL)
+    {
+        pbg = *(void **)&DAT_00575c1c;
+        free(pbg);
+        *(void **)&DAT_00575c1c = NULL;
+    }
+    Supervisor_SomeCleanup1();
+    Supervisor_ReleaseAnm0();
+    AsciiManager::CutChain();
+    (*(SoundPlayer **)&DAT_004ba0d8)->SoundQueueAdd(4, 0, DUMMY_STR);
+    if (s->midiOutput != NULL)
+    {
+        MidiOutput_StopPlayback();
+        void *midi = s->midiOutput;
+        if (midi != NULL)
+        {
+            Supervisor_MidiClearTracks();
+            free(midi);
+        }
+        s->midiOutput = NULL;
+    }
+    Supervisor_ChainReleaseAll(0, 0);
+    Supervisor_Cleanup3();
+    if (s->keyboard != NULL)
+    {
+        ((IDirectInputDevice8A *)s->keyboard)->Unacquire();
+    }
+    if (s->keyboard != NULL)
+    {
+        ((IDirectInputDevice8A *)s->keyboard)->Release();
+        s->keyboard = NULL;
+    }
+    if (s->controller != NULL)
+    {
+        ((IDirectInputDevice8A *)s->controller)->Unacquire();
+    }
+    if (s->controller != NULL)
+    {
+        ((IDirectInputDevice8A *)s->controller)->Release();
+        s->controller = NULL;
+    }
+    if (s->dinputIface != NULL)
+    {
+        ((IDirectInput8A *)s->dinputIface)->Release();
+        s->dinputIface = NULL;
+    }
+    void *gm = *(void **)&DAT_00626278;
+    if (gm != NULL) { free(gm); *(void **)&DAT_00626278 = NULL; }
+    void *gm2 = *(void **)&DAT_00626274;
+    if (gm2 != NULL) { free(gm2); *(void **)&DAT_00626274 = NULL; }
+    Supervisor_HeapFreeAll();
+    if (*(void **)&DAT_00575a64 != NULL)
+    {
+        Supervisor_SomeCleanup4();
+        void *obj2 = *(void **)&DAT_00575a64;
+        if (obj2 != NULL)
+        {
+            Supervisor_SomeCleanup5();
+            free(obj2);
+        }
+        *(void **)&DAT_00575a64 = NULL;
+    }
     return ZUN_SUCCESS;
 }
 #endif
@@ -1810,15 +1918,15 @@ ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
     if (MUSIC_MODE == MUSIC_MIDI)
     {
         if (MIDI_OUTPUT_PTR != 0)
-            MIDI_OUTPUT_PTR->SetFadeOut((u32)(*reinterpret_cast<f32 *>(0x498ab8) * fadeOutSeconds));
+            MIDI_OUTPUT_PTR->SetFadeOut((u32)(*(f32 *)&DAT_00498ab8 * fadeOutSeconds));
     }
     else if (MUSIC_MODE == MUSIC_WAV)
     {
         f32 adj = fadeOutSeconds;
-        if (*reinterpret_cast<f32 *>((u8 *)this + 0x178) == *reinterpret_cast<f32 *>(0x498a4c) &&
-            *reinterpret_cast<f32 *>((u8 *)this + 0x178) <= *reinterpret_cast<f32 *>(0x498a54))
-            adj = fadeOutSeconds / *reinterpret_cast<f32 *>((u8 *)this + 0x178);
-        SOUND_PLAYER_PTR->SoundQueueAdd(5, (i32)(*reinterpret_cast<f32 *>(0x498ab8) * adj), EMPTY_STR);
+        if (*(f32 *)((u8 *)this + 0x178) == *(f32 *)&DAT_00498a4c &&
+            *(f32 *)((u8 *)this + 0x178) <= *(f32 *)&DAT_00498a54)
+            adj = fadeOutSeconds / *(f32 *)((u8 *)this + 0x178);
+        SOUND_PLAYER_PTR->SoundQueueAdd(5, (i32)(*(f32 *)&DAT_00498ab8 * adj), EMPTY_STR);
     }
     else return ZUN_ERROR;
     return ZUN_SUCCESS;
