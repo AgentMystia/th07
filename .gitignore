@@ -42,3 +42,7 @@ log.txt
 # 本地 harness 配置（Claude / ZCode，含项目级 MCP server 定义，机器特定）
 .claude/
 .zcode/
+*.pdb
+
+# MCP config (machine-specific)
+.mcp.json

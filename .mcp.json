@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "ghidra-mcp": {
-      "command": "python3",
-      "args": ["/opt/ghidra-mcp/bridge_mcp_ghidra.py"],
-      "type": "stdio"
-    }
-  }
-}
