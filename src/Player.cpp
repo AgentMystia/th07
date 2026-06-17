@@ -27,6 +27,7 @@
 
 #include "AnmVm.hpp"
 #include "Chain.hpp"
+#include "GameManager.hpp"
 #include "ZunResult.hpp"
 #include "inttypes.hpp"
 
@@ -93,7 +94,7 @@ extern EffectManagerSpawn g_EffectMgrSpawnObj;   // orig 0x012fe250 (EffectManag
 extern SoundPlayerPlayback g_SoundPlayerObj;     // orig 0x004ba0d8
 extern GameManagerScore g_GameManagerScoreObj;   // orig 0x00626270 (g_GameManager)
 extern AnmManagerFiles *g_AnmManagerFilesObj;    // orig 0x004b9e44 (AnmManager pointer global)
-extern void *g_ScoreSubObj;                      // orig 0x00626278 (g_GameManager+0x8 -> ScoreSub)
+extern ScoreSub *g_ScoreSubObj;                  // orig 0x00626278 (g_GameManager+0x8 -> ScoreSub)
 static EffectManagerSpawn *const g_EffectMgrSpawn = &g_EffectMgrSpawnObj;
 static SoundPlayerPlayback *const g_SoundPlayer = &g_SoundPlayerObj;
 static GameManagerScore *const g_GameManagerScore = &g_GameManagerScoreObj;
@@ -105,9 +106,8 @@ static GameManagerScore *const g_GameManagerScore = &g_GameManagerScoreObj;
 #define PLAYER_ADDED_CB            ((ChainAddedCallback)Player::AddedCallback)
 #define PLAYER_DELETED_CB          ((ChainDeletedCallback)Player::DeletedCallback)
 
-// scoreSub field access; each use re-reads the DAT_00626278 pointer (matching
-// orig's repeated MOV reg,[0x626278]). Offsets per ScoreSub in GameManager.hpp.
-#define SCORE_SUB_I32(off) (*reinterpret_cast<i32 *>(reinterpret_cast<u8 *>(SCORE_SUB) + (off)))
+// scoreSub is now a typed ScoreSub* (g_ScoreSubObj); access its fields directly
+// (counter14, counter18, mainSeedScoreBase, score) instead of raw offsets.
 
 // =============================================================================
 // OnDrawLowPrio  --  FUN_00442350  (__fastcall, Player* in ECX)
@@ -125,12 +125,12 @@ ChainCallbackResult __fastcall Player::OnDrawLowPrio(Player *p)
 // =============================================================================
 void Player::CutChain()
 {
-    g_Chain.Cut(*reinterpret_cast<ChainElem **>(&g_Player.raw[0xb7e5c]));
-    *reinterpret_cast<ChainElem **>(&g_Player.raw[0xb7e5c]) = 0;
-    g_Chain.Cut(*reinterpret_cast<ChainElem **>(&g_Player.raw[0xb7e60]));
-    *reinterpret_cast<ChainElem **>(&g_Player.raw[0xb7e60]) = 0;
-    g_Chain.Cut(*reinterpret_cast<ChainElem **>(&g_Player.raw[0xb7e64]));
-    *reinterpret_cast<ChainElem **>(&g_Player.raw[0xb7e64]) = 0;
+    g_Chain.Cut(g_Player.ChainCalc());
+    g_Player.ChainCalc() = 0;
+    g_Chain.Cut(g_Player.ChainDraw1());
+    g_Player.ChainDraw1() = 0;
+    g_Chain.Cut(g_Player.ChainDraw2());
+    g_Player.ChainDraw2() = 0;
 }
 
 // =============================================================================
@@ -139,13 +139,12 @@ void Player::CutChain()
 // =============================================================================
 void __fastcall Player::StartFireBulletTimer(Player *p)
 {
-    i32 cur = *reinterpret_cast<i32 *>(&p->raw[0x169fc]);
-    if (cur < 0)
+    if (p->FireBulletTimer()->current < 0)
     {
-        ZunTimer *t = reinterpret_cast<ZunTimer *>(&p->raw[0x169f4]);
-        t->current = 0;
-        t->subFrame = 0;
-        t->previous = -999;
+        ZunTimer *ft = p->FireBulletTimer();
+        ft->current = 0;
+        ft->subFrame = 0;
+        ft->previous = -999;
     }
 }
 
@@ -159,8 +158,8 @@ void __fastcall Player::Die(Player *p)
     g_GameManagerScore->GuiClearFlags();
     g_EffectMgrSpawn->SpawnEffect(0xc, p->PositionCenter(), 3, 1, 0xff4040ff);
     g_EffectMgrSpawn->SpawnParticles(6, p->PositionCenter(), 0x10, 0xffffffff);
-    p->raw[0x2408] = PLAYER_STATE_DEAD;
-    ZunTimer *t = reinterpret_cast<ZunTimer *>(&p->raw[0x16a00]);
+    p->PlayerState() = PLAYER_STATE_DEAD;
+    ZunTimer *t = p->InvulnerabilityTimer();
     t->current = 0;
     t->subFrame = 0;
     t->previous = -999;
@@ -179,29 +178,29 @@ ZunResult __fastcall Player::RegisterChain(u8 unk)
     Player *p = &g_Player;
     memset(p, 0, 0xb7e78);
 
-    ZunTimer *iv = reinterpret_cast<ZunTimer *>(&p->raw[0x16a00]);
+    ZunTimer *iv = p->InvulnerabilityTimer();
     iv->current = 0;
     iv->subFrame = 0;
     iv->previous = -999;
 
-    p->raw[0x2409] = unk;
+    p->Unk2409() = unk;
 
-    *reinterpret_cast<ChainElem **>(&p->raw[0xb7e5c]) = g_Chain.CreateElem(PLAYER_ON_UPDATE_CB);
-    *reinterpret_cast<ChainElem **>(&p->raw[0xb7e60]) = g_Chain.CreateElem(PLAYER_ON_DRAW_HIGH_CB);
-    *reinterpret_cast<ChainElem **>(&p->raw[0xb7e64]) = g_Chain.CreateElem(PLAYER_ON_DRAW_LOW_CB);
+    p->ChainCalc() = g_Chain.CreateElem(PLAYER_ON_UPDATE_CB);
+    p->ChainDraw1() = g_Chain.CreateElem(PLAYER_ON_DRAW_HIGH_CB);
+    p->ChainDraw2() = g_Chain.CreateElem(PLAYER_ON_DRAW_LOW_CB);
 
-    (*reinterpret_cast<ChainElem **>(&p->raw[0xb7e5c]))->arg = p;
-    (*reinterpret_cast<ChainElem **>(&p->raw[0xb7e60]))->arg = p;
-    (*reinterpret_cast<ChainElem **>(&p->raw[0xb7e64]))->arg = p;
-    (*reinterpret_cast<ChainElem **>(&p->raw[0xb7e5c]))->addedCallback = PLAYER_ADDED_CB;
-    (*reinterpret_cast<ChainElem **>(&p->raw[0xb7e5c]))->deletedCallback = PLAYER_DELETED_CB;
+    p->ChainCalc()->arg = p;
+    p->ChainDraw1()->arg = p;
+    p->ChainDraw2()->arg = p;
+    p->ChainCalc()->addedCallback = PLAYER_ADDED_CB;
+    p->ChainCalc()->deletedCallback = PLAYER_DELETED_CB;
 
-    if (g_Chain.AddToCalcChain(*reinterpret_cast<ChainElem **>(&p->raw[0xb7e5c]), 8) != 0)
+    if (g_Chain.AddToCalcChain(p->ChainCalc(), 8) != 0)
     {
         return ZUN_ERROR;
     }
-    g_Chain.AddToDrawChain(*reinterpret_cast<ChainElem **>(&p->raw[0xb7e60]), 6);
-    g_Chain.AddToDrawChain(*reinterpret_cast<ChainElem **>(&p->raw[0xb7e64]), 8);
+    g_Chain.AddToDrawChain(p->ChainDraw1(), 6);
+    g_Chain.AddToDrawChain(p->ChainDraw2(), 8);
     return ZUN_SUCCESS;
 }
 
@@ -236,17 +235,17 @@ ZunResult __fastcall Player::DeletedCallback(Player *p)
         *reinterpret_cast<u16 *>(g_GuiCounterSlots + 1 * 0x24c) = 0x63;
         *reinterpret_cast<u16 *>(g_GuiCounterSlots + 2 * 0x24c) = 0x63;
     }
-    if (*reinterpret_cast<void **>(&g_Player.raw[0xb7e70]) != 0)
+    if (g_Player.OptionTableUnfocused() != 0)
     {
-        void *optUnfocused = *reinterpret_cast<void **>(&g_Player.raw[0xb7e70]);
+        void *optUnfocused = g_Player.OptionTableUnfocused();
         free(optUnfocused);
-        *reinterpret_cast<void **>(&g_Player.raw[0xb7e70]) = 0;
+        g_Player.OptionTableUnfocused() = 0;
     }
-    if (*reinterpret_cast<void **>(&g_Player.raw[0xb7e74]) != 0)
+    if (g_Player.OptionTableFocused() != 0)
     {
-        void *optFocused = *reinterpret_cast<void **>(&g_Player.raw[0xb7e74]);
+        void *optFocused = g_Player.OptionTableFocused();
         free(optFocused);
-        *reinterpret_cast<void **>(&g_Player.raw[0xb7e74]) = 0;
+        g_Player.OptionTableFocused() = 0;
     }
     return ZUN_SUCCESS;
 }
@@ -283,7 +282,7 @@ f32 Player::AngleToPlayer(D3DXVECTOR3 *pos)
 // =============================================================================
 i32 Player::CalcItemBoxCollision(D3DXVECTOR3 *center, D3DXVECTOR3 *size)
 {
-    u8 state = raw[0x2408];
+    u8 state = PlayerState();
     if (state != PLAYER_STATE_ALIVE && state != PLAYER_STATE_INVULNERABLE &&
         state != PLAYER_STATE_DYING)
     {
@@ -311,8 +310,8 @@ i32 Player::CalcItemBoxCollision(D3DXVECTOR3 *center, D3DXVECTOR3 *size)
     maxCorner.y = center->y + half2.y;
     maxCorner.x = center->x + half2.x;
 
-    f32 *boxTL = reinterpret_cast<f32 *>(&raw[0x978]);
-    f32 *boxBR = reinterpret_cast<f32 *>(&raw[0x984]);
+    f32 *boxTL = reinterpret_cast<f32 *>(GrazeTopLeft());
+    f32 *boxBR = reinterpret_cast<f32 *>(GrazeBottomRight());
     if (boxTL[0] < maxCorner.x)
     {
         if (boxBR[0] > minCorner.x)
@@ -340,13 +339,13 @@ void Player::ScoreGraze(D3DXVECTOR3 *center)
     i32 bombActive = g_BombIsActive; // bombInfo.isInUse
     if (bombActive == 0)
     {
-        if (SCORE_SUB_I32(0x14) < 9999)
+        if (SCORE_SUB->counter14 < 9999)
         {
-            SCORE_SUB_I32(0x14)++;
+            SCORE_SUB->counter14++;
         }
-        if (SCORE_SUB_I32(0x18) < 999999)
+        if (SCORE_SUB->counter18 < 999999)
         {
-            SCORE_SUB_I32(0x18)++;
+            SCORE_SUB->counter18++;
         }
     }
 
@@ -362,9 +361,9 @@ void Player::ScoreGraze(D3DXVECTOR3 *center)
     particlePos.y = sum.y * scale;
     particlePos.x = sum.x * scale;
 
-    if (raw[0x240d] == 1) // in Supernatural Border
+    if (IsInSupernaturalBorder() == 1) // in Supernatural Border
     {
-        if (raw[0x240b] == 0) // unfocused
+        if (IsFocus() == 0) // unfocused
         {
             g_EffectMgrSpawn->SpawnParticles(8, &particlePos, 3, 0xffff8080);
         }
@@ -386,14 +385,14 @@ void Player::ScoreGraze(D3DXVECTOR3 *center)
 
     i32 cherry = g_Cherry;
     i32 scoreFrame = g_ScoreFrame;
-    cherry = cherry + 0x9c4 + (scoreFrame - SCORE_SUB_I32(0x88)) / 0x5dc * 0x14;
+    cherry = cherry + 0x9c4 + (scoreFrame - SCORE_SUB->mainSeedScoreBase) / 0x5dc * 0x14;
     g_Cherry = cherry;
 
-    SCORE_SUB_I32(0x4) = SCORE_SUB_I32(0x4) + 0x7d0 / 0xa;
+    SCORE_SUB->score = SCORE_SUB->score + 0x7d0 / 0xa;
 
-    if (raw[0x240d] == 1) // in Supernatural Border
+    if (IsInSupernaturalBorder() == 1) // in Supernatural Border
     {
-        if (raw[0x240b] == 0) // unfocused
+        if (IsFocus() == 0) // unfocused
         {
             g_GameManagerScore->IncreaseSubrank(0x50);
             g_GameManagerScore->AddScore(0x50);

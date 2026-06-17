@@ -236,6 +236,21 @@ struct Player
         return reinterpret_cast<PlayerBombInfo *>(&raw[0x16a20]);
     }
 
+    // Additional typed accessors for fields Player.cpp touches directly.
+    // (th06 declares these as named struct members; th07 keeps the raw buffer
+    //  as layout source-of-truth but exposes typed refs to avoid raw[] casts.)
+    D3DXVECTOR3 *GrazeTopLeft()       { return reinterpret_cast<D3DXVECTOR3 *>(&raw[0x978]); }
+    D3DXVECTOR3 *GrazeBottomRight()   { return reinterpret_cast<D3DXVECTOR3 *>(&raw[0x984]); }
+    u8 &PlayerState()                 { return raw[0x2408]; }
+    u8 &Unk2409()                     { return raw[0x2409]; }
+    u8 &IsFocus()                     { return raw[0x240b]; }
+    u8 &IsInSupernaturalBorder()      { return raw[0x240d]; }
+    ChainElem *&ChainCalc()           { return *reinterpret_cast<ChainElem **>(&raw[0xb7e5c]); }
+    ChainElem *&ChainDraw1()          { return *reinterpret_cast<ChainElem **>(&raw[0xb7e60]); }
+    ChainElem *&ChainDraw2()          { return *reinterpret_cast<ChainElem **>(&raw[0xb7e64]); }
+    void *&OptionTableUnfocused()     { return *reinterpret_cast<void **>(&raw[0xb7e70]); }
+    void *&OptionTableFocused()       { return *reinterpret_cast<void **>(&raw[0xb7e74]); }
+
     // --- chain-lifecycle + gameplay methods (signatures from mapping.csv /
     //     disasm). __fastcall static = ECX holds Player* (or u8 for RegisterChain);
     //     __thiscall instance = ECX holds this, args on stack, RET n. ---
