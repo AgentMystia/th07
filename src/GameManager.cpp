@@ -6,8 +6,74 @@
 // CalculateChecksum, IsGameActive  these need more of the struct reversed.
 
 #include "GameManager.hpp"
+#include "Supervisor.hpp"
+#include "SoundPlayer.hpp"
+#include "AnmManager.hpp"
+#include "AsciiManager.hpp"
 #include <cstring>
 
+// typed externs for rdata floats + game-state globals (Part C.2). Addresses
+// recovered on objdiff side via SYMBOL_MAP entries in generate_objdiff_objs.py.
+extern "C" void *g_GameMgrG0x1347f9c;
+extern "C" u32 g_GameMgrG0x1347fe4;
+extern "C" const f32 g_GameMgrC0x498a68;
+extern "C" const f32 g_GameMgrC0x498a6c;
+extern "C" const f32 g_GameMgrC0x498a80;
+extern "C" const f32 g_GameMgrC0x498a84;
+extern "C" const f32 g_GameMgrC0x498a8c;
+extern "C" const f32 g_GameMgrC0x498b24;
+extern "C" const f32 g_GameMgrC0x498bac;
+extern "C" const f32 g_GameMgrC0x498c7c;
+extern "C" const f32 g_GameMgrC0x498c80;
+extern "C" u16 g_GameMgrG0x49fe20;
+extern "C" i32 g_GameMgrG0x49fe24;
+extern "C" i32 g_SupervisorG0x575a18;
+extern "C" i32 g_SupervisorG0x575a1c;
+extern "C" i32 g_SupervisorG0x575a20;
+extern "C" i32 g_SupervisorG0x575a24;
+extern "C" f32 g_SupervisorG0x575a28;
+extern "C" f32 g_SupervisorG0x575a2c;
+extern "C" i32 g_SupervisorG0x575c08;
+extern "C" u8 g_GameManagerRankForceFlag;     // GameManager +0xd (inside flag0c i32)
+extern "C" u8 g_GameMgrG0x62f647;             // CharacterShotType
+extern "C" u8 g_GameMgrG0x62f64f;
+extern "C" f32 g_GameMgrG0x62f884;            // checksum accumulator
+extern "C" i32 g_GameMgrG0x9a9a80;            // difficulty threshold
+
+extern "C" void *g_SupervisorG0x575a68;       // supervisor +0xb8 (viewport/present params pad)
+extern "C" void *g_GameMgrG0x1347938;       // effect/score state
+extern "C" char *g_GameMgrG0x497e1c;
+extern "C" char *g_GameMgrG0x497e30;
+extern "C" char *g_GameMgrG0x497e58;
+extern "C" char *g_GameMgrG0x497e84;
+extern "C" char *g_GameMgrG0x497f4c;
+extern "C" char *g_GameMgrG0x498010;
+extern "C" char *g_GameMgrG0x498038;
+extern "C" char *g_GameMgrG0x498064;
+extern "C" char *g_GameMgrG0x498524;
+extern "C" char *g_GameMgrG0x4986b4;
+extern "C" void *g_GameMgrG0x49f560;        // stage ECL pointer table
+extern "C" void *g_GameMgrG0x49f588;        // ECL stage list
+extern "C" void *g_GameMgrG0x49f58c;        // ECL stage list
+extern "C" i32 g_GameMgrG0x49fbf0;          // IsGameActive singleton
+extern "C" i32 g_GameMgrG0x62f50c;
+extern "C" i32 g_GameMgrG0x62f510;
+extern "C" i32 g_GameMgrG0x62f528;
+extern "C" i32 g_GameMgrG0x62f534;
+extern "C" i32 g_GameMgrG0x62f614;
+extern "C" i32 g_GameMgrG0x62f618;
+extern "C" i32 g_GameMgrG0x62f630;
+extern "C" i32 g_GameMgrG0x62f63c;
+extern "C" i32 g_GameMgrG0x62f654;
+
+// Forward externs for typed singletons declared in other modules' headers
+extern th07::Supervisor g_Supervisor;
+extern th07::SoundPlayer g_SoundPlayer;
+extern th07::AsciiManager g_AsciiManager;
+extern th07::AnmManager *g_AnmManager;
+struct GameErrorContext; extern GameErrorContext g_GameErrorContext;
+extern u16 g_LastFrameInput;
+extern u16 g_CurFrameInput;
 namespace th07
 {
 DIFFABLE_STATIC(GameManager, g_GameManager)
@@ -161,63 +227,63 @@ ChainCallbackResult __fastcall GameManager::OnUpdate(GameManager *gameManager)
     if (gameManager->unk_93dd == 0 &&
         gameManager->unk_93dc == 0 &&
         ((gameManager->statusBitfield >> 1) & 1) == 0 &&
-        *(i8 *)((u8 *)gameManager + 0xd) == 0 &&
-        (*(u16 *)0x4b9e4c & 8) != 0 &&
-        (*(u16 *)0x4b9e4c & 8) != (*(u16 *)0x4b9e54 & 8))
+        *(i8 *)((u8 *)&gameManager->flag0c /* +0xd */) == 0 &&
+        (g_LastFrameInput & 8) != 0 &&
+        (g_LastFrameInput & 8) != (g_CurFrameInput & 8))
     {
         gameManager->unk_93dc = 1;
-        g_GameManager.anmColorSetup[0] = *(f32 *)0x498a84;
-        g_GameManager.anmColorSetup[1] = *(f32 *)0x498a80;
-        g_GameManager.anmColorSetup[2] = *(f32 *)0x498a6c;
-        g_GameManager.anmColorSetup[3] = *(f32 *)0x498a68;
+        g_GameManager.anmColorSetup[0] = g_GameMgrC0x498a84;
+        g_GameManager.anmColorSetup[1] = g_GameMgrC0x498a80;
+        g_GameManager.anmColorSetup[2] = g_GameMgrC0x498a6c;
+        g_GameManager.anmColorSetup[3] = g_GameMgrC0x498a68;
         *(i32 *)((u8 *)&g_GameManager + 0x93d0) = 1;
-        if (g_GameManager.playCount != 6 || *(i32 *)0x49fbf0 >= 0x12c)
+        if (g_GameManager.playCount != 6 || g_GameMgrG0x49fbf0 >= 0x12c)
         {
-            PauseSound_0044d2f0((void *)0x4ba0d8, 6, 0, (const char *)0x498a40);
+            PauseSound_0044d2f0((void *)&g_SoundPlayer, 6, 0, (const char *)0x498a40);
         }
-        SoundCmd_0044c930((void *)0x4ba0d8, 0x25, 0);
-        SupUpdateTimeAccumB_0043a3f4((void *)0x575950);
+        SoundCmd_0044c930((void *)&g_SoundPlayer, 0x25, 0);
+        SupUpdateTimeAccumB_0043a3f4((void *)&g_Supervisor);
     }
 
     // ---- Block 2: convert anmColorSetup[0..3] to ints (Supervisor scratch),
     //      reset two floats, mark AnmManager dirty byte ----
-    *(i32 *)0x575a18 = RandFloatToInt_0048b8a0(g_GameManager.anmColorSetup[0]);
-    *(i32 *)0x575a1c = RandFloatToInt_0048b8a0(g_GameManager.anmColorSetup[1]);
-    *(i32 *)0x575a20 = RandFloatToInt_0048b8a0(g_GameManager.anmColorSetup[2]);
-    *(i32 *)0x575a24 = RandFloatToInt_0048b8a0(g_GameManager.anmColorSetup[3]);
-    *(f32 *)0x575a28 = 0.0f;
-    *(f32 *)0x575a2c = 1.0f;
-    *(u8 *)((u8 *)*(void **)0x4b9e44 + 0x2e4d4) |= 0xff;
+    g_SupervisorG0x575a18 = RandFloatToInt_0048b8a0(g_GameManager.anmColorSetup[0]);
+    g_SupervisorG0x575a1c = RandFloatToInt_0048b8a0(g_GameManager.anmColorSetup[1]);
+    g_SupervisorG0x575a20 = RandFloatToInt_0048b8a0(g_GameManager.anmColorSetup[2]);
+    g_SupervisorG0x575a24 = RandFloatToInt_0048b8a0(g_GameManager.anmColorSetup[3]);
+    g_SupervisorG0x575a28 = 0.0f;
+    g_SupervisorG0x575a2c = 1.0f;
+    *(u8 *)((u8 *)g_AnmManager + 0x2e4d4) |= 0xff;
 
     // ---- Block 3: rank-up gating (practice/replay + active game). rankCounter++
     //      then tier-based modulo check; BREAK skips downstream calc this frame ----
     if ((((g_GameManager.statusBitfield >> 3) & 1) != 0) &&
-        *(u8 *)0x62f64f == 1 &&
-        IsGameActive_0042ad66((void *)0x49fbf0) == 0)
+        g_GameMgrG0x62f64f == 1 &&
+        IsGameActive_0042ad66(&g_GameMgrG0x49fbf0) == 0)
     {
         gameManager->rankCounter++;
-        if ((i32)*(i16 *)0x575ad8 < 0x14)
+        if ((i32)g_Supervisor.unk188 < 0x14)
         {
             if (gameManager->rankCounter % 3 != 0)
             {
                 return CHAIN_CALLBACK_RESULT_BREAK;
             }
         }
-        if ((i32)*(i16 *)0x575ad8 >= 0x14 && (i32)*(i16 *)0x575ad8 < 0x1e)
+        if ((i32)g_Supervisor.unk188 >= 0x14 && (i32)g_Supervisor.unk188 < 0x1e)
         {
             if (gameManager->rankCounter % 2 != 0)
             {
                 return CHAIN_CALLBACK_RESULT_BREAK;
             }
         }
-        if ((i32)*(i16 *)0x575ad8 >= 0x1e && (i32)*(i16 *)0x575ad8 < 0x28)
+        if ((i32)g_Supervisor.unk188 >= 0x1e && (i32)g_Supervisor.unk188 < 0x28)
         {
             if (gameManager->rankCounter % 3 == 0)
             {
                 return CHAIN_CALLBACK_RESULT_BREAK;
             }
         }
-        if ((i32)*(i16 *)0x575ad8 >= 0x28 && (i32)*(i16 *)0x575ad8 < 0x32)
+        if ((i32)g_Supervisor.unk188 >= 0x28 && (i32)g_Supervisor.unk188 < 0x32)
         {
             if (gameManager->rankCounter % 6 == 0)
             {
@@ -229,23 +295,23 @@ ChainCallbackResult __fastcall GameManager::OnUpdate(GameManager *gameManager)
     // ---- Block 4: paused-state handling (statusBitfield bit1 set) ----
     if (((gameManager->statusBitfield >> 1) & 1) != 0)
     {
-        if (*(u16 *)0x4b9e4c != 0 && *(u16 *)0x4b9e4c != *(u16 *)0x4b9e54)
+        if (g_LastFrameInput != 0 && g_LastFrameInput != g_CurFrameInput)
         {
-            *(i32 *)0x575aa8 = 1;
+            g_Supervisor.curState = 1;
         }
         gameManager->pauseFrameCounter++;
-        if ((*(u8 *)((u8 *)gameManager + 0x93de) == 0 && gameManager->pauseFrameCounter == 0x1fa4) ||
-            (*(u8 *)((u8 *)gameManager + 0x93de) == 1 && gameManager->pauseFrameCounter == 0x1b6c) ||
-            (*(u8 *)((u8 *)gameManager + 0x93de) == 2 && gameManager->pauseFrameCounter == 0x120c))
+        if ((*(u8 *)((u8 *)&gameManager->unk_93de /* +0x93de */) == 0 && gameManager->pauseFrameCounter == 0x1fa4) ||
+            (*(u8 *)((u8 *)&gameManager->unk_93de /* +0x93de */) == 1 && gameManager->pauseFrameCounter == 0x1b6c) ||
+            (*(u8 *)((u8 *)&gameManager->unk_93de /* +0x93de */) == 2 && gameManager->pauseFrameCounter == 0x120c))
         {
             SoundCmd_0044b310(2, 0x78, 0, 0, 0);
-            FadeOutMusic_0043a0d6((void *)0x575950, *(f32 *)0x498a8c);
+            FadeOutMusic_0043a0d6((void *)&g_Supervisor, g_GameMgrC0x498a8c);
         }
-        if ((*(u8 *)((u8 *)gameManager + 0x93de) == 0 && (i32)gameManager->pauseFrameCounter > 0x201b) ||
-            (*(u8 *)((u8 *)gameManager + 0x93de) == 1 && (i32)gameManager->pauseFrameCounter > 0x1be3) ||
-            (*(u8 *)((u8 *)gameManager + 0x93de) == 2 && (i32)gameManager->pauseFrameCounter >= 0x1284))
+        if ((*(u8 *)((u8 *)&gameManager->unk_93de /* +0x93de */) == 0 && (i32)gameManager->pauseFrameCounter > 0x201b) ||
+            (*(u8 *)((u8 *)&gameManager->unk_93de /* +0x93de */) == 1 && (i32)gameManager->pauseFrameCounter > 0x1be3) ||
+            (*(u8 *)((u8 *)&gameManager->unk_93de /* +0x93de */) == 2 && (i32)gameManager->pauseFrameCounter >= 0x1284))
         {
-            *(i32 *)0x575aa8 = 1;
+            g_Supervisor.curState = 1;
             return CHAIN_CALLBACK_RESULT_BREAK;
         }
     }
@@ -254,7 +320,7 @@ ChainCallbackResult __fastcall GameManager::OnUpdate(GameManager *gameManager)
     g_GameManager.scoreSub->crcAcc = g_GameManager.scoreSub->crcReseed38;
     {
         i32 checksum = CalculateChecksum_0042d7be(gameManager);
-        *(f32 *)0x62f884 = (f32)checksum + (f32)g_GameManager.scoreSub->stageTimeBase98;
+        g_GameMgrG0x62f884 = (f32)checksum + (f32)g_GameManager.scoreSub->stageTimeBase98;
     }
 
     // ---- Block 6: ScoreSub seed sanity range-checks (ints in [0x198f,0x1a02f]) ----
@@ -265,15 +331,15 @@ ChainCallbackResult __fastcall GameManager::OnUpdate(GameManager *gameManager)
             if (gameManager->scoreSub->seedIds7[i] < 0x198f ||
                 gameManager->scoreSub->seedIds7[i] > 0x1a02f)
             {
-                *(f32 *)0x62f884 = *(f32 *)0x498c80;
+                g_GameMgrG0x62f884 = g_GameMgrC0x498c80;
             }
         }
         for (i = 0; i < 2; i++)
         {
-            if (gameManager->scoreSub->randF3260[i] < *(f32 *)0x498bac ||
-                gameManager->scoreSub->randF3260[i] > *(f32 *)0x498c7c)
+            if (gameManager->scoreSub->randF3260[i] < g_GameMgrC0x498bac ||
+                gameManager->scoreSub->randF3260[i] > g_GameMgrC0x498c7c)
             {
-                *(f32 *)0x62f884 = *(f32 *)0x498c80;
+                g_GameMgrG0x62f884 = g_GameMgrC0x498c80;
             }
         }
     }
@@ -297,10 +363,10 @@ ChainCallbackResult __fastcall GameManager::OnUpdate(GameManager *gameManager)
         u32 i;
         for (i = 0; i < 2; i++)
         {
-            if (gameManager->scoreSub->randF3254[i] < *(f32 *)0x498bac ||
-                gameManager->scoreSub->randF3254[i] > *(f32 *)0x498c7c)
+            if (gameManager->scoreSub->randF3254[i] < g_GameMgrC0x498bac ||
+                gameManager->scoreSub->randF3254[i] > g_GameMgrC0x498c7c)
             {
-                *(f32 *)0x62f884 = *(f32 *)0x498c80;
+                g_GameMgrG0x62f884 = g_GameMgrC0x498c80;
             }
         }
         for (i = 0; i < 8; i++)
@@ -308,14 +374,14 @@ ChainCallbackResult __fastcall GameManager::OnUpdate(GameManager *gameManager)
             if (gameManager->scoreSub->seedIds8[i] < 0x198f ||
                 gameManager->scoreSub->seedIds8[i] > 0x1a02f)
             {
-                *(f32 *)0x62f884 = *(f32 *)0x498c80;
+                g_GameMgrG0x62f884 = g_GameMgrC0x498c80;
             }
         }
     }
 
     // ---- Block 9: D3D device Clear (z-buffer) via vtable[0x90] ----
-    (*(D3DDeviceStub **)0x575958)->lpVtbl->Clear((*(D3DDeviceStub **)0x575958), 0, 0, 2,
-                                                 *(u32 *)0x1347fe4, 1.0f, 0);
+    ((D3DDeviceStub *)g_Supervisor.d3dDevice)->lpVtbl->Clear(((D3DDeviceStub *)g_Supervisor.d3dDevice), 0, 0, 2,
+                                                 g_GameMgrG0x1347fe4, 1.0f, 0);
 
     // ---- Block 10: pause-state skip (unk_93dc latched 1/2 or unk_93dd set) ----
     if (gameManager->unk_93dc == 1 || gameManager->unk_93dc == 2 || gameManager->unk_93dd != 0)
@@ -372,18 +438,18 @@ ChainCallbackResult __fastcall GameManager::OnUpdate(GameManager *gameManager)
         u32 i;
         for (i = 0; i < 3; i++)
         {
-            if (gameManager->scoreSub->randF3370[i] < *(f32 *)0x498bac ||
-                gameManager->scoreSub->randF3370[i] > *(f32 *)0x498c7c)
+            if (gameManager->scoreSub->randF3370[i] < g_GameMgrC0x498bac ||
+                gameManager->scoreSub->randF3370[i] > g_GameMgrC0x498c7c)
             {
-                *(f32 *)0x62f884 = *(f32 *)0x498c80;
+                g_GameMgrG0x62f884 = g_GameMgrC0x498c80;
             }
         }
         for (i = 0; i < 2; i++)
         {
-            if (gameManager->scoreSub->randF3280[i] < *(f32 *)0x498bac ||
-                gameManager->scoreSub->randF3280[i] > *(f32 *)0x498c7c)
+            if (gameManager->scoreSub->randF3280[i] < g_GameMgrC0x498bac ||
+                gameManager->scoreSub->randF3280[i] > g_GameMgrC0x498c7c)
             {
-                *(f32 *)0x62f884 = *(f32 *)0x498c80;
+                g_GameMgrG0x62f884 = g_GameMgrC0x498c80;
             }
         }
         for (i = 0; i < 5; i++)
@@ -391,7 +457,7 @@ ChainCallbackResult __fastcall GameManager::OnUpdate(GameManager *gameManager)
             if (gameManager->scoreSub->seedIds5[i] < 0x198f ||
                 gameManager->scoreSub->seedIds5[i] > 0x1a02f)
             {
-                *(f32 *)0x62f884 = *(f32 *)0x498c80;
+                g_GameMgrG0x62f884 = g_GameMgrC0x498c80;
             }
         }
     }
@@ -399,33 +465,33 @@ ChainCallbackResult __fastcall GameManager::OnUpdate(GameManager *gameManager)
     // ---- Block 13: rank-force tier (gated by playerSub->bonusExtendGate) ----
     if (g_GameManager.playerSub->bonusExtendGate != 0)
     {
-        *(u8 *)0x62627d = 0;
+        g_GameManagerRankForceFlag = 0;
         gameManager->rankCounter++;
-        if (*(i32 *)0x9a9a80 >= 0x140)
+        if (g_GameMgrG0x9a9a80 >= 0x140)
         {
             if (gameManager->rankCounter % 3 == 0)
             {
-                *(u8 *)0x62627d = 1;
+                g_GameManagerRankForceFlag = 1;
                 return CHAIN_CALLBACK_RESULT_BREAK;
             }
         }
-        if (*(i32 *)0x9a9a80 < 0x140 && *(i32 *)0x9a9a80 >= 0xe0)
+        if (g_GameMgrG0x9a9a80 < 0x140 && g_GameMgrG0x9a9a80 >= 0xe0)
         {
             if (gameManager->rankCounter % 4 == 0)
             {
-                *(u8 *)0x62627d = 1;
+                g_GameManagerRankForceFlag = 1;
                 return CHAIN_CALLBACK_RESULT_BREAK;
             }
         }
-        if (*(i32 *)0x9a9a80 < 0xe0 && *(i32 *)0x9a9a80 >= 0x80)
+        if (g_GameMgrG0x9a9a80 < 0xe0 && g_GameMgrG0x9a9a80 >= 0x80)
         {
             if (gameManager->rankCounter % 5 == 0)
             {
-                *(u8 *)0x62627d = 1;
+                g_GameManagerRankForceFlag = 1;
                 return CHAIN_CALLBACK_RESULT_BREAK;
             }
         }
-        if (*(i32 *)0x9a9a80 < 0x80)
+        if (g_GameMgrG0x9a9a80 < 0x80)
         {
             gameManager->rankCounter = 0;
         }
@@ -445,11 +511,11 @@ ChainCallbackResult __fastcall GameManager::OnUpdate(GameManager *gameManager)
 #pragma auto_inline(off)
 ZunResult __fastcall GameManager::DeletedCallback(GameManager *gameManager)
 {
-    SupOnDelete_0043a05f((void *)0x575950);
+    SupOnDelete_0043a05f((void *)&g_Supervisor);
 
-    if (*(u8 *)0x575a87 == 2 && *(void **)0x575acc != 0)
+    if (g_Supervisor.cfg.musicMode == 2 && g_Supervisor.midiOutput != 0)
     {
-        MidiDevStub *midi = *(MidiDevStub **)0x575acc;
+        MidiDevStub *midi = (MidiDevStub *)g_Supervisor.midiOutput;
         MidiCloseAll_436b30(midi);
         midi->Open_436790(0x1e);
         MidiPlay_436ad0(midi);
@@ -457,31 +523,31 @@ ZunResult __fastcall GameManager::DeletedCallback(GameManager *gameManager)
 
     do
     {
-    } while (ProcessSoundQueue_0044c9c0((void *)0x4ba0d8) != 0);
+    } while (ProcessSoundQueue_0044c9c0((void *)&g_SoundPlayer) != 0);
 
     ReleaseItems_004075d0();
     EffectItemTeardown_427760();
     AnmMgrTeardown_442b10();
     ReleaseEnemies_423050();
-    DispParamsDtor_40e4f0((void *)0x1347938);
+    DispParamsDtor_40e4f0(&g_GameMgrG0x1347938);
     ReleaseBosses_41d150();
     ReleaseChainCtrl_42d53d();
     BgmFadeBook_443d30();
 
-    if ((*(u32 *)0x62f648 >> 3 & 1) == 0)
+    if ((g_GameManager.statusBitfield >> 3 & 1) == 0)
     {
-        SupUpdateTimeAccumB_0043a3f4((void *)0x575950);
+        SupUpdateTimeAccumB_0043a3f4((void *)&g_Supervisor);
     }
 
-    *(u32 *)0x575ae4 = 0;
-    SupUpdateTimeAccumA_43a27f((void *)0x575950);
+    g_Supervisor.lastFrameTime = 0;
+    SupUpdateTimeAccumA_43a27f((void *)&g_Supervisor);
 
     gameManager->statusBitfield &= 0xfffffffbu;
 
-    EffectMgrReset_401a00((void *)0x134ce18);
+    EffectMgrReset_401a00((void *)&g_AsciiManager);
 
-    *(u8 *)0x62627d = 0;
-    *(i32 *)0x62f858 = 0;
+    g_GameManagerRankForceFlag = 0;
+    g_GameManager.frameCounter = 0;
 
     return ZUN_SUCCESS;
 }
@@ -504,20 +570,20 @@ struct RngStub
 #pragma auto_inline(off)
 ZunResult __fastcall GameManager::AddedCallback(GameManager *gameManager)
 {
-    *(i32 *)0x575c08 = 0;
+    g_SupervisorG0x575c08 = 0;
     gameManager->difficultyMask = 1u << gameManager->difficulty;
-    *(u8 *)((u8 *)gameManager + 0x93d7) =
-        (u8)(*(u8 *)((u8 *)gameManager + 0x93d6) + *(u8 *)((u8 *)gameManager + 0x93d5) * 2);
-    *(u32 *)0x575ae4 = timeGetTime();
-    *(f32 *)0x575ac8 = 1.0f;
+    *(u8 *)((u8 *)&gameManager->unk_93dc /* +0x93d7 */) =
+        (u8)(*(u8 *)((u8 *)&gameManager->unk_93dc /* +0x93d6 */) + *(u8 *)((u8 *)&gameManager->unk_93dc /* +0x93d5 */) * 2);
+    g_Supervisor.lastFrameTime = timeGetTime();
+    g_Supervisor.framerateMultiplier = 1.0f;
 
-    if (*(i32 *)0x575aa8 == 3)
+    if (g_Supervisor.curState == 3)
     {
         gameManager->scoreSub->guiScore = gameManager->scoreSub->score;
         gameManager->scoreSub->scoreDelta = 0;
         if (CheckSomething_004429d0((void *)0) != 0)
         {
-            ErrorLog_004315f0((void *)0x624210, (void *)0x498064);
+            ErrorLog_004315f0((void *)&g_GameErrorContext, &g_GameMgrG0x498064);
             return ZUN_ERROR;
         }
     }
@@ -535,36 +601,36 @@ ZunResult __fastcall GameManager::AddedCallback(GameManager *gameManager)
             gameManager->scoreSub = 0;
         }
         {
-            u32 r = Rng_GetRandomU32_004318d0((void *)0x49fe20);
+            u32 r = Rng_GetRandomU32_004318d0(&g_GameMgrG0x49fe20);
             gameManager->scratchBuf = Malloc_0047d39d(r % 0xffff + 0x10);
         }
         gameManager->playerSub = (PlayerSub *)OperatorNew_0047d441(0x38);
         gameManager->scoreSub = (ScoreSub *)OperatorNew_0047d441(0xc8);
         ScoreSubInit_0042e3da();
-        memcpy(gameManager->playerSub, (void *)0x575a68, 0x38);
+        memcpy(gameManager->playerSub, &g_SupervisorG0x575a68, 0x38);
         Free2_0047d285(gameManager->scratchBuf);
-        *(u8 *)((u8 *)gameManager + 0x93d4) = 0;
+        *(u8 *)((u8 *)&gameManager->unk_93dc /* +0x93d4 */) = 0;
         gameManager->extendThresholdB = gameManager->scoreSub->mainSeedScoreBase;
         gameManager->initScoreMirror = gameManager->scoreSub->mainSeedScoreBase;
-        if (*(i32 *)0x626280 >= 4)
+        if (g_GameManager.difficulty >= 4)
         {
             gameManager->playerSub->playerCountMode = 2;
         }
-        if ((*(u32 *)0x62f648 & 1) != 0)
+        if ((g_GameManager.statusBitfield & 1) != 0)
         {
             gameManager->playerSub->playerCountMode = 8;
         }
         if (CheckSomething_004429d0((void *)0) != 0)
         {
-            ErrorLog_004315f0((void *)0x624210, (void *)0x498064);
+            ErrorLog_004315f0((void *)&g_GameErrorContext, &g_GameMgrG0x498064);
             return ZUN_ERROR;
         }
-        if ((*(u32 *)0x62f648 >> 3 & 1) == 0)
+        if ((g_GameManager.statusBitfield >> 3 & 1) == 0)
         {
             g_GameManager.scoreSub->playerCountF32 = (f32)gameManager->playerSub->playerCountMode;
-            RngAdvance_004012b0((void *)0x626270);
-            ((RngStub *)(void *)0x626270)
-                ->Consume_00401390(RandFloatToInt_0048b8a0(*(f32 *)((u8 *)*(void **)0x575948 + 4)));
+            RngAdvance_004012b0((void *)&g_GameManager);
+            ((RngStub *)(void *)&g_GameManager)
+                ->Consume_00401390(RandFloatToInt_0048b8a0(*(f32 *)((u8 *)&g_GameManager + 4)));
         }
         AnmColorSetup_0042d657(gameManager);
         gameManager->scoreSub->pointItemAutoBonus = 0.0f;
@@ -598,7 +664,7 @@ ZunResult __fastcall GameManager::AddedCallback(GameManager *gameManager)
         RngAdvance_004012b0(gameManager);
         gameManager->scoreSub->counter1c = 0;
 
-        if ((*(u32 *)0x62f648 & 1) == 0)
+        if ((g_GameManager.statusBitfield & 1) == 0)
         {
             i32 diff = gameManager->difficulty;
             if (diff == 0)
@@ -676,26 +742,26 @@ ZunResult __fastcall GameManager::AddedCallback(GameManager *gameManager)
             }
         }
 
-        if ((*(u32 *)0x62f648 >> 3 & 1) == 0)
+        if ((g_GameManager.statusBitfield >> 3 & 1) == 0)
         {
             if (gameManager->playerSub->bonusExtendGate == 0)
             {
-                GrantExtend_0042e81b((void *)((u8 *)0x62f50c + *(i32 *)0x626280 * 0x2c), 0xf423f);
-                GrantExtend_0042e81b((void *)0x62f614, 0xf423f);
-                GrantExtend_0042e81b((void *)((u8 *)0x62f510 + *(i32 *)0x626280 * 0x2c +
-                                               *(u8 *)((u8 *)gameManager + 0x93d7) * 4),
+                GrantExtend_0042e81b((void *)(&g_GameMgrG0x62f50c + g_GameManager.difficulty * 0x2c), 0xf423f);
+                GrantExtend_0042e81b(&g_GameMgrG0x62f614, 0xf423f);
+                GrantExtend_0042e81b((void *)(&g_GameMgrG0x62f510 + g_GameManager.difficulty * 0x2c +
+                                               *(u8 *)((u8 *)&gameManager->unk_93dc /* +0x93d7 */) * 4),
                                      0xf423f);
-                GrantExtend_0042e81b((void *)((u8 *)0x62f618 + *(u8 *)((u8 *)gameManager + 0x93d7) * 4),
+                GrantExtend_0042e81b((void *)(&g_GameMgrG0x62f618 + *(u8 *)((u8 *)&gameManager->unk_93dc /* +0x93d7 */) * 4),
                                      0xf423f);
-                if (*(i32 *)0x575aa8 == 10)
+                if (g_Supervisor.curState == 10)
                 {
-                    GrantExtend_0042e81b((void *)((u8 *)0x62f528 + *(i32 *)0x626280 * 0x2c), 0xf423f);
-                    GrantExtend_0042e81b((void *)0x62f630, 0xf423f);
+                    GrantExtend_0042e81b((void *)(&g_GameMgrG0x62f528 + g_GameManager.difficulty * 0x2c), 0xf423f);
+                    GrantExtend_0042e81b(&g_GameMgrG0x62f630, 0xf423f);
                 }
-                if ((*(u32 *)0x62f648 & 1) != 0)
+                if ((g_GameManager.statusBitfield & 1) != 0)
                 {
-                    GrantExtend_0042e81b((void *)((u8 *)0x62f534 + *(i32 *)0x626280 * 0x2c), 0xf423f);
-                    GrantExtend_0042e81b((void *)0x62f63c, 0xf423f);
+                    GrantExtend_0042e81b((void *)(&g_GameMgrG0x62f534 + g_GameManager.difficulty * 0x2c), 0xf423f);
+                    GrantExtend_0042e81b(&g_GameMgrG0x62f63c, 0xf423f);
                 }
             }
         }
@@ -708,22 +774,22 @@ ZunResult __fastcall GameManager::AddedCallback(GameManager *gameManager)
     gameManager->counter9640 = 0;
     gameManager->scoreSub->grazeCount = 0;
     gameManager->scoreSub->counter14 = 0;
-    *(u8 *)((u8 *)gameManager + 0x93dc) = 0;
+    *(u8 *)((u8 *)&gameManager->unk_93dc /* +0x93dc */) = 0;
     gameManager->playCount++;
 
-    if ((*(u32 *)0x62f648 >> 3 & 1) == 0)
+    if ((g_GameManager.statusBitfield >> 3 & 1) == 0)
     {
-        u32 idx = *(u8 *)0x62f647;
+        u32 idx = g_GameMgrG0x62f647;
         if (gameManager->scoreSub->srcStatusByte20 == 0)
         {
-            u8 *rec = (u8 *)gameManager + 0x8454 + *(i32 *)0x626280 + idx * 0x1c;
+            u8 *rec = (u8 *)&gameManager->unk_18 /* +0x8454 */ + g_GameManager.difficulty + idx * 0x1c;
             if ((u32)*rec < (u32)gameManager->playCount - 1)
             {
                 *rec = (u8)(gameManager->playCount - 1);
             }
         }
         {
-            u8 *rec = (u8 *)gameManager + 0x845a + *(i32 *)0x626280 + idx * 0x1c;
+            u8 *rec = (u8 *)&gameManager->unk_18 /* +0x845a */ + g_GameManager.difficulty + idx * 0x1c;
             if ((u32)*rec < (u32)gameManager->playCount - 1)
             {
                 *rec = (u8)(gameManager->playCount - 1);
@@ -733,94 +799,94 @@ ZunResult __fastcall GameManager::AddedCallback(GameManager *gameManager)
 
     if (((gameManager->statusBitfield & 1) != 0) && gameManager->playCount != 1)
     {
-        gameManager->scoreSub->pointItemAutoBonus = *(f32 *)0x498b24;
+        gameManager->scoreSub->pointItemAutoBonus = g_GameMgrC0x498b24;
         RngAdvance_004012b0(gameManager);
     }
 
-    if ((*(u32 *)0x62f648 >> 3 & 1) != 0)
+    if ((g_GameManager.statusBitfield >> 3 & 1) != 0)
     {
         StageColor_0042e38c(gameManager);
-        FullPowerSetup_00443aa0(1, (void *)0x62f654);
+        FullPowerSetup_00443aa0(1, &g_GameMgrG0x62f654);
         {
-            u16 saved = *(u16 *)0x49fe20;
+            u16 saved = g_GameMgrG0x49fe20;
             RngAdvance_004012b0(gameManager);
-            *(u16 *)0x49fe20 = saved;
+            g_GameMgrG0x49fe20 = saved;
         }
     }
 
-    gameManager->randSeedWord = *(u16 *)0x49fe20;
+    gameManager->randSeedWord = g_GameMgrG0x49fe20;
 
     if (InitItemMgr_004074c0(gameManager->playCount) != 0)
     {
-        ErrorLog_004315f0((void *)0x624210, (void *)0x498038);
+        ErrorLog_004315f0((void *)&g_GameErrorContext, &g_GameMgrG0x498038);
         return ZUN_ERROR;
     }
-    if (InitEffect_004276a0((void *)0x498524) != 0)
+    if (InitEffect_004276a0(&g_GameMgrG0x498524) != 0)
     {
-        ErrorLog_004315f0((void *)0x624210, (void *)0x498010);
+        ErrorLog_004315f0((void *)&g_GameErrorContext, &g_GameMgrG0x498010);
         return ZUN_ERROR;
     }
     {
         i32 pc = gameManager->playCount;
-        if (InitEnemy_00422f40(*(i32 *)((u8 *)0x49f588 + pc * 8),
-                               *(i32 *)((u8 *)0x49f58c + pc * 8)) != 0)
+        if (InitEnemy_00422f40(*(i32 *)(&g_GameMgrG0x49f588 + pc * 8),
+                               *(i32 *)(&g_GameMgrG0x49f58c + pc * 8)) != 0)
         {
-            ErrorLog_004315f0((void *)0x624210, (void *)0x497f4c);
+            ErrorLog_004315f0((void *)&g_GameErrorContext, &g_GameMgrG0x497f4c);
             return ZUN_ERROR;
         }
     }
-    if (LoadStageData_0040e420((void *)0x1347938,
-                               (void *)*(u32 *)((u8 *)0x49f560 + gameManager->playCount * 4)) != 0)
+    if (LoadStageData_0040e420(&g_GameMgrG0x1347938,
+                               (void *)*(u32 *)(&g_GameMgrG0x49f560 + gameManager->playCount * 4)) != 0)
     {
-        ErrorLog_004315f0((void *)0x624210, (void *)0x497e84);
+        ErrorLog_004315f0((void *)&g_GameErrorContext, &g_GameMgrG0x497e84);
         return ZUN_ERROR;
     }
     if (InitBoss_0041d0a0() != 0)
     {
-        ErrorLog_004315f0((void *)0x624210, (void *)0x497e58);
+        ErrorLog_004315f0((void *)&g_GameErrorContext, &g_GameMgrG0x497e58);
         return ZUN_ERROR;
     }
     if (InitStageGame_0042d136() != 0)
     {
-        ErrorLog_004315f0((void *)0x624210, (void *)0x497e30);
+        ErrorLog_004315f0((void *)&g_GameErrorContext, &g_GameMgrG0x497e30);
         return ZUN_ERROR;
     }
-    if ((*(u32 *)0x62f648 >> 3 & 1) == 0)
+    if ((g_GameManager.statusBitfield >> 3 & 1) == 0)
     {
-        FullPowerSetup_00443aa0(0, (void *)0x497e1c);
+        FullPowerSetup_00443aa0(0, &g_GameMgrG0x497e1c);
     }
-    PlayAudio_00439dd0((void *)0x575950, 0, (void *)((u8 *)*(void **)0x1347f9c + 0x290));
-    PlayAudio_00439dd0((void *)0x575950, 1, (void *)((u8 *)*(void **)0x1347f9c + 0x310));
+    PlayAudio_00439dd0((void *)&g_Supervisor, 0, (void *)((u8 *)g_GameMgrG0x1347f9c + 0x290));
+    PlayAudio_00439dd0((void *)&g_Supervisor, 1, (void *)((u8 *)g_GameMgrG0x1347f9c + 0x310));
     if (gameManager->playCount == 6)
     {
-        SupOnDelete_0043a05f((void *)0x575950);
-        PlayAudio_00439dd0((void *)0x575950, 2, (void *)0x4986b4);
+        SupOnDelete_0043a05f((void *)&g_Supervisor);
+        PlayAudio_00439dd0((void *)&g_Supervisor, 2, &g_GameMgrG0x4986b4);
     }
     else
     {
-        StopAudio_00439ec1((void *)0x575950, 0);
+        StopAudio_00439ec1((void *)&g_Supervisor, 0);
     }
     do
     {
-    } while (ProcessSoundQueue_0044c9c0((void *)0x4ba0d8) != 0);
+    } while (ProcessSoundQueue_0044c9c0((void *)&g_SoundPlayer) != 0);
 
-    *(u8 *)((u8 *)gameManager + 0x93dd) = 0;
+    *(u8 *)((u8 *)&gameManager->unk_93dd /* +0x93dd */) = 0;
     gameManager->statusBitfield |= 4;
 
-    if (*(i32 *)0x575aa8 != 3)
+    if (g_Supervisor.curState != 3)
     {
-        *(f32 *)0x575ad0 = 0.0f;
-        *(f32 *)0x575ad4 = 0.0f;
+        g_Supervisor.d3dDeviceCaps180 = 0.0f;
+        g_Supervisor.d3dDeviceCaps184 = 0.0f;
     }
 
-    *(u8 *)((u8 *)gameManager + 0xc) = 0;
+    *(u8 *)((u8 *)&gameManager->flag0c /* +0xc */) = 0;
     gameManager->scoreSub->score = 0;
     gameManager->statusBitfield &= 0xffffffefu;
 
-    EffectMgrReset_401a00((void *)0x134ce18);
-    *(u8 *)0x62627d = 0;
+    EffectMgrReset_401a00((void *)&g_AsciiManager);
+    g_GameManagerRankForceFlag = 0;
     DrawFpsCounter_004390a5((void *)0);
-    DebugPrint_00437903((const char *)0x497e08, *(u16 *)0x49fe20, *(i32 *)0x49fe24);
+    DebugPrint_00437903((const char *)0x497e08, g_GameMgrG0x49fe20, g_GameMgrG0x49fe24);
 
     return ZUN_SUCCESS;
 }
