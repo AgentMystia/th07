@@ -1,13 +1,16 @@
 // Supervisor module for th07 (Perfect Cherry Blossom).
-// Pure C++ following th06 pattern. NO naked asm, NO #ifndef DIFFBUILD splits.
-// #pragma var_order used for stack layout matching.
+// Pure C++ with a single unified code path: no naked asm, no #ifndef DIFFBUILD
+// splits. #pragma var_order may be used to control MSVC stack layout matching.
 
 #include "Supervisor.hpp"
 #include "AsciiManager.hpp"
 #include "AnmManager.hpp"
 #include "Chain.hpp"
+#include "Ending.hpp"
 #include "GameErrorContext.hpp"
 #include "GameManager.hpp"
+#include "MainMenu.hpp"
+#include "MusicRoom.hpp"
 #include "ZunResult.hpp"
 #include "diffbuild.hpp"
 #include "inttypes.hpp"
@@ -19,10 +22,11 @@
 #include <stdio.h>
 #include <string.h>
 
-// Forward-declared classes for modules without headers yet.
-struct MainMenu { static ZunResult RegisterChain(i32 b); };
-struct MusicRoom { static ZunResult RegisterChain(i32 b); };
-struct Ending { static ZunResult RegisterChain(); };
+// Stubs for modules that aren't yet reverse-engineered. Their headers now
+// exist (src/MainMenu.hpp etc.) and provide RegisterChain signatures; the
+// bodies are no-ops that return ZUN_SUCCESS. ReplayManager::SaveReplay still
+// needs a forward decl since ReplayManager.cpp doesn't expose it as a class
+// method yet.
 struct ReplayManager { static void SaveReplay(char *a, char *b); };
 
 // Extern "C" stubs for functions not yet implemented as C++ classes.
@@ -47,6 +51,29 @@ extern "C" i32 __fastcall Supervisor_AutosaveScore(char *p1, i32 p2, i32 p3);
 extern "C" void __fastcall MidiOutput_StopPlayback();
 extern "C" void *__fastcall Supervisor_ReadConfigBuffer(char *path, i32 flag);
 extern "C" i32 __fastcall Supervisor_ValidateSize(i32 size);
+
+// AddedCallback callees (orig VAs verified from disasm of FUN_00438986).
+// Most are __thiscall with ECX = a singleton pointer; declared here as plain
+// externs so MSVC emits a direct call (objdiff tolerates the reloc). All
+// pointer params use void* since th07:: types aren't visible at file scope.
+extern "C" i32 __fastcall Supervisor_Callback6();                 // 0x00438668
+extern "C" i32 __fastcall Supervisor_Callback7();                 // 0x004386f3
+extern "C" void __fastcall Supervisor_Callback_Fun383d8(void *s); // 0x004383d8 (reads controller)
+extern "C" void *__fastcall operator_new_th07(u32 size);          // 0x0047d441
+extern "C" void __fastcall MidiOutput_Ctor(void *p);              // 0x00436450 (ECX = new'd buf)
+extern "C" i32 __fastcall MidiOutput_Play(void *p, i32 a, char *path); // 0x00436650
+extern "C" void __fastcall SoundPlayer_Callback_C7d0(void *p);   // 0x0044c7d0 (ECX = 0x4ba0d8)
+extern "C" i32 __fastcall AnmManager_LoadAnm(void *anm, i32 a, char *path, i32 b); // 0x0044df90
+extern "C" i32 __fastcall Callback_01e30();                       // 0x00401e30
+extern "C" void __fastcall AnmManager_Callback_D630(void *anm);   // 0x0044d630
+extern "C" void __fastcall Callback_3225b();                      // 0x0043225b
+extern "C" i32 __fastcall SoundPlayer_LoadFmt(void *p, char *path); // 0x0044bff0 (ECX = 0x4ba0d8)
+extern "C" void __fastcall SoundPlayer_Callback_C020(void *p, char *src); // 0x0044c020 (ECX = 0x4ba0d8)
+extern "C" void *__fastcall Callback_44c20(void *cfg);           // 0x00444c20 (ECX = 0x4980c4)
+extern "C" void __fastcall Callback_4547f(void *a, void *cfg);   // 0x0044547f
+extern "C" void __fastcall Callback_454fc(void *a);              // 0x004454fc
+extern "C" void __fastcall ListNode_Ctor(void *p);               // 0x004362a0 (ECX = new'd buf)
+extern "C" void __fastcall Callback_378d0(void *p);              // 0x004378d0 (ECX = obj2)
 
 // Stub structs for thiscall callees (ECX = singleton pointer).
 struct MidiOutput {
@@ -472,6 +499,210 @@ ZunResult Supervisor::RegisterChain()
     chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnDraw);
     chain->arg = supervisor;
     g_Chain.AddToDrawChain(chain, 0xf);
+    return ZUN_SUCCESS;
+}
+
+// =============================================================================
+// Supervisor::AddedCallback  --  FUN_00438986  (__fastcall, Supervisor* in ECX)
+//
+// Boot-critical one-time D3D + content initialisation, run by the chain when
+// the supervisor element is first added. It:
+//   1. Records QueryPerformanceFrequency into this+0x26c.
+//   2. Clears the back buffer + front buffer to opaque black (BeginScene /
+//      Clear / EndScene / Present) twice, calling Reset between failures.
+//   3. Runs Supervisor::Callback6 (version/archive file probe) — bail on fail.
+//   4. Loads data/title/th07logo.jpg as an Anm texture (idx 0).
+//   5. Either calls Supervisor::Callback7 (single-frame logo path) or, if
+//      DAT_00575abc is set, loops four BeginScene/AnmDraw/EndScene/Present
+//      iterations (the four-frame boot-fade). Then AnmManager::Callback at 0.
+//   6. Zeroes this+0x168 and this+0x164, stamps timeGetTime() into this+0x190,
+//      mirrors its low 16 bits into [0x49fe20] (g_LastFrameTimeLow16), then
+//      calls Supervisor::Callback_383d8.
+//   7. Lazily allocates a 0x300-byte MidiOutput (operator new + ctor at
+//      0x00436450), stores it into this+0x17c, and if non-NULL plays
+//      bgm/init.mid (track 0x1e).
+//   8. SoundPlayer(0x4ba0d8) Callback_C7d0, then AnmManager::LoadAnm(0,
+//      "data/text.anm", 0x700); on failure bail.
+//   9. Callback_01e30 (ZunResult check, error log on fail).
+//  10. AnmManager::Callback_D630, Callback_3225b, then
+//      SoundPlayer::LoadFmt(0x4ba0d8, "bgm/thbgm.fmt"); on failure bail.
+//  11. Picks one of two thbgm.dat descriptor tables (0x496fac or 0x497150)
+//      depending on DAT_004bdaa0 (alternate-game-mode flag) and
+//      cfg.opts bit 0xd (fast-load flag); either copies it verbatim into the
+//      0x4bd994..0x4bd99c slot or calls SoundPlayer::Callback_C020 to install
+//      it through the legacy path.
+//  12. Callback_44c20 (CFG_0x4980c4) returns a handle; zeroes the 0x58-dword
+//      wave-format block at 0x62f4e0, primes it as a WAVEFORMATEX (tag 0x0001,
+//      0x160 channels, 0x160 samples/sec), calls Callback_4547f/454fc.
+//  13. Allocates a 0x14-byte list node (operator new + ListNode_Ctor), stamps
+//      vtable 0x496c0c into [node], stores it into DAT_00575a64 (g_Supervisor
+//      obj2 slot), and calls Callback_378d0 on it.
+//
+// Returns ZUN_SUCCESS (0) on the happy path, 0xfffffffe on the early
+// logo-load abort, 0xffffffff on any other failure.
+// =============================================================================
+#pragma var_order(s, dev, i, newObj, midiNewObj, cfgHandle, listNode)
+ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
+{
+    IDirect3DDevice8 *dev;
+    i32 i;
+    void *newObj, *midiNewObj, *cfgHandle, *listNode;
+
+    // 1. QueryPerformanceFrequency(this + 0x26c).
+    QueryPerformanceFrequency((LARGE_INTEGER *)((u8 *)s + 0x26c));
+
+    // 2. Back buffer clear, twice (BeginScene/Clear/EndScene/Present + retry).
+    dev = *(IDirect3DDevice8 **)0x00575958;
+    dev->BeginScene();
+    dev->Clear(0, 0, D3DCLEAR_TARGET, 0xff000000, 1.0f, 0);
+    dev->EndScene();
+    if (dev->Present(0, 0, 0, 0) < 0)
+    {
+        dev->Reset((D3DPRESENT_PARAMETERS *)0x575a30);
+    }
+    dev->BeginScene();
+    dev->Clear(0, 0, D3DCLEAR_TARGET, 0xff000000, 1.0f, 0);
+    dev->EndScene();
+    if (dev->Present(0, 0, 0, 0) < 0)
+    {
+        dev->Reset((D3DPRESENT_PARAMETERS *)0x575a30);
+    }
+
+    // 3. Callback6 (version/archive probe). Bail -1 on fail.
+    if (Supervisor_Callback6() != 0)
+    {
+        return (ZunResult)-1;
+    }
+
+    // 4. AnmManager::LoadTexture(this, 0, "data/title/th07logo.jpg") @ 0x4547b0.
+    ((void (*)(AnmManager *, i32, char *))0x004547b0)(g_AnmManager, 0, (char *)0x497038);
+    *(i32 *)0x00575ab8 = 1;
+
+    // 5. Either single-frame logo path or four-frame boot fade.
+    if (*(i32 *)0x00575abc == 0)
+    {
+        if (Supervisor_Callback7() != 0)
+        {
+            ((void (*)(AnmManager *, i32))0x00454a10)(g_AnmManager, 0);
+            return (ZunResult)-2;
+        }
+    }
+    else
+    {
+        for (i = 0; i < 4; i++)
+        {
+            dev->BeginScene();
+            ((void (*)(AnmManager *, i32, i32, i32, i32))0x00454aa0)(g_AnmManager, 0, 0, 0, 0);
+            dev->EndScene();
+            if (dev->Present(0, 0, 0, 0) < 0)
+            {
+                dev->Reset((D3DPRESENT_PARAMETERS *)0x575a30);
+            }
+        }
+    }
+    ((void (*)(AnmManager *, i32))0x00454a10)(g_AnmManager, 0);
+
+    // 6. Reset frame counters + stamp startup time.
+    *(i32 *)((u8 *)s + 0x168) = 0;
+    *(i32 *)((u8 *)s + 0x164) = 0;
+    *(u32 *)((u8 *)s + 0x190) = timeGetTime();
+    *(u16 *)0x0049fe20 = *(u16 *)((u8 *)s + 0x190);
+    Supervisor_Callback_Fun383d8(s);
+
+    // 7. Lazy MidiOutput allocation + bgm/init.mid.
+    if (*(void **)((u8 *)s + 0x17c) == 0)
+    {
+        newObj = operator_new_th07(0x300);
+        if (newObj != 0)
+        {
+            MidiOutput_Ctor(newObj);
+            midiNewObj = newObj;
+        }
+        else
+        {
+            midiNewObj = 0;
+        }
+        *(void **)((u8 *)s + 0x17c) = midiNewObj;
+    }
+    if (*(void **)((u8 *)s + 0x17c) != 0)
+    {
+        MidiOutput_Play(*(void **)((u8 *)s + 0x17c), 0x1e, (char *)0x497028);
+    }
+
+    // 8. SoundPlayer Callback_C7d0; AnmManager::LoadAnm(0, "data/text.anm", 0x700).
+    SoundPlayer_Callback_C7d0((void *)0x004ba0d8);
+    if (AnmManager_LoadAnm(g_AnmManager, 0, (char *)0x497018, 0x700) != 0)
+    {
+        return (ZunResult)-1;
+    }
+
+    // 9. Callback_01e30 (error-logged failure path).
+    if (Callback_01e30() != 0)
+    {
+        g_GameErrorContext.Log("%s", (char *)0x496ff0);
+        return (ZunResult)-1;
+    }
+
+    // 10. AnmManager::Callback_D630; Callback_3225b; SoundPlayer::LoadFmt.
+    AnmManager_Callback_D630(g_AnmManager);
+    Callback_3225b();
+    if (SoundPlayer_LoadFmt((void *)0x004ba0d8, (char *)0x496fe0) != 0)
+    {
+        g_GameErrorContext.Log("%s", (char *)0x496fb8);
+        return (ZunResult)-1;
+    }
+
+    // 11. thbgm descriptor table install (depends on alt-mode + opts bit 0xd).
+    if (*(i32 *)0x004bdaa0 == 0)
+    {
+        if ((*(u32 *)0x00575a9c >> 0xd & 1) == 0)
+        {
+            SoundPlayer_Callback_C020((void *)0x004ba0d8, (char *)0x496fac);
+        }
+        else
+        {
+            memcpy((void *)0x004bd994, (void *)0x496fac, 10);
+        }
+    }
+    else
+    {
+        if ((*(u32 *)0x00575a9c >> 0xd & 1) == 0)
+        {
+            SoundPlayer_Callback_C020((void *)0x004ba0d8, (char *)0x497150);
+        }
+        else
+        {
+            memcpy((void *)0x004bd994, (void *)0x497150, 9);
+        }
+    }
+
+    // 12. Callback_44c20 returns a CFG handle; prime WAVEFORMATEX at 0x62f4e0.
+    cfgHandle = Callback_44c20((void *)0x004980c4);
+    memset((void *)0x0062f4e0, 0, 0x58 * 4);
+    *(u16 *)0x0062f4e4 = 0x160;          // nChannels
+    *(u16 *)0x0062f4e6 = *(u16 *)0x0062f4e4; // mirror (orig re-reads)
+    *(u32 *)0x0062f4e0 = 0x54534c50;     // 'PLST' magic
+    *(u8 *)0x0062f4e8 = 1;
+    Callback_4547f(cfgHandle, (void *)0x0062f4e0);
+    Callback_454fc(cfgHandle);
+
+    // 13. Allocate a 0x14-byte list node, install vtable, store + init.
+    listNode = operator_new_th07(0x14);
+    if (listNode != 0)
+    {
+        ListNode_Ctor(listNode);
+        *(void **)listNode = (void *)0x00496c0c;
+    }
+    else
+    {
+        listNode = 0;
+    }
+    *(void **)0x00575a64 = listNode;
+    if (*(void **)0x00575a64 != 0)
+    {
+        Callback_378d0(*(void **)0x00575a64);
+    }
+
     return ZUN_SUCCESS;
 }
 

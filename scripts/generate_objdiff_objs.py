@@ -92,6 +92,13 @@ SYMBOL_MAP = {
     b"th07::g_Pbg4ArchiveName": b"DAT_00575c14",
     b"th07::g_GameErrorContext": b"DAT_00624210",
     b"th07::g_GameManager": b"DAT_00626278",
+    # EffectManager rdata float constants (defined in EffectManager.cpp as
+    # extern "C" const f32). Their COFF symbols are "_g_EffectConstNNN" (the
+    # leading underscore is kept by demangle_msvc since the suffix isn't DAT_/
+    # FUN_/PTR_), so the SYMBOL_MAP keys use that exact form.
+    b"_g_EffectConst256": b"DAT_00498a98",  # 256.0f
+    b"_g_EffectConst60": b"DAT_00498a48",   # 60.0f
+    b"_g_EffectConst240": b"DAT_00498b50",  # 240.0f
 }
 
 def map_symbol(sym):

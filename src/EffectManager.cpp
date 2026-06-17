@@ -271,18 +271,18 @@ i32 __fastcall EffectManager::EffectCallbackAttractInit(Effect *effect)
 // EffectCallbackAttract: 256 * (1 - t/60) * dir + anchor. FUN_0041aaf0.
 // Matches th06's EffectCallbackAttract (which used /60.0f). th07 folds the
 // timer's sub-frame into the parameter; th06 read timer.AsFramesFloat().
-// rdata float constants (orig .rdata). Defined as extern so MSVC emits
-// fmul [DAT_addr] matching orig instead of inline __real@ literals.
-extern "C" u8 g_EffectConst256[4];   // DAT_00498a98 = 256.0f
-extern "C" u8 g_EffectConst60[4];    // DAT_00498a48 = 60.0f
+// rdata float constants. Defined as named globals here so MSVC emits
+// fmul [const_addr]; generate_objdiff_objs.py maps them to the orig DAT_ names.
+extern "C" const f32 g_EffectConst256 = 256.0f;   // orig DAT_00498a98
+extern "C" const f32 g_EffectConst60 = 60.0f;     // orig DAT_00498a48
 i32 __fastcall EffectManager::EffectCallbackAttract(Effect *effect)
 {
     f32 t;
     f32 *base = (f32 *)((u8 *)effect + 0x2b8);
 
-    t = *(f32 *)g_EffectConst256 -
+    t = g_EffectConst256 -
         ((f32)*(i32 *)((u8 *)base + 0x8) + *(f32 *)((u8 *)base + 0x4)) *
-        *(f32 *)g_EffectConst256 / *(f32 *)g_EffectConst60;
+        g_EffectConst256 / g_EffectConst60;
 
     f32 *anchor = (f32 *)((u8 *)effect + 0x294);
     *(f32 *)((u8 *)effect + 0x248) = t * *(f32 *)((u8 *)anchor + 0x8) + *(f32 *)((u8 *)effect + 0x27c);
@@ -295,15 +295,15 @@ i32 __fastcall EffectManager::EffectCallbackAttract(Effect *effect)
 
 // EffectCallbackAttractSlow: same as Attract but /240 instead of /60.
 // FUN_0041ac30. Matches th06's EffectCallbackAttractSlow.
-extern "C" u8 g_EffectConst240[4];   // DAT_00498b50 = 240.0f
+extern "C" const f32 g_EffectConst240 = 240.0f;   // orig DAT_00498b50
 i32 __fastcall EffectManager::EffectCallbackAttractSlow(Effect *effect)
 {
     f32 t;
     f32 *base = (f32 *)((u8 *)effect + 0x2b8);
 
-    t = *(f32 *)g_EffectConst256 -
+    t = g_EffectConst256 -
         ((f32)*(i32 *)((u8 *)base + 0x8) + *(f32 *)((u8 *)base + 0x4)) *
-        *(f32 *)g_EffectConst256 / *(f32 *)g_EffectConst240;
+        g_EffectConst256 / g_EffectConst240;
 
     f32 *anchor = (f32 *)((u8 *)effect + 0x294);
     *(f32 *)((u8 *)effect + 0x248) = t * *(f32 *)((u8 *)anchor + 0x8) + *(f32 *)((u8 *)effect + 0x27c);

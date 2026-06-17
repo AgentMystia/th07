@@ -46,18 +46,21 @@ extern D3DXMATRIX *__fastcall D3DXMatrixIdentity(D3DXMATRIX *pOut);
 
 #include <stdio.h>
 
+// Texture format lookup table (24 bytes in .rdata). Declared extern "C" in
+// AnmManager.hpp via DIFFABLE_EXTERN_ARRAY. Defined once here with C linkage
+// (outside namespace th07) so it resolves consistently in every build. orig
+// provides this in .rdata at the addresses listed below; on the objdiff side
+// the small .rdata blob diff is accepted.
+extern "C" D3DFORMAT g_TextureFormatD3D8Mapping[6] = {
+    D3DFMT_UNKNOWN, D3DFMT_A8R8G8B8, D3DFMT_A1R5G5B5, D3DFMT_R5G6B5, D3DFMT_R8G8B8, D3DFMT_A4R4G4B4,
+};
+
 namespace th07
 {
 DIFFABLE_STATIC(VertexTex1Xyzrwh, g_PrimitivesToDrawVertexBuf[4]);
 DIFFABLE_STATIC(VertexTex1DiffuseXyzrwh, g_PrimitivesToDrawNoVertexBuf[4]);
 DIFFABLE_STATIC(VertexTex1DiffuseXyz, g_PrimitivesToDrawUnknown[4]);
 DIFFABLE_STATIC(AnmManager *, g_AnmManager)
-
-#ifndef DIFFBUILD
-D3DFORMAT g_TextureFormatD3D8Mapping[6] = {
-    D3DFMT_UNKNOWN, D3DFMT_A8R8G8B8, D3DFMT_A1R5G5B5, D3DFMT_R5G6B5, D3DFMT_R8G8B8, D3DFMT_A4R4G4B4,
-};
-#endif
 
 // ============================================================================
 // Constructor  (FUN_0044d3e0)

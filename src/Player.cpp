@@ -1,10 +1,13 @@
 // Player module for th07 (Perfect Cherry Blossom).
 //
 // Source of truth: th07.exe read via ghidra. Every address/offset used below
-// was verified against the binary. The module is written in plain C++ so it
-// ports cleanly to the SDL2 build; orig (DIFFBUILD) addresses are confined to
-// #ifdef DIFFBUILD macros. Only the atan2 helper in AngleToPlayer uses a small
-// guarded inline-asm block (FPU-stack argument passing has no C++ spelling).
+// was verified against the binary. Pure C++ with a single unified code path:
+// no #ifdef DIFFBUILD splits, no inline asm, no DAT_ externs. Cross-module
+// singletons are reached through typed C++ extern objects (g_EffectMgrSpawnObj
+// etc.) which their owning modules define; until those modules are reversed
+// they link to no-op stubs. On the objdiff side, these typed globals are
+// mapped back to their orig DAT_ addresses by generate_objdiff_objs.py's
+// SYMBOL_MAP, so the byte-comparison still works without code divergence.
 //
 // Cross-module call conventions (all verified from orig disassembly):
 //   g_Chain methods   : __thiscall, ECX = &g_Chain @ 0x00626218
@@ -12,7 +15,7 @@
 //   SoundPlayer       : __thiscall, ECX = 0x004ba0d8
 //   AnmManager        : __thiscall, ECX = *0x004b9e44 (deref'd pointer)
 //   GameManager method: __thiscall, ECX = 0x00626270 (g_GameManager object)
-//   scoreSub fields   : reached via *(ScoreSub**)0x00626278 (= g_GameManager+0x8)
+//   scoreSub fields   : reached via g_ScoreSubObj (= g_GameManager+0x8 = orig 0x00626278)
 //
 // To emit the exact orig call sequence (PUSH args; MOV ECX,this; CALL) for the
 // not-yet-reversed singletons, they are declared as struct-method stubs and
@@ -32,9 +35,6 @@
 namespace th07
 {
 DIFFABLE_STATIC(Player, g_Player);
-
-// CRT atan2 FPU-stack dispatcher (orig @ 0x0048bcaa; mapped in mapping.csv).
-extern "C" void atan2_disp_0048bcaa();
 
 // OnDrawLowPrio callee (kept as C++ extern; OnDrawLowPrio is plain C++).
 extern "C" void __fastcall Player_DrawBulletExplosions(Player *p); // FUN_0043d790
@@ -62,29 +62,16 @@ struct GameManagerScore
     void AddGrazeScoreOnly(i32 amount);
 };
 
-// Singleton handles. DIFFBUILD (objdiff) uses the verified orig addresses so
-// the generated MOV ECX,imm matches the binary; the SDL build uses real
-// singletons (declared here, defined when those modules are reversed).
-#ifdef DIFFBUILD
-static EffectManagerSpawn *const g_EffectMgrSpawn = (EffectManagerSpawn *)0x12fe250;
-static SoundPlayerPlayback *const g_SoundPlayer = (SoundPlayerPlayback *)0x4ba0d8;
-static GameManagerScore *const g_GameManagerScore = (GameManagerScore *)0x626270;
-// scoreSub reached via pointer at g_GameManager+0x8 (DAT_00626278).
-#define SCORE_SUB (*reinterpret_cast<void **>(0x626278))
-// AnmManager is a pointer global (DAT_004b9e44); deref each use.
-#define ANM_MGR (*reinterpret_cast<AnmManagerFiles **>(0x4b9e44))
-// Player's own chain callbacks (orig addresses; SDL build uses &Player::X).
-#define PLAYER_ON_UPDATE_CB        ((ChainCallback)0x441fb0)
-#define PLAYER_ON_DRAW_HIGH_CB     ((ChainCallback)0x4420b0)
-#define PLAYER_ON_DRAW_LOW_CB      ((ChainCallback)0x442350)
-#define PLAYER_ADDED_CB            ((ChainAddedCallback)0x4423e0)
-#define PLAYER_DELETED_CB          ((ChainDeletedCallback)0x4428e0)
-#else
-extern EffectManagerSpawn g_EffectMgrSpawnObj;
-extern SoundPlayerPlayback g_SoundPlayerObj;
-extern GameManagerScore g_GameManagerScoreObj;
-extern AnmManagerFiles *g_AnmManagerFilesObj;
-extern void *g_ScoreSubObj;
+// Singleton handles. Single unified code path: extern C++ objects that resolve
+// to the real game-state singletons (defined by their owning modules, or by
+// stubs until those modules are reversed). The orig addresses are recovered on
+// the objdiff side by scripts/generate_objdiff_objs.py's SYMBOL_MAP, so no
+// #ifdef DIFFBUILD split is needed.
+extern EffectManagerSpawn g_EffectMgrSpawnObj;   // orig 0x012fe250 (EffectManager spawn slots)
+extern SoundPlayerPlayback g_SoundPlayerObj;     // orig 0x004ba0d8
+extern GameManagerScore g_GameManagerScoreObj;   // orig 0x00626270 (g_GameManager)
+extern AnmManagerFiles *g_AnmManagerFilesObj;    // orig 0x004b9e44 (AnmManager pointer global)
+extern void *g_ScoreSubObj;                      // orig 0x00626278 (g_GameManager+0x8 -> ScoreSub)
 static EffectManagerSpawn *const g_EffectMgrSpawn = &g_EffectMgrSpawnObj;
 static SoundPlayerPlayback *const g_SoundPlayer = &g_SoundPlayerObj;
 static GameManagerScore *const g_GameManagerScore = &g_GameManagerScoreObj;
@@ -95,7 +82,6 @@ static GameManagerScore *const g_GameManagerScore = &g_GameManagerScoreObj;
 #define PLAYER_ON_DRAW_LOW_CB      ((ChainCallback)Player::OnDrawLowPrio)
 #define PLAYER_ADDED_CB            ((ChainAddedCallback)Player::AddedCallback)
 #define PLAYER_DELETED_CB          ((ChainDeletedCallback)Player::DeletedCallback)
-#endif
 
 // scoreSub field access; each use re-reads the DAT_00626278 pointer (matching
 // orig's repeated MOV reg,[0x626278]). Offsets per ScoreSub in GameManager.hpp.
@@ -222,26 +208,11 @@ ZunResult __fastcall Player::DeletedCallback(Player *p)
         ANM_MGR->ReleaseAnm(10);
         *reinterpret_cast<u16 *>(0x134d476) = 0x63;
         *reinterpret_cast<u32 *>(0x13542ec) = 0x63;
-#ifndef DIFFBUILD
-        // orig indexes a stride-0x24c Gui counter array with literal 0/1/2 via
-        // reg+IMUL (xor/mov reg,imm; imul reg,reg,0x24c; mov word,[base+reg]).
-        __asm
-        {
-            xor eax, eax
-            imul eax, eax, 0x24c
-            mov word ptr [eax + 0x134db5a], 0x63
-            mov ecx, 1
-            imul ecx, ecx, 0x24c
-            mov word ptr [ecx + 0x134db5a], 0x63
-            mov edx, 2
-            imul edx, edx, 0x24c
-            mov word ptr [edx + 0x134db5a], 0x63
-        }
-#else
+        // orig indexes a stride-0x24c Gui counter array with literal 0/1/2
+        // (xor/mov reg,imm; imul reg,reg,0x24c; mov word,[base+reg]). C++ form.
         *reinterpret_cast<u16 *>(0x134db5a + 0 * 0x24c) = 0x63;
         *reinterpret_cast<u16 *>(0x134db5a + 1 * 0x24c) = 0x63;
         *reinterpret_cast<u16 *>(0x134db5a + 2 * 0x24c) = 0x63;
-#endif
     }
     if (*reinterpret_cast<void **>(&g_Player.raw[0xb7e70]) != 0)
     {
@@ -261,8 +232,9 @@ ZunResult __fastcall Player::DeletedCallback(Player *p)
 // =============================================================================
 // AngleToPlayer  --  FUN_00442370  (__thiscall, this in ECX, pos at [ebp+8])
 // Returns the angle from `pos` to the player center. PI/2 when the player is
-// directly on top of `pos` (relX==relY==0). atan2 helper takes args on the FPU
-// stack (st0=x, st1=y), so the call is guarded inline asm in DIFFBUILD.
+// directly on top of `pos` (relX==relY==0). orig calls the CRT atan2 FPU-stack
+// dispatcher at 0x0048bcaa; we use the standard C atan2f (objdiff treats the
+// external CALL as tolerant either way).
 // =============================================================================
 f32 Player::AngleToPlayer(D3DXVECTOR3 *pos)
 {
@@ -275,19 +247,7 @@ f32 Player::AngleToPlayer(D3DXVECTOR3 *pos)
     }
     else
     {
-#ifndef DIFFBUILD
-        // orig passes args via the FPU stack to the CRT atan2 dispatcher at
-        // 0x0048bcaa (mapped to atan2_disp_0048bcaa in config/mapping.csv).
-        __asm
-        {
-            fld dword ptr [relY]
-            fld dword ptr [relX]
-            call atan2_disp_0048bcaa
-            fst dword ptr [result]
-        }
-#else
         result = atan2f(relY, relX);
-#endif
     }
     return result;
 }

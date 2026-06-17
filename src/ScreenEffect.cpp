@@ -1,9 +1,8 @@
 // ScreenEffect module for th07 (Perfect Cherry Blossom).
 //
 // Source of truth: th07.exe read via ghidra. Every address/offset used below
-// was verified against the binary. The module is written in plain C++ so it
-// ports cleanly to the SDL2 build; orig (DIFFBUILD) addresses are confined to
-// #ifdef DIFFBUILD macros.
+// was verified against the binary. Pure C++ with a single unified code path:
+// no #ifdef DIFFBUILD splits, no inline asm.
 //
 // Cross-module call conventions (all verified from orig disassembly):
 //   g_Supervisor        : global @ 0x575950 (d3dDevice @ +0x8 -> [0x575958],
@@ -41,18 +40,6 @@
 
 namespace th07
 {
-// float->i32 runtime helper (orig @ 0x0048b8a0). The orig helper reads its
-// argument from ST0 (FPU stack) and returns i32 in EAX — NOT a normal
-// calling convention. A __fastcall(f32) signature makes MSVC emit push/fstp
-// to pass the arg on the stack, so we declare it void and invoke via an
-// inline-asm stub FTOL() that emits a bare `call ftol_0048b8a0`. The caller
-// computes an f32 expression that leaves its result in ST0 first.
-extern "C" void ftol_0048b8a0();
-// orig's 255.0f constant lives at 0x498af8 (read by FMUL/FSUBR in the Calc
-// functions). Declared extern so the inline-asm `fmul dword ptr [g_const255]`
-// resolves to that address (MSVC inline asm rejects raw [0x498af8]).
-extern "C" f32 g_const255_00498af8;
-
 // Rng::GetRandomU32 (orig @ 0x4318d0). ECX = &g_Rng @ 0x49fe20.
 extern "C" u32 __fastcall Rng_GetRandomU32(Rng *rng);
 
@@ -472,23 +459,13 @@ ChainCallbackResult __fastcall ScreenEffect::CalcFlickerFade(ScreenEffect *effec
     if (effect->timer.current < effect->effectLength)
     {
         baseAlpha = ((u32)effect->shakinessParam >> 24) & 0xff;
-        // (i64) cast forces FILD qword load (zero-extended) to match orig.
+        // (i64) cast forces the zero-extended baseAlpha load to match orig's
+        // FILD qword behaviour. The ftol_0048b8a0 call in orig converts the
+        // final f32 to i32; we use a C++ cast which MSVC lowers to fistp/ftol.
         baseAlphaQ = (i64)baseAlpha;
-        {
-            f32 tmpScaled;
-            __asm {
-                mov     edx, effect
-                lea     edx, [edx+0x24]       ; &timer
-                fild    qword ptr [baseAlphaQ]
-                fild    dword ptr [edx+8]     ; current
-                fadd    dword ptr [edx+4]     ; subFrame
-                fmulp   st(1), st
-                mov     ecx, effect
-                fidiv   dword ptr [ecx+0x14]  ; effectLength
-                call    ftol_0048b8a0
-                mov     scaled, eax
-            }
-        }
+        scaled = (i32)((f32)baseAlphaQ *
+                       ((f32)effect->timer.current + effect->timer.subFrame) /
+                       (f32)effect->effectLength);
         effect->fadeAlpha = baseAlpha - scaled;
         if (effect->fadeAlpha < 0)
         {

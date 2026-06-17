@@ -1,9 +1,8 @@
 // AsciiManager module for th07 (Perfect Cherry Blossom).
 //
 // Source of truth: th07.exe read via ghidra. Every address/offset used below
-// was verified against the binary. The module is written in plain C++ so it
-// ports cleanly to the SDL2 build; orig (DIFFBUILD) addresses are confined to
-// #ifdef DIFFBUILD macros.
+// was verified against the binary. Pure C++ with a single unified code path:
+// no #ifdef DIFFBUILD splits, no inline asm.
 //
 // Cross-module call conventions (all verified from orig disassembly):
 //   g_AsciiManager        : global @ 0x134ce18
