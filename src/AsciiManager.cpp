@@ -24,6 +24,9 @@
 // offsets within them.
 
 #include "AsciiManager.hpp"
+#include "AnmManager.hpp"
+#include "GameManager.hpp"
+#include "Supervisor.hpp"
 
 #include "Chain.hpp"
 #include "ZunResult.hpp"
@@ -43,6 +46,16 @@ DIFFABLE_STATIC(ChainElem, g_AsciiManagerOnDrawMenusChain)
 DIFFABLE_STATIC(ChainElem, g_AsciiManagerOnDrawPopupsChain)
 
 // ---- AnmManager thiscall callee stubs (struct methods emit PUSH/MOV ECX/CALL) ----
+// typed externs for game-state globals (Part C.5). g_Supervisor typed via
+// Supervisor.hpp; g_AsciiManager/g_AsciiCalcChain/etc. typed via
+// AsciiManager.hpp DIFFABLE_EXTERN; g_AnmManager typed via AnmManager.hpp.
+extern "C" u8 g_AsciiIsInGameMenu;       // 0x62f64c
+extern "C" u8 g_AsciiIsInRetryMenu;      // 0x62f64d
+extern "C" u32 g_GameManagerStatusBitfield;  // 0x62f648
+extern "C" f32 g_AsciiPopupOffsetX;      // 0x62f864
+extern "C" f32 g_AsciiPopupOffsetY;      // 0x62f868
+
+
 struct AnmMgrStub
 {
     ZunResult LoadAnm_44df90(i32 idx, char *path, i32 offset);
@@ -76,12 +89,21 @@ extern void __fastcall AsciiMgr_ExecuteLabelVms_401400(AsciiManager *mgr);
 extern void AnmMgr_ExecuteScript_450d60(AnmMgrStub *anmMgr, void *vm);
 
 // Singleton handles. Absolute addresses so MOV ECX,imm matches orig exactly.
-#define ANM_MGR (*reinterpret_cast<AnmMgrStub **>(0x4b9e44))
-#define ASCII_MGR (*reinterpret_cast<AsciiManager *>(0x134ce18))
-#define ASCII_CALC_CHAIN (*reinterpret_cast<ChainElem *>(0x135dfac))
-#define ASCII_DRAW_MENUS_CHAIN (*reinterpret_cast<ChainElem *>(0x134cdf4))
-#define ASCII_DRAW_POPUPS_CHAIN (*reinterpret_cast<ChainElem *>(0x135dfcc))
-#define SUP_PTR (reinterpret_cast<Supervisor *>(0x575950))
+// typed externs for cross-module singletons (file-scope aliases of the
+// th07::-namespace DIFFABLE_EXTERN definitions).
+extern th07::AsciiManager g_AsciiManager;
+extern th07::ChainElem g_AsciiCalcChain;
+extern th07::ChainElem g_AsciiDrawMenusChain;
+extern th07::ChainElem g_AsciiDrawPopupsChain;
+extern th07::Supervisor g_Supervisor;
+
+extern "C" AnmMgrStub *g_AsciiAnmMgr;  // AnmManager* @ 0x4b9e44
+#define ANM_MGR (g_AsciiAnmMgr)
+#define ASCII_MGR (g_AsciiManager)
+#define ASCII_CALC_CHAIN (g_AsciiCalcChain)
+#define ASCII_DRAW_MENUS_CHAIN (g_AsciiDrawMenusChain)
+#define ASCII_DRAW_POPUPS_CHAIN (g_AsciiDrawPopupsChain)
+#define SUP_PTR (&g_Supervisor)
 
 // Chain callback addresses (orig function entry points).
 #define ASCII_ON_UPDATE_CB   ((ChainCallback)0x4017e0)
@@ -91,16 +113,16 @@ extern void AnmMgr_ExecuteScript_450d60(AnmMgrStub *anmMgr, void *vm);
 #define ASCII_DELETED_CB     ((ChainDeletedCallback)0x401de0)
 
 // GameManager globals used by OnUpdate.
-#define GM_IS_IN_GAME_MENU (*reinterpret_cast<u8 *>(0x62f64c))
-#define GM_IS_IN_RETRY_MENU (*reinterpret_cast<u8 *>(0x62f64d))
-#define GM_FLAGS (*reinterpret_cast<u32 *>(0x62f648))
+#define GM_IS_IN_GAME_MENU (g_AsciiIsInGameMenu)
+#define GM_IS_IN_RETRY_MENU (g_AsciiIsInRetryMenu)
+#define GM_FLAGS (g_GameManagerStatusBitfield)
 
 // Supervisor framerate multiplier @ 0x575ac8.
-#define SUP_FRAMERATE_MULT (*reinterpret_cast<f32 *>(0x575ac8))
+#define SUP_FRAMERATE_MULT (g_Supervisor.framerateMultiplier)
 
 // Popup position offsets.
-#define POPUP_OFFSET_X (*reinterpret_cast<f32 *>(0x62f864))
-#define POPUP_OFFSET_Y (*reinterpret_cast<f32 *>(0x62f868))
+#define POPUP_OFFSET_X (g_AsciiPopupOffsetX)
+#define POPUP_OFFSET_Y (g_AsciiPopupOffsetY)
 
 // AnmVm script-table pointer inside AnmManager (scripts @ AnmManager+0x28ef0).
 #define ANM_SCRIPTS_TABLE (*reinterpret_cast<i32 **>(reinterpret_cast<u8 *>(ANM_MGR) + 0x28ef0))

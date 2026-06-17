@@ -24,6 +24,7 @@
 // the matching thiscall sequence.
 
 #include "ScreenEffect.hpp"
+#include "GameManager.hpp"
 
 #include <string.h>
 
@@ -61,27 +62,30 @@ extern "C" void delete_0047d43c(void *p);
 // real IDirect3DDevice8 interface + a deref macro so MSVC emits the exact
 // orig `mov ecx,[0x575958]; mov edx,[ecx]; push ecx; call [edx+off]`
 // thiscall sequence on every call (no stack-slot caching).
-#define D3D_DEV (*reinterpret_cast<IDirect3DDevice8 **>(0x575958))
+#define D3D_DEV (*(IDirect3DDevice8 **)(&g_Supervisor.d3dDevice))
 
 // Direct absolute-address access to Supervisor / AnmManager / GameManager
 // fields (matching orig's `mov [DAT_xxxxxxxx],imm` exactly). Verified from
 // the disassembly.
-#define SUP_VIEWPORT_X    (*reinterpret_cast<u32 *>(0x575a18))
-#define SUP_VIEWPORT_Y    (*reinterpret_cast<u32 *>(0x575a1c))
-#define SUP_VIEWPORT_W    (*reinterpret_cast<u32 *>(0x575a20))
-#define SUP_VIEWPORT_H    (*reinterpret_cast<u32 *>(0x575a24))
-#define SUP_VIEWPORT_MINZ (*reinterpret_cast<f32 *>(0x575a28))
-#define SUP_VIEWPORT_MAXZ (*reinterpret_cast<f32 *>(0x575a2c))
-#define SUP_VIEWPORT_PTR  (reinterpret_cast<void *>(0x575a18))
-#define SUP_CFG_OPTS      (*reinterpret_cast<u32 *>(0x575a9c))
-#define SUP_PRESENT_PARAMS_PTR (reinterpret_cast<void *>(0x575a3c))
-#define ANM_MGR           (*reinterpret_cast<AnmManager **>(0x4b9e44))
-#define GM_IS_TIME_STOPPED (*reinterpret_cast<i8 *>(0x62627c))
-#define GM_DIFFICULTY_GATE (*reinterpret_cast<i32 *>(0x62f858))
+#define SUP_VIEWPORT_X (g_Supervisor.viewport.X)
+#define SUP_VIEWPORT_Y (g_Supervisor.viewport.Y)
+#define SUP_VIEWPORT_W (g_Supervisor.viewport.Width)
+#define SUP_VIEWPORT_H (g_Supervisor.viewport.Height)
+#define SUP_VIEWPORT_MINZ (g_Supervisor.viewport.MinZ)
+#define SUP_VIEWPORT_MAXZ (g_Supervisor.viewport.MaxZ)
+#define SUP_VIEWPORT_PTR  ((void *)&g_Supervisor.viewport)
+#define SUP_CFG_OPTS (g_Supervisor.cfg.opts)
+#define SUP_PRESENT_PARAMS_PTR ((u8 *)&g_Supervisor.presentParameters + 0x8) /* sup+0xec */
+#define ANM_MGR           (g_AnmManager)
+extern "C" i8 g_ScreenEffectG0x62627c;  // 0x62627c GameManager +0xc lsb
+extern "C" void *g_ScreenEffectRng;  // 0x49fe20 Rng instance
+
+#define GM_IS_TIME_STOPPED g_ScreenEffectG0x62627c
+#define GM_DIFFICULTY_GATE g_GameManager.frameCounter
 #define ANM_ARCADE_X      (*reinterpret_cast<f32 *>(reinterpret_cast<u8 *>(ANM_MGR) + 0x18))
 #define ANM_ARCADE_Y      (*reinterpret_cast<f32 *>(reinterpret_cast<u8 *>(ANM_MGR) + 0x1c))
-#define RNG_PTR           (reinterpret_cast<Rng *>(0x49fe20))
-#define SUP_PTR           (reinterpret_cast<Supervisor *>(0x575950))
+#define RNG_PTR           ((Rng *)g_ScreenEffectRng)
+#define SUP_PTR           (&th07::g_Supervisor)
 
 // Chain callback addresses (orig function entry points).
 #define SCREEN_EFFECT_CALC_FADE_IN_CB    ((ChainCallback)0x44a5a0)

@@ -222,6 +222,15 @@ SYMBOL_MAP = {
     b"_g_BombG0x62f864": b"DAT_0062F864",
     b"_g_BombG0x62f868": b"DAT_0062F868",
     b"_g_BombDataAnmMgr": b"DAT_004B9E44",
+    # ScreenEffect/AsciiManager/EffectManager typed globals (Parts C.4-C.6).
+    b"_g_ScreenEffectRng": b"DAT_0049FE20",
+    b"_g_ScreenEffectG0x62627c": b"DAT_0062627C",
+    b"_g_AsciiIsInGameMenu": b"DAT_0062F64C",
+    b"_g_AsciiIsInRetryMenu": b"DAT_0062F64D",
+    b"_g_GameManagerStatusBitfield": b"DAT_0062F648",
+    b"_g_AsciiPopupOffsetX": b"DAT_0062F864",
+    b"_g_AsciiPopupOffsetY": b"DAT_0062F868",
+    b"_g_AsciiAnmMgr": b"DAT_004B9E44",
 }
 
 def map_symbol(sym):
