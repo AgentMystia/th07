@@ -31,21 +31,24 @@
 | **raw 绝对地址访问 rdata 字符串**（`(char*)0x496fe0`）| 同上 | 字符串字面量 `"bgm/thbgm.fmt"` |
 | **raw 绝对地址作函数参数**（`(void*)0x4ba0d8`）| 同上 | typed 全局 `&g_SoundPlayer` |
 | **raw 绝对地址调用函数**（`((void(*)())0x438668)()`）| 同上 | typed extern 声明 `Supervisor_Callback6()` |
+| **raw-offset buffer 索引**（`raw[0x978]`、`*reinterpret_cast<T*>(&p->raw[OFF])`、`SCORE_SUB_I32(off)` 宏）| 绕过 struct 字段名、不可读、非 th06 风格（th06 Player 零 raw[]）| typed accessor 方法 `p->GrazeTopLeft()`，或命名 struct 成员 |
 | **`nullptr`** | MSVC 7.0 不支持 C++11 | `0` |
 
-**零例外**：D3D 设备、rdata 字符串、一切——全部走 typed C++。
-`g_Supervisor.d3dDevice->Present()` 而非 `(*(IDirect3DDevice8**)0x575958)->Present()`。
+**零例外**：D3D 设备、rdata 字符串、raw-offset buffer 索引、一切——全部走 typed C++。
+`g_Supervisor.d3dDevice->Present()` 而非 `(*(IDirect3DDevice8**)0x575958)->Present()`；
+`p->PlayerState()` 而非 `p->raw[0x2408]`。
 
 ### 【允许】—— 标准 C++ 工具
 
 | 工具 | 用途 | 备注 |
 |---|---|---|
 | **typed C++ 全局/成员访问** | `g_Supervisor.curState`、`g_GameManager.arcadeRegionSize.x` | **首选**，对齐 th06 |
+| **typed accessor 方法** | `p->ChainCalc()`、`p->PlayerState()`、`p->FireBulletTimer()` | 用于 th07 大 struct（如 Player 0xb7e78）：在 hpp 里定义返回 typed ref/ptr 的 inline accessor，函数体里调用 accessor 而非 raw[]。见 `src/Player.hpp` 范本 |
 | **字符串字面量** | `"th07.cfg"`、`"data/text.anm"` | 接受 reloc 名差异（th06 也这么做）|
 | **浮点/整数字面量** | `256.0f`、`ZUN_PI`、`0xff000000u` | 接受 `__real@` vs `DAT_` 差异 |
 | `DIFFABLE_STATIC/EXTERN` 宏 | 全局变量定义 | **仅影响变量定义**，不分裂函数代码。与 th06 一致 |
 | `#pragma var_order` | 控制 MSVC /Od 局部栈布局 | 通过 `scripts/pragma_var_order.cpp` 注入 |
-| raw-offset field access | `*(T*)((u8*)this + OFF)` | 仅当 struct 字段类型不匹配且无法改 hpp 时；首选改 hpp |
+| `*(T*)((u8*)this + OFF)` raw-offset | 仅限 accessor 方法**内部**封装（`return *(T*)(&raw[OFF]);`）| **函数体里禁止直接用**；必须经 accessor。首选仍是命名 struct 成员 |
 | memset/memcpy intrinsics | 生成 `rep stosd`/`rep movsd` | 匹配 orig 批量初始化 |
 | 去局部缓存 | 每次重读全局 | 匹配 orig 重读 idiom |
 | early-return 控制流 | 每分支独立 return | 匹配 orig 错误路径 |

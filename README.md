@@ -110,6 +110,7 @@ This project follows a strict "honest reconstruction" standard — objdiff verif
 - ✅ `DIFFABLE_*` macros for global-variable definitions only (inherited from th06)
 - ✅ `#pragma var_order`, raw-offset field access, intrinsics, de-cache
 - ❌ Raw absolute addresses (`(*(T*)0xADDR)`, `(char*)0x496fe0`, `(void*)0x4ba0d8`) — zero exceptions, D3D device included
+- ❌ Raw-offset buffer indexing (`raw[0x978]`, `SCORE_SUB_I32(off)` macros) — use typed accessors or named struct members
 - ❌ Function-level `#ifdef DIFFBUILD` splits, inline asm, `__declspec(naked)`, DAT_ const-slot externs, `nullptr`
 
 ### Compiler

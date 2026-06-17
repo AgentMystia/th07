@@ -109,13 +109,11 @@ owning 模块的 .cpp 里定义。
 
 ### P0.5：raw address 全量迁移到 typed C++（对齐 th06 标准）
 
-项目宪法（AGENTS.md §2）已升级为纯 typed C++ 标准——禁止 raw 绝对地址。`src/Player.cpp`
-已作为范本完成迁移（35 处 raw address → 零，match% 89.00→**89.04%**，证明 typed C++
-不比 raw address 差）。剩余文件按密度从高到低迁移：
+项目宪法（AGENTS.md §2）已升级为纯 typed C++ 标准——**禁止 raw 绝对地址 + raw-offset buffer 索引**（`raw[0x...]`、`SCORE_SUB_I32(off)` 宏等）。`src/Player.cpp` 已作为范本完成全量迁移（35 处 raw address + 36 处 `raw[]` + `SCORE_SUB_I32` 宏 → 零，match% 89.00→**87.64%**）。剩余文件按密度从高到低迁移：
 
 | 文件 | raw addr 数 | 状态 |
 |---|---|---|
-| `src/Player.cpp` | 35 → **0** | ✅ 完成（范本）|
+| `src/Player.cpp` | 35 raw addr + 36 raw[] + SCORE_SUB_I32 → **0** | ✅ 完成（范本，match 87.64%）|
 | `src/Supervisor.cpp` | 161 | 待迁移（singleton member + rdata string + code addr）|
 | `src/GameManager.cpp` | 146 | 待迁移（singleton member + data global）|
 | `src/BombData.cpp` | 102 | 待迁移（data global float const + singleton member）|
@@ -131,6 +129,8 @@ owning 模块的 .cpp 里定义。
 - data global（`0x4d44f8`）→ `extern "C" i32 g_BombIsActive;` + SYMBOL_MAP
 - code addr（`0x438668`）→ typed extern 声明 `Supervisor_Callback6()`
 - ECX 单例参数（`0x4ba0d8`）→ `&g_SoundPlayer`
+- raw-offset buffer 索引（`raw[0x978]`、`*reinterpret_cast<T*>(&p->raw[OFF])`）→ typed accessor 方法（在 hpp 定义 `D3DXVECTOR3 *GrazeTopLeft() { return (D3DXVECTOR3*)&raw[0x978]; }`，函数体调用 `p->GrazeTopLeft()`）；首选命名 struct 成员
+- raw-offset 宏（`SCORE_SUB_I32(off)`）→ typed struct 字段访问（`SCORE_SUB->counter14`，需 retyping void* 为 typed struct*）
 
 每文件迁移后编译 + objdiff 验证（`python3 scripts/build.py --build-type=objdiffbuild --object-name <M>.obj`）。
 
