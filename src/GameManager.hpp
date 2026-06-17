@@ -1,6 +1,6 @@
 #pragma once
 
-// th07::GameManager — in-game state manager singleton @ 0x00626270.
+// th07::GameManager  in-game state manager singleton @ 0x00626270.
 // sizeof = 0x9700. The Item[1100] array is NOT here (it lives in ItemManager @
 // 0x575c70); IsGameActive/CalculateChecksum are NOT GameManager methods (they
 // belong to the Supervisor/StageGame singleton @ 0x49fbf0). GameManager owns
@@ -27,7 +27,7 @@ namespace th07
 // Forward
 struct GameManager;
 
-// ScoreSub — score/stats/CRC sub-struct reached via GameManager+0x8 (DAT_00626278).
+// ScoreSub  score/stats/CRC sub-struct reached via GameManager+0x8 (DAT_00626278).
 // Heap-allocated (0xC8 bytes) by AddedCallback. sizeof = 0xC8. Load-bearing
 // offsets named (+0x0/+0x4/+0x34/+0x3c/+0x88/+0xac/+0xb4/+0xbc); the rest are
 // descriptive labels for readability. +0x1fbac is NOT here (that is StageGame).
@@ -72,7 +72,7 @@ struct ScoreSub
 };
 ZUN_ASSERT_SIZE(ScoreSub, 0xC8)
 
-// PlayerSub — player/character sub-struct reached via GameManager+0x4.
+// PlayerSub  player/character sub-struct reached via GameManager+0x4.
 // Heap-allocated (0x38 bytes) by AddedCallback; first 0x38 bytes memcpy'd from
 // g_PlayerInitTemplate @ 0x575a68.
 struct PlayerSub
@@ -103,7 +103,7 @@ struct GameManager
     // via raw offset in code (splitting flag0c to expose it would break the i32).
     u8 unk_18[0x93d8 - 0x18];     // +0x18 opaque (entity arrays, extend records @0x8454/0x845a)
 
-    // --- control-word block (+0x93d8..+0x9644) — all load-bearing ---
+    // --- control-word block (+0x93d8..+0x9644)  all load-bearing ---
     u32 statusBitfield;          // +0x93d8 (DAT_0062f648) bit0=extra,bit1=paused,bit2=chain-reg,bit3=practice,bit4=clr-on-success
     u8 unk_93dc;                 // +0x93dc pause-request flag (OnDraw: if !=0 -> =2)
     u8 unk_93dd;                 // +0x93dd pause-latch companion (cleared at AddedCallback success)
@@ -145,7 +145,7 @@ struct GameManager
 };
 ZUN_ASSERT_SIZE(GameManager, GAME_MANAGER_SIZE)
 
-// Static template @ 0x575a68 — memcpy source for PlayerSub (AddedCallback) and
+// Static template @ 0x575a68  memcpy source for PlayerSub (AddedCallback) and
 // the 4th checksum region in CalculateChecksum (Supervisor method).
 DIFFABLE_EXTERN_ARRAY(u8, 0x38, g_PlayerInitTemplate)
 

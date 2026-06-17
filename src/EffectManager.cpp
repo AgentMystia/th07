@@ -1,4 +1,4 @@
-// th07 EffectManager — see EffectManager.hpp for the high-level rewrite
+// th07 EffectManager  see EffectManager.hpp for the high-level rewrite
 // notes. Every address / constant in this file was read out of th07.exe via
 // Ghidra; the per-function disassembly cross-references are noted inline.
 //
@@ -187,7 +187,7 @@ void EffectManager::Reset()
 // EFFECT_CALLBACK_RESULT_STOP (0) to release it.
 //
 // th07 ditches th06's `g_Supervisor.effectiveFramerateMultiplier` scaling
-// inside the per-frame callbacks — the integration is folded into the init
+// inside the per-frame callbacks  the integration is folded into the init
 // callbacks now. The arithmetic matches th06 otherwise.
 // ---------------------------------------------------------------------------
 
@@ -812,7 +812,7 @@ ZunResult __fastcall EffectManager::DeletedCallback(EffectManager *mgr)
 }
 
 // RegisterChain: hook EffectManager into the calc + draw chains.
-// FUN_0041d0a0. th07 uses priority 0xb (calc) and 0x9 (draw) — see
+// FUN_0041d0a0. th07 uses priority 0xb (calc) and 0x9 (draw)  see
 // ChainPriorities.hpp once that module lands.
 ZunResult EffectManager::RegisterChain()
 {

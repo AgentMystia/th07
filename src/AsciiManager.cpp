@@ -58,7 +58,7 @@ extern void __fastcall AnmVm_Initialize_401170(void *vm);   // FUN_00401170 (cto
 extern void __fastcall AnmVm_Initialize_4010f0(void *vm);   // FUN_004010f0 (Initialize)
 extern void __fastcall AnmVm_ResetInterpTimers_4011b0(void *vm);  // FUN_004011b0
 
-// Supervisor::TickTimer — __thiscall, ECX = &g_Supervisor @ 0x575950.
+// Supervisor::TickTimer  __thiscall, ECX = &g_Supervisor @ 0x575950.
 struct Supervisor;
 extern void __fastcall Supervisor_TickTimer_43958d(Supervisor *sup, i32 *current, f32 *subFrame);
 
@@ -68,11 +68,11 @@ extern void __fastcall StageMenu_OnDrawRetryMenu_404560(void *retryMenu);
 extern void __fastcall StageMenu_OnUpdateGameMenu_402780(void *gameMenu);
 extern void __fastcall StageMenu_OnUpdateRetryMenu_403b60(void *retryMenu);
 
-// AsciiManager::ExecuteLabelVms (FUN_00401400) — __thiscall, drives the 7
+// AsciiManager::ExecuteLabelVms (FUN_00401400)  __thiscall, drives the 7
 // label AnmVms through AnmManager::ExecuteScript.
 extern void __fastcall AsciiMgr_ExecuteLabelVms_401400(AsciiManager *mgr);
 
-// AnmManager::ExecuteScript (FUN_00450d60) — __thiscall, PUSH vm; MOV ECX,anmMgr.
+// AnmManager::ExecuteScript (FUN_00450d60)  __thiscall, PUSH vm; MOV ECX,anmMgr.
 extern void AnmMgr_ExecuteScript_450d60(AnmMgrStub *anmMgr, void *vm);
 
 // Singleton handles. Absolute addresses so MOV ECX,imm matches orig exactly.
@@ -155,7 +155,7 @@ AsciiManager::AsciiManager()
     memset(base + 0x930, 0, 0x24c);
     *(u16 *)(base + 0x930 + 0x1d4) = 0xffff;
 
-    // pointLabelVm[4] (base+0xb7c) — only AnmVm::Initialize, no memset.
+    // pointLabelVm[4] (base+0xb7c)  only AnmVm::Initialize, no memset.
     {
         u8 *p = base + 0xb7c;
         i32 n = 4;
@@ -167,7 +167,7 @@ AsciiManager::AsciiManager()
         } while (n > 0);
     }
 
-    // strings[256] (base+0x14bc) — pointless loop advancing the pointer.
+    // strings[256] (base+0x14bc)  pointless loop advancing the pointer.
     {
         u8 *p = base + 0x14bc;
         i32 n = 0x100;
@@ -181,14 +181,14 @@ AsciiManager::AsciiManager()
     // StageMenu constructors (gameMenu @ +0x74e8, retryMenu @ +0x8e34).
     // extern void __fastcall StageMenuCtor_game_401690(void *gameMenu);
     // extern void __fastcall StageMenuCtor_retry_401720(void *retryMenu);
-    // These are left as TODO stubs — not yet lifted.
+    // These are left as TODO stubs  not yet lifted.
 
     // Screenshake AnmVm @ +0x9e50.
     AnmVm_ResetInterpTimers_4011b0(base + 0x9e50);
     memset(base + 0x9e50, 0, 0x24c);
     *(u16 *)(base + 0x9e50 + 0x1d4) = 0xffff;
 
-    // popups[723] @ +0xa09c — prime previous=-999, subFrame=0, current=0.
+    // popups[723] @ +0xa09c  prime previous=-999, subFrame=0, current=0.
     {
         u8 *p = base + 0xa09c;
         i32 n = ASCII_POPUPS_COUNT;

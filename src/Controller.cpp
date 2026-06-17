@@ -14,7 +14,7 @@ DIFFABLE_STATIC(u16, g_FocusButtonConflictState)
 
 // NOTE: th07's i18n string for TH_ERR_NO_PAD_FOUND in the binary differs from
 // the current th06-inherited i18n.tpl value. The binary string at 0x00497d9c
-// is the Shift-JIS text "コントローラが存在していませんようです、有限\r\n".
+// is the Shift-JIS text "\r\n".
 // The i18n.tpl macro is consumed as-is; updating it is out of scope for this
 // module (belongs to the i18n module owner).
 

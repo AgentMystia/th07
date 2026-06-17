@@ -1,6 +1,6 @@
 // th07 BombData header.
 //
-// IMPORTANT — this module is a STRUCTURAL PLACEHOLDER, not a 1:1 port of the
+// IMPORTANT  this module is a STRUCTURAL PLACEHOLDER, not a 1:1 port of the
 // th06 BombData. The reverse-engineering of the player-side bomb system in
 // th07.exe revealed that the bomb dispatch table grew from th06's 4 entries
 // (ReimuA/B, MarisaA/B) to 12 entries. The 12 entries most likely cover the
@@ -40,7 +40,7 @@
 
 namespace th07
 {
-// Forward declaration — the real Player struct lives in Player.hpp (not yet
+// Forward declaration  the real Player struct lives in Player.hpp (not yet
 // ported to th07). All bomb callbacks take Player* via __fastcall (ECX).
 struct Player;
 

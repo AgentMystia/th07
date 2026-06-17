@@ -1,4 +1,4 @@
-// ReplayData — umbrella include for the replay-data types.
+// ReplayData  umbrella include for the replay-data types.
 //
 // The actual struct definitions live in ReplayManager.hpp (ReplayData,
 // StageReplayData, ReplayDataInput). This stub forwards to that header so the

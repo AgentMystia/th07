@@ -24,8 +24,8 @@ namespace th07
 // definitions live in the Supervisor module; only forward declarations are
 // provided here so utils.cpp links against them. Signatures match the th07
 // binary (all __fastcall):
-//   FileExists       @ 0x004314f0  — tests whether a file can be opened.
-//   ResolveShortcut  @ 0x00435fc0  — resolves a .lnk target via the shell.
+//   FileExists       @ 0x004314f0   tests whether a file can be opened.
+//   ResolveShortcut  @ 0x00435fc0   resolves a .lnk target via the shell.
 ZunBool __fastcall FileExists(LPCSTR path);
 i32 __fastcall ResolveShortcut(LPCSTR sourcePath, LPSTR resolvedPath, i32 bufSize);
 

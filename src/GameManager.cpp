@@ -1,9 +1,9 @@
-// th07::GameManager — in-game state manager (largest module).
+// th07::GameManager  in-game state manager (largest module).
 // See GameManager.hpp for the full address map and struct notes.
 //
 // Implemented here (first pass): RegisterChain, CutChain, OnDraw.
 // TODO (later passes): OnUpdate, AddedCallback, DeletedCallback, OnItemUpdate,
-// CalculateChecksum, IsGameActive — these need more of the struct reversed.
+// CalculateChecksum, IsGameActive  these need more of the struct reversed.
 
 #include "GameManager.hpp"
 #include <cstring>
@@ -25,7 +25,7 @@ extern void __fastcall SupUpdateTimeAccumB_0043a3f4(void *supervisor);          
 extern void __fastcall FadeOutMusic_0043a0d6(void *supervisor, f32 seconds);                // ECX=0x575950
 extern void __fastcall SoundCmd_0044b310(i32 a, i32 b, i32 c, i32 d, i32 e);                // ECX=2,EDX=0x78
 
-// IDirect3DDevice8 stub — only the Clear slot (vtable offset 0x90) is used here.
+// IDirect3DDevice8 stub  only the Clear slot (vtable offset 0x90) is used here.
 struct D3DDeviceStub;
 struct D3DDeviceStubVtbl
 {
@@ -56,7 +56,7 @@ extern void __fastcall BgmFadeBook_443d30();
 extern void __fastcall SupUpdateTimeAccumA_43a27f(void *sup);    // ECX=0x575950
 extern void __fastcall EffectMgrReset_401a00(void *eff);         // ECX=0x134ce18
 
-// MidiOutput::Open is __thiscall (this in ECX, idx on stack, RET 4) — model it as
+// MidiOutput::Open is __thiscall (this in ECX, idx on stack, RET 4)  model it as
 // a struct method so MSVC emits PUSH idx; MOV ECX,this; CALL.
 struct MidiDevStub
 {
@@ -99,7 +99,7 @@ ZunResult GameManager::RegisterChain()
 {
     g_GameManager.updateChainNode.callback = (ChainCallback)OnUpdate;
     // MSVC /Od emits `and [mem],0` for the `= 0` and `mov [mem],imm` for the callback
-    // address — matching the orig's redundant zero-then-set sequence exactly.
+    // address  matching the orig's redundant zero-then-set sequence exactly.
     g_GameManager.updateChainNode.addedCallback = 0;
     g_GameManager.updateChainNode.deletedCallback = 0;
     g_GameManager.updateChainNode.addedCallback = (ChainAddedCallback)AddedCallback;
@@ -488,7 +488,7 @@ ZunResult __fastcall GameManager::DeletedCallback(GameManager *gameManager)
 #pragma auto_inline(on)
 
 // RngConsume_00401390 takes its arg on the stack (__thiscall: this in ECX, arg
-// pushed, RET 4) — model it as a struct method so MSVC emits PUSH arg; MOV ECX.
+// pushed, RET 4)  model it as a struct method so MSVC emits PUSH arg; MOV ECX.
 // (Default member calling convention is __thiscall under /Gd.)
 struct RngStub
 {

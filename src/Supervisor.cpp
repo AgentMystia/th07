@@ -4,6 +4,7 @@
 
 #include "Supervisor.hpp"
 #include "AsciiManager.hpp"
+#include "SoundPlayer.hpp"
 #include "AnmManager.hpp"
 #include "Chain.hpp"
 #include "Ending.hpp"
@@ -70,7 +71,8 @@ extern "C" void __fastcall Callback_3225b();                      // 0x0043225b
 extern "C" i32 __fastcall SoundPlayer_LoadFmt(void *p, char *path); // 0x0044bff0 (ECX = 0x4ba0d8)
 extern "C" void __fastcall SoundPlayer_Callback_C020(void *p, char *src); // 0x0044c020 (ECX = 0x4ba0d8)
 extern "C" void *__fastcall Callback_44c20(void *cfg);           // 0x00444c20 (ECX = 0x4980c4)
-extern "C" void __fastcall Callback_4547f(void *a, void *cfg);   // 0x0044547f
+extern "C" void __fastcall Callback_4547f(void *anmMgr, i32 textureIdx, char *path);   // 0x004547b0 AnmManager::LoadTexture
+extern "C" void __fastcall Callback_4547f_2arg(void *cfg, void *buf);    // 0x004547b0 alt. 2-arg form (LoadConfig)
 extern "C" void __fastcall Callback_454fc(void *a);              // 0x004454fc
 extern "C" void __fastcall ListNode_Ctor(void *p);               // 0x004362a0 (ECX = new'd buf)
 extern "C" void __fastcall Callback_378d0(void *p);              // 0x004378d0 (ECX = obj2)
@@ -92,9 +94,55 @@ struct SoundPlayer {
 #define MUSIC_MODE (g_Supervisor.cfg.musicMode)
 #define CFG_OPTS (g_Supervisor.cfg.opts)
 #define MIDI_OUTPUT_PTR ((MidiOutput *)g_Supervisor.midiOutput)
-#define SOUND_PLAYER_PTR (*(SoundPlayer **)0x004ba0d8)
-#define DUMMY_STR ((char *)0x004980d0)
-#define EMPTY_STR ((char *)0x00496c1e)
+#define SOUND_PLAYER_PTR (&g_SoundPlayer)
+#define DUMMY_STR "dummy"
+#define EMPTY_STR "debug"
+
+// ---- typed externs for rdata float constants and game-state globals.
+//      Addresses are recovered on the objdiff side via SYMBOL_MAP entries
+//      in scripts/generate_objdiff_objs.py. MSVC emits [glob] memory operands
+//      matching orig's addressing, so no #ifdef DIFFBUILD split is needed.
+extern "C" const f32 g_SupervisorC0x498a48;   // rdata float
+extern "C" const f32 g_SupervisorC0x498a4c;
+extern "C" const f32 g_SupervisorC0x498a50;
+extern "C" const f32 g_SupervisorC0x498a54;   // 1.0f
+extern "C" const f32 g_SupervisorC0x498a58;
+extern "C" const f32 g_SupervisorC0x498a68;
+extern "C" const f32 g_SupervisorC0x498a6c;
+extern "C" const f32 g_SupervisorC0x498aa0;
+extern "C" const f32 g_SupervisorC0x498ab8;   // 60.0f
+extern "C" const f32 g_SupervisorC0x498b10;
+extern "C" const f32 g_SupervisorC0x498b14;
+extern "C" const f32 g_SupervisorC0x498b18;
+extern "C" const f32 g_SupervisorC0x498b1c;
+extern "C" const f32 g_SupervisorC0x498b20;
+extern "C" u16 g_SupervisorG0x49fe20;          // rng seed source
+extern "C" u32 g_SupervisorG0x4b9e64;          // input crc check
+extern "C" i32 g_SupervisorG0x4bdaa0;          // BGM state
+extern "C" void *g_SupervisorG0x575a64;        // supervisor list-node sink
+extern "C" i32 g_SupervisorG0x575bbc;          // supervisor tail scratch
+extern "C" i32 g_SupervisorG0x575bf8;
+extern "C" u8  g_SupervisorG0x575c0c;
+extern "C" i32 g_SupervisorG0x575c10;
+extern "C" i32 g_SupervisorG0x575c14;
+extern "C" u32 g_SupervisorG0x62f4e0;          // wav format table (0x58 dwords)
+extern "C" u16 g_SupervisorG0x62f4e4;          // nChannels
+extern "C" u16 g_SupervisorG0x62f4e6;          // mirror
+extern "C" u8  g_SupervisorG0x62f4e8;
+extern "C" i32 g_SupervisorG0x62f85c;
+extern "C" i32 g_SupervisorG0x13542d8;         // effect color slot
+extern "C" i32 g_SupervisorG0x135dfec;         // ascii/effect counters
+extern "C" i32 g_SupervisorG0x135e1f0;
+extern "C" i32 g_SupervisorG0x135e298;
+extern "C" i32 g_SupervisorG0x135e29c;
+extern "C" i32 g_SupervisorG0x135e2a0;
+extern "C" i32 g_SupervisorG0x135e2a4;
+extern "C" char g_SupervisorG0x135dff0[];      // AsciiManager scratch buffer
+extern "C" char g_SupervisorG0x135e0f0[];      // AsciiManager scratch buffer
+extern "C" void *g_SupervisorG0x496c0c;        // rdata pointer
+extern "C" void *g_SupervisorG0x4980c4;        // rdata pointer (ECX for Callback_44c20)
+extern "C" void *g_SupervisorG0x4bd994;        // scratch (thbgm descriptor table)
+extern "C" i8  g_GameManagerRankForceFlag;     // GameManager +0xd (inside flag0c i32)
 
 namespace th07
 {
@@ -114,13 +162,13 @@ extern "C" struct Chain g_Chain;
 // =====================================================================
 void Supervisor::TickTimer(i32 *frames, f32 *subframes)
 {
-    if (*(f32 *)((u8 *)this + 0x178) < *(f32 *)0x00498a58)
+    if (*(f32 *)((u8 *)this + 0x178) < g_SupervisorC0x498a58)
     {
         *subframes = *subframes + *(f32 *)((u8 *)this + 0x178);
-        if (*(f32 *)0x00498a54 <= *subframes)
+        if (g_SupervisorC0x498a54 <= *subframes)
         {
             *frames = *frames + 1;
-            *subframes = *subframes - *(f32 *)0x00498a54;
+            *subframes = *subframes - g_SupervisorC0x498a54;
         }
     }
     else
@@ -159,13 +207,13 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
     *(u32 *)(anm + 0x0) = 0x80808080;
     *(f32 *)((u8 *)g_AnmManager + 0x1c) = 0.0f;
     *(f32 *)((u8 *)g_AnmManager + 0x18) = 0.0f;
-    *(u8 *)0x00575c0c = 0xff;
-    if (*(void **)0x004bda94 != 0)
+    g_SupervisorG0x575c0c = 0xff;
+    if (g_SoundPlayer.backgroundMusic != 0)
     {
         CStreamingSound_UpdateFadeOut();
     }
 
-    if (*(i8 *)0x0062627d == 0)
+    if (g_GameManagerRankForceFlag == 0)
     {
         g_LastFrameInput = g_CurFrameInput;
         g_CurFrameInput = Controller_GetInput();
@@ -196,7 +244,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
     if (s->wantedState != s->curState)
     {
         wanted = s->wantedState;
-        Supervisor_LogStr1((char *)0x497230, s->wantedState, s->curState);
+        Supervisor_LogStr1("scene %d -> %d\r\n", s->wantedState, s->curState);
 
         switch (wanted)
         {
@@ -234,7 +282,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                     s->curState = 0;
                     ReplayManager::SaveReplay((char*)0, (char*)0);
                     s->curState = 1;
-                    (*(IDirect3DDevice8 **)0x00575958)->ResourceManagerDiscardBytes(0);
+                    ((IDirect3DDevice8 *)g_Supervisor.d3dDevice)->ResourceManagerDiscardBytes(0);
                     if (Supervisor_D3DDiscard(1) != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     break;
                 case -1: return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
@@ -259,29 +307,29 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                 switch (cur2)
                 {
                 case 9:
-                    ((i32 *)0x62f52c)[*(i32 *)0x00626280 * 0xb]++;
+                    ((i32 *)0x62f52c)[g_GameManager.difficulty * 0xb]++;
                     GameManager::CutChain();
                     if (MainMenu::RegisterChain(0) != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     break;
                 case 0xa:
                     GameManager::CutChain();
-                    if ((*(u32 *)0x0062f648 & 1) == 0 && *(i32 *)0x00626280 < 4)
-                        *(i32 *)0x0062f85c = 0;
+                    if ((g_GameManager.statusBitfield & 1) == 0 && g_GameManager.difficulty < 4)
+                        g_SupervisorG0x62f85c = 0;
                     else
-                        *(i32 *)0x0062f85c = *(i32 *)0x0062f85c - 1;
+                        g_SupervisorG0x62f85c = g_SupervisorG0x62f85c - 1;
                     ReplayManager::SaveReplay((char*)0, (char*)0);
                     if (GameManager::RegisterChain() != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     s->curState = 2;
                     break;
                 case 0xb:
-                    *(i32 *)0x00575aa8 = 3;
+                    g_Supervisor.curState = 3;
                     GameManager::CutChain();
-                    *(i32 *)0x0062f85c = *(i32 *)0x0062f85c - 1;
+                    g_SupervisorG0x62f85c = g_SupervisorG0x62f85c - 1;
                     if (GameManager::RegisterChain() != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     s->curState = 2;
                     break;
                 case 0xc:
-                    *(i32 *)0x00575aa8 = 3;
+                    g_Supervisor.curState = 3;
                     GameManager::CutChain();
                     if (GameManager::RegisterChain() != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     s->curState = 2;
@@ -298,7 +346,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                 s->curState = 0;
             reinit_mainmenu_d3d:
                 s->curState = 1;
-                (*(IDirect3DDevice8 **)0x00575958)->ResourceManagerDiscardBytes(0);
+                ((IDirect3DDevice8 *)g_Supervisor.d3dDevice)->ResourceManagerDiscardBytes(0);
                 if (Supervisor_D3DDiscard(0) != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 break;
             }
@@ -350,7 +398,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
     s->calcCount++;
     if (s->calcCount % 4000 == 3999)
     {
-        if (Supervisor_AutosaveScore((char *)0x497228, *(i32 *)0x00575c14, *(i32 *)0x00575c10) != 0)
+        if (Supervisor_AutosaveScore("0100b", g_SupervisorG0x575c14, g_SupervisorG0x575c10) != 0)
         {
             return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
         }
@@ -381,95 +429,95 @@ void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
     DWORD now;
     f32 frameTime, frameTimeSec, fps, base;
 
-    if (*(i8 *)0x0062627d != 0) goto end_check;
-    *(i32 *)0x0135e1f0 += (i32)*(u8 *)0x00575a8b + 1;
+    if (g_GameManagerRankForceFlag != 0) goto end_check;
+    g_SupervisorG0x135e1f0 += (i32)g_Supervisor.cfg.frameskipConfig + 1;
 
-    if (*(i32 *)0x00575bbc == 0)
+    if (g_SupervisorG0x575bbc == 0)
     {
-        if ((*(i32 *)0x0135e2a4 & 1) == 0)
+        if ((g_SupervisorG0x135e2a4 & 1) == 0)
         {
-            *(i32 *)0x0135e2a4 |= 1;
-            *(i32 *)0x0135e2a0 = timeGetTime();
+            g_SupervisorG0x135e2a4 |= 1;
+            g_SupervisorG0x135e2a0 = timeGetTime();
         }
         now = timeGetTime();
-        if (now < *(i32 *)0x0135e2a0)
+        if (now < g_SupervisorG0x135e2a0)
         {
-            *(i32 *)0x0135e2a0 = now;
-            *(i32 *)0x0135e1f0 = 0;
+            g_SupervisorG0x135e2a0 = now;
+            g_SupervisorG0x135e1f0 = 0;
         }
-        if ((u32)(now - *(i32 *)0x0135e2a0) < 0x1f4) goto done_fps;
-        frameTime = (f32)(i64)(now - *(i32 *)0x0135e2a0);
-        frameTimeSec = frameTime / *(f32 *)0x00498ab8;
-        *(i32 *)0x0135e2a0 = now;
+        if ((u32)(now - g_SupervisorG0x135e2a0) < 0x1f4) goto done_fps;
+        frameTime = (f32)(i64)(now - g_SupervisorG0x135e2a0);
+        frameTimeSec = frameTime / g_SupervisorC0x498ab8;
+        g_SupervisorG0x135e2a0 = now;
     compute_fps:
-        fps = (f32)(i64)*(i32 *)0x0135e1f0 / frameTimeSec;
-        *(i32 *)0x0135e1f0 = 0;
-        sprintf_th07((char *)0x135e0f0, "%.02ffps", (f64)fps);
-        if ((*(i32 *)0x0062f648 >> 2 & 1) == 0 || drawArg == 0) goto done_fps;
-        base = *(f32 *)0x00498a48;
-        *(f32 *)0x00575ad4 += base;
-        if (base * *(f32 *)0x00498b20 > fps)
-            *(f32 *)0x00575ad0 += base;
-        else if (base * *(f32 *)0x00498b1c > fps)
-            *(f32 *)0x00575ad0 = base * *(f32 *)0x00498b18 + *(f32 *)0x00575ad0;
-        else if (base * *(f32 *)0x00498a50 > fps)
-            *(f32 *)0x00575ad0 = base * *(f32 *)0x00498aa0 + *(f32 *)0x00575ad0;
+        fps = (f32)(i64)g_SupervisorG0x135e1f0 / frameTimeSec;
+        g_SupervisorG0x135e1f0 = 0;
+        sprintf_th07(g_SupervisorG0x135e0f0, "%.02ffps", (f64)fps);
+        if ((g_GameManager.statusBitfield >> 2 & 1) == 0 || drawArg == 0) goto done_fps;
+        base = g_SupervisorC0x498a48;
+        g_Supervisor.d3dDeviceCaps184 += base;
+        if (base * g_SupervisorC0x498b20 > fps)
+            g_Supervisor.d3dDeviceCaps180 += base;
+        else if (base * g_SupervisorC0x498b1c > fps)
+            g_Supervisor.d3dDeviceCaps180 = base * g_SupervisorC0x498b18 + g_Supervisor.d3dDeviceCaps180;
+        else if (base * g_SupervisorC0x498a50 > fps)
+            g_Supervisor.d3dDeviceCaps180 = base * g_SupervisorC0x498aa0 + g_Supervisor.d3dDeviceCaps180;
         else
-            *(f32 *)0x00575ad0 = base * *(f32 *)0x00498a50 + *(f32 *)0x00575ad0;
-        if ((*(i32 *)0x0062f648 >> 3 & 1) == 0)
+            g_Supervisor.d3dDeviceCaps180 = base * g_SupervisorC0x498a50 + g_Supervisor.d3dDeviceCaps180;
+        if ((g_GameManager.statusBitfield >> 3 & 1) == 0)
         {
-            *(i16 *)0x00575ad8 = FloatToI16(fps + *(f32 *)0x00498a50);
-            sprintf_th07((char *)0x135dff0, "%2d", (i32)*(i16 *)0x00575ad8);
+            g_Supervisor.unk188 = FloatToI16(fps + g_SupervisorC0x498a50);
+            sprintf_th07(g_SupervisorG0x135dff0, "%2d", (i32)g_Supervisor.unk188);
         }
         else
-            sprintf_th07((char *)0x135dff0, "%2d", (i32)*(i16 *)0x00575ad8);
+            sprintf_th07(g_SupervisorG0x135dff0, "%2d", (i32)g_Supervisor.unk188);
         goto done_fps;
     }
     else
     {
         i64 qpcNow;
-        if (*(i32 *)0x0135e298 == 0)
+        if (g_SupervisorG0x135e298 == 0)
             QueryPerformanceCounter((LARGE_INTEGER *)0x0135e298);
         QueryPerformanceCounter((LARGE_INTEGER *)&qpcNow);
-        if (*(i32 *)((u8 *)&qpcNow + 0) < *(i32 *)0x0135e298)
+        if (*(i32 *)((u8 *)&qpcNow + 0) < g_SupervisorG0x135e298)
         {
-            *(i32 *)0x0135e298 = *(i32 *)((u8 *)&qpcNow + 0);
-            *(i32 *)0x0135e29c = *(i32 *)((u8 *)&qpcNow + 4);
-            *(i32 *)0x0135e1f0 = 0;
+            g_SupervisorG0x135e298 = *(i32 *)((u8 *)&qpcNow + 0);
+            g_SupervisorG0x135e29c = *(i32 *)((u8 *)&qpcNow + 4);
+            g_SupervisorG0x135e1f0 = 0;
         }
-        if ((u32)(*(i32 *)((u8 *)&qpcNow + 0) - *(i32 *)0x0135e298) <
-            (u32)(*(i32 *)0x0135e298 + (*(i32 *)0x00575bbc >> 1))) goto end_check;
-        frameTime = (f32)(i64)(*(i32 *)((u8 *)&qpcNow + 0) - *(i32 *)0x0135e298);
-        frameTimeSec = frameTime / (f32)(i64)*(i32 *)0x00575bbc;
-        *(i32 *)0x0135e298 = *(i32 *)((u8 *)&qpcNow + 0);
-        *(i32 *)0x0135e29c = *(i32 *)((u8 *)&qpcNow + 4);
-        *(i32 *)0x0135dfec += 1;
-        if (*(i32 *)0x0135dfec % 8 == 0)
+        if ((u32)(*(i32 *)((u8 *)&qpcNow + 0) - g_SupervisorG0x135e298) <
+            (u32)(g_SupervisorG0x135e298 + (g_SupervisorG0x575bbc >> 1))) goto end_check;
+        frameTime = (f32)(i64)(*(i32 *)((u8 *)&qpcNow + 0) - g_SupervisorG0x135e298);
+        frameTimeSec = frameTime / (f32)(i64)g_SupervisorG0x575bbc;
+        g_SupervisorG0x135e298 = *(i32 *)((u8 *)&qpcNow + 0);
+        g_SupervisorG0x135e29c = *(i32 *)((u8 *)&qpcNow + 4);
+        g_SupervisorG0x135dfec += 1;
+        if (g_SupervisorG0x135dfec % 8 == 0)
             g_Supervisor.TickTimer((i32 *)0, (f32 *)0);
         goto compute_fps;
     }
 done_fps:
 end_check:
-    if (*(i32 *)0x00575ab8 != 0 || drawArg == 0) return;
+    if (g_Supervisor.unkIsInEnding != 0 || drawArg == 0) return;
     {
         D3DXVECTOR3 pos1;
-        pos1.x = *(f32 *)0x00498b14;
-        pos1.y = *(f32 *)0x00498b10;
+        pos1.x = g_SupervisorC0x498b14;
+        pos1.y = g_SupervisorC0x498b10;
         pos1.z = 0.0f;
-        (*(AsciiManager **)0x0134ce18)->AddString(&pos1, (char *)0x135e0f0);
+        g_AsciiManager.AddString(&pos1, g_SupervisorG0x135e0f0);
     }
-    if ((*(i32 *)0x0062f648 >> 3 & 1) == 0 || (*(i32 *)0x0062f648 >> 2 & 1) == 0) return;
+    if ((g_GameManager.statusBitfield >> 3 & 1) == 0 || (g_GameManager.statusBitfield >> 2 & 1) == 0) return;
     {
         D3DXVECTOR3 pos2;
-        pos2.x = *(f32 *)0x00498a6c;
-        pos2.y = *(f32 *)0x00498a68;
+        pos2.x = g_SupervisorC0x498a6c;
+        pos2.y = g_SupervisorC0x498a68;
         pos2.z = 0.0f;
-        if (*(i32 *)0x00575bf8 != 0)
-            *(i32 *)0x013542d8 = 0xffff4040;
+        if (g_SupervisorG0x575bf8 != 0)
+            g_SupervisorG0x13542d8 = 0xffff4040;
         else
-            *(i32 *)0x013542d8 = 0xffffffd0;
-        (*(AsciiManager **)0x0134ce18)->AddString(&pos2, (char *)0x135dff0);
-        *(i32 *)0x013542d8 |= -1;
+            g_SupervisorG0x13542d8 = 0xffffffd0;
+        g_AsciiManager.AddString(&pos2, g_SupervisorG0x135dff0);
+        g_SupervisorG0x13542d8 |= -1;
     }
 }
 
@@ -510,7 +558,7 @@ ZunResult Supervisor::RegisterChain()
 //   1. Records QueryPerformanceFrequency into this+0x26c.
 //   2. Clears the back buffer + front buffer to opaque black (BeginScene /
 //      Clear / EndScene / Present) twice, calling Reset between failures.
-//   3. Runs Supervisor::Callback6 (version/archive file probe) — bail on fail.
+//   3. Runs Supervisor::Callback6 (version/archive file probe)  bail on fail.
 //   4. Loads data/title/th07logo.jpg as an Anm texture (idx 0).
 //   5. Either calls Supervisor::Callback7 (single-frame logo path) or, if
 //      DAT_00575abc is set, loops four BeginScene/AnmDraw/EndScene/Present
@@ -552,7 +600,7 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     QueryPerformanceFrequency((LARGE_INTEGER *)((u8 *)s + 0x26c));
 
     // 2. Back buffer clear, twice (BeginScene/Clear/EndScene/Present + retry).
-    dev = *(IDirect3DDevice8 **)0x00575958;
+    dev = (IDirect3DDevice8 *)g_Supervisor.d3dDevice;
     dev->BeginScene();
     dev->Clear(0, 0, D3DCLEAR_TARGET, 0xff000000, 1.0f, 0);
     dev->EndScene();
@@ -575,11 +623,11 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     }
 
     // 4. AnmManager::LoadTexture(this, 0, "data/title/th07logo.jpg") @ 0x4547b0.
-    ((void (*)(AnmManager *, i32, char *))0x004547b0)(g_AnmManager, 0, (char *)0x497038);
-    *(i32 *)0x00575ab8 = 1;
+    Callback_4547f((void *)g_AnmManager, 0, "data/title/th07logo.jpg");
+    g_Supervisor.unkIsInEnding = 1;
 
     // 5. Either single-frame logo path or four-frame boot fade.
-    if (*(i32 *)0x00575abc == 0)
+    if (g_Supervisor.vsyncDisabled == 0)
     {
         if (Supervisor_Callback7() != 0)
         {
@@ -606,7 +654,7 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     *(i32 *)((u8 *)s + 0x168) = 0;
     *(i32 *)((u8 *)s + 0x164) = 0;
     *(u32 *)((u8 *)s + 0x190) = timeGetTime();
-    *(u16 *)0x0049fe20 = *(u16 *)((u8 *)s + 0x190);
+    g_SupervisorG0x49fe20 = *(u16 *)((u8 *)s + 0x190);
     Supervisor_Callback_Fun383d8(s);
 
     // 7. Lazy MidiOutput allocation + bgm/init.mid.
@@ -626,12 +674,12 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     }
     if (*(void **)((u8 *)s + 0x17c) != 0)
     {
-        MidiOutput_Play(*(void **)((u8 *)s + 0x17c), 0x1e, (char *)0x497028);
+        MidiOutput_Play(*(void **)((u8 *)s + 0x17c), 0x1e, "bgm/init.mid");
     }
 
     // 8. SoundPlayer Callback_C7d0; AnmManager::LoadAnm(0, "data/text.anm", 0x700).
-    SoundPlayer_Callback_C7d0((void *)0x004ba0d8);
-    if (AnmManager_LoadAnm(g_AnmManager, 0, (char *)0x497018, 0x700) != 0)
+    SoundPlayer_Callback_C7d0((void *)&g_SoundPlayer);
+    if (AnmManager_LoadAnm(g_AnmManager, 0, "data/text.anm", 0x700) != 0)
     {
         return (ZunResult)-1;
     }
@@ -639,51 +687,51 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     // 9. Callback_01e30 (error-logged failure path).
     if (Callback_01e30() != 0)
     {
-        g_GameErrorContext.Log("%s", (char *)0x496ff0);
+        g_GameErrorContext.Log("%s", "error : \225\266\216\232\202\314\217\211\212\372\211\273\202\311\216\270\224s\202\265\202\334\202\265\202\275\015\012");
         return (ZunResult)-1;
     }
 
     // 10. AnmManager::Callback_D630; Callback_3225b; SoundPlayer::LoadFmt.
     AnmManager_Callback_D630(g_AnmManager);
     Callback_3225b();
-    if (SoundPlayer_LoadFmt((void *)0x004ba0d8, (char *)0x496fe0) != 0)
+    if (SoundPlayer_LoadFmt((void *)&g_SoundPlayer, "bgm/thbgm.fmt") != 0)
     {
-        g_GameErrorContext.Log("%s", (char *)0x496fb8);
+        g_GameErrorContext.Log("%s", "error : BGM \202\314\217\211\212\372\211\273\202\311\216\270\224s\202\265\202\334\202\265\202\275\015\012");
         return (ZunResult)-1;
     }
 
     // 11. thbgm descriptor table install (depends on alt-mode + opts bit 0xd).
-    if (*(i32 *)0x004bdaa0 == 0)
+    if (g_SupervisorG0x4bdaa0 == 0)
     {
-        if ((*(u32 *)0x00575a9c >> 0xd & 1) == 0)
+        if ((g_Supervisor.cfg.opts >> 0xd & 1) == 0)
         {
-            SoundPlayer_Callback_C020((void *)0x004ba0d8, (char *)0x496fac);
+            SoundPlayer_Callback_C020((void *)&g_SoundPlayer, "thbgm.dat");
         }
         else
         {
-            memcpy((void *)0x004bd994, (void *)0x496fac, 10);
+            memcpy((void *)g_SupervisorG0x4bd994 /* orig 0x4bd994 */, (void *)"thbgm.dat", 10);
         }
     }
     else
     {
-        if ((*(u32 *)0x00575a9c >> 0xd & 1) == 0)
+        if ((g_Supervisor.cfg.opts >> 0xd & 1) == 0)
         {
-            SoundPlayer_Callback_C020((void *)0x004ba0d8, (char *)0x497150);
+            SoundPlayer_Callback_C020((void *)&g_SoundPlayer, "th07.dat");
         }
         else
         {
-            memcpy((void *)0x004bd994, (void *)0x497150, 9);
+            memcpy((void *)g_SupervisorG0x4bd994 /* orig 0x4bd994 */, (void *)"th07.dat", 9);
         }
     }
 
     // 12. Callback_44c20 returns a CFG handle; prime WAVEFORMATEX at 0x62f4e0.
-    cfgHandle = Callback_44c20((void *)0x004980c4);
-    memset((void *)0x0062f4e0, 0, 0x58 * 4);
-    *(u16 *)0x0062f4e4 = 0x160;          // nChannels
-    *(u16 *)0x0062f4e6 = *(u16 *)0x0062f4e4; // mirror (orig re-reads)
-    *(u32 *)0x0062f4e0 = 0x54534c50;     // 'PLST' magic
-    *(u8 *)0x0062f4e8 = 1;
-    Callback_4547f(cfgHandle, (void *)0x0062f4e0);
+    cfgHandle = Callback_44c20((void *)&g_SupervisorG0x4980c4);
+    memset(&g_SupervisorG0x62f4e0, 0, 0x58 * 4);
+    g_SupervisorG0x62f4e4 = 0x160;          // nChannels
+    g_SupervisorG0x62f4e6 = g_SupervisorG0x62f4e4; // mirror (orig re-reads)
+    g_SupervisorG0x62f4e0 = 0x54534c50;     // 'PLST' magic
+    g_SupervisorG0x62f4e8 = 1;
+    Callback_4547f_2arg(cfgHandle, &g_SupervisorG0x62f4e0);
     Callback_454fc(cfgHandle);
 
     // 13. Allocate a 0x14-byte list node, install vtable, store + init.
@@ -691,16 +739,16 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     if (listNode != 0)
     {
         ListNode_Ctor(listNode);
-        *(void **)listNode = (void *)0x00496c0c;
+        *(void **)listNode = (void *)&g_SupervisorG0x496c0c;
     }
     else
     {
         listNode = 0;
     }
-    *(void **)0x00575a64 = listNode;
-    if (*(void **)0x00575a64 != 0)
+    g_SupervisorG0x575a64 = listNode;
+    if (g_SupervisorG0x575a64 != 0)
     {
-        Callback_378d0(*(void **)0x00575a64);
+        Callback_378d0(g_SupervisorG0x575a64);
     }
 
     return ZUN_SUCCESS;
@@ -939,22 +987,22 @@ ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
         ((IDirectInput8A *)s->dinputIface)->Release();
         s->dinputIface = NULL;
     }
-    gm = *(void **)0x00626278;
-    if (gm != NULL) { _free_th07(gm); *(void **)0x00626278 = NULL; }
-    gm2 = *(void **)0x00626274;
-    if (gm2 != NULL) { _free_th07(gm2); *(void **)0x00626274 = NULL; }
+    gm = g_GameManager.scoreSub;
+    if (gm != NULL) { _free_th07(gm); g_GameManager.scoreSub = NULL; }
+    gm2 = g_GameManager.playerSub;
+    if (gm2 != NULL) { _free_th07(gm2); g_GameManager.playerSub = NULL; }
     Supervisor_HeapFreeAll();
-    obj2 = *(void **)0x00575a64;
+    obj2 = g_SupervisorG0x575a64;
     if (obj2 != NULL)
     {
         Supervisor_SomeCleanup4();
-        obj2 = *(void **)0x00575a64;
+        obj2 = g_SupervisorG0x575a64;
         if (obj2 != NULL)
         {
             Supervisor_SomeCleanup5();
             _free_th07(obj2);
         }
-        *(void **)0x00575a64 = NULL;
+        g_SupervisorG0x575a64 = NULL;
     }
     return ZUN_SUCCESS;
 }
@@ -1001,7 +1049,7 @@ ZunResult Supervisor::LoadConfig(char *configPath)
             g_Supervisor.cfg.windowed < 2 && g_Supervisor.cfg.frameskipConfig < 3 &&
             *(u8 *)((u8 *)&g_Supervisor.cfg + 0x24) < 3 && *(u8 *)((u8 *)&g_Supervisor.cfg + 0x25) < 2 &&
             *(u8 *)((u8 *)&g_Supervisor.cfg + 0x26) < 2 &&
-            g_Supervisor.cfg.version == GAME_VERSION && *(u32 *)0x004b9e64 == 0x38)
+            g_Supervisor.cfg.version == GAME_VERSION && g_SupervisorG0x4b9e64 == 0x38)
         {
             goto apply_opts;
         }
@@ -1074,7 +1122,7 @@ apply_opts:
     if ((g_Supervisor.cfg.opts >> 0xe & 1) != 0)
     {
         g_GameErrorContext.Log("%s", "Force 60fps mode");
-        *(u32 *)0x00575abc = 1;
+        g_Supervisor.vsyncDisabled = 1;
     }
     if (Supervisor_ValidateSize(0x38) == 0)
     {
@@ -1102,9 +1150,9 @@ ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
     else if (MUSIC_MODE == MUSIC_WAV)
     {
         adj = fadeOutSeconds;
-        if (*(f32 *)((u8 *)this + 0x178) == *(f32 *)0x00498a4c)
+        if (*(f32 *)((u8 *)this + 0x178) == g_SupervisorC0x498a4c)
         {
-            if (*(f32 *)((u8 *)this + 0x178) <= *(f32 *)0x00498a54)
+            if (*(f32 *)((u8 *)this + 0x178) <= g_SupervisorC0x498a54)
             {
                 adj = fadeOutSeconds / *(f32 *)((u8 *)this + 0x178);
             }

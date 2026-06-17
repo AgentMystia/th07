@@ -243,12 +243,12 @@ struct Supervisor
     i32 _pad170;
     u32 hasD3dHardwareVertexProcessing; // 0x174 DAT_00575ac4
     f32 framerateMultiplier;          // 0x178 DAT_00575ac8
-    void *midiOutput;                 // 0x17c DAT_00575acc（MidiOutput *）
-    f32 unk1b4;
-    f32 unk1b8;
-    i32 unk188;
-    u32 frameBasedStuffFlags;
-    u32 startupTimeBeforeMenuMusic;   // 0x190 DAT_00575ae0（timeGetTime）
+    void *midiOutput;                 // 0x17c DAT_00575acc(MidiOutput *)
+    f32 d3dDeviceCaps180;
+    f32 d3dDeviceCaps184;
+    i32 unk188;                       // 0x188
+    u32 frameBasedStuffFlags;         // 0x18c
+    u32 startupTimeBeforeMenuMusic;   // 0x190 DAT_00575ae0(timeGetTime)
     u32 lastFrameTime;                // 0x194 DAT_00575ae4
     u8 unk198_to_caps[0x1b0 - 0x198]; // 0x198..0x1af
     D3DCAPS8_FAKE d3dCaps;             // 0x1b0..0x2b0 (0x100 bytes; mirrors Win32 D3DCAPS8)

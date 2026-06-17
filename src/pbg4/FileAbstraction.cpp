@@ -1,4 +1,4 @@
-// FileAbstraction — stub for th07's file-abstraction layer.
+// FileAbstraction  stub for th07's file-abstraction layer.
 //
 // In th06 this wrapped raw FILE*/HANDLE access behind a uniform interface.
 // th07's version lives at FUN_00447670.. (RawOpen/RawRead/RawWrite/RawClose,

@@ -15,7 +15,7 @@
 //   different signatures and bodies. This file therefore preserves the th06
 //   class shape (so the rest of the codebase can keep referring to CMyFont)
 //   while documenting the divergence. It is intentionally NOT registered in
-//   mapping.csv — th07 has no matching symbols to export.
+//   mapping.csv  th07 has no matching symbols to export.
 //
 //   The real th07 text-render entry points (different class, kept here for
 //   reference):

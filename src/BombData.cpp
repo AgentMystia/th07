@@ -38,7 +38,7 @@ namespace th07
 // ---- helper externs (absolute-VA stubs; objdiff matches orig relocs) ----
 extern "C" void __fastcall Supervisor_BombPreDraw();             // FUN_004083f0
 extern "C" f32 __fastcall ZunAngleNormalize(i32 angle, i32 base); // FUN_00431930 (returns st0)
-// ZunMath cos/sin wrappers — orig passes angle in st0 (float arg, no ECX).
+// ZunMath cos/sin wrappers  orig passes angle in st0 (float arg, no ECX).
 // Declared __fastcall with one f32 so MSVC does `fld [arg]; call`.
 extern "C" f32 __fastcall ZunCos(f32 a);  // FUN_0048bbf0
 extern "C" f32 __fastcall ZunSin(f32 a);  // FUN_0048bb40
@@ -241,7 +241,7 @@ void __fastcall BombData::YoumuABombDraw(Player *p)
     }
 }
 
-// --- Remaining callbacks: stubs (not yet ported — large calc bodies) ---
+// --- Remaining callbacks: stubs (not yet ported  large calc bodies) ---
 void __fastcall BombData::ReimuCBombCalc(Player *) {}
 void __fastcall BombData::ReimuABombCalc(Player *) {}
 

@@ -6,7 +6,7 @@
 //
 // NOTE: These macros only affect GLOBAL VARIABLE DEFINITIONS (diffbuild emits
 // extern "C" references to the orig exe's globals; normal build emits real
-// definitions). They do NOT split function code paths. See AGENTS.md §2 for
+// definitions). They do NOT split function code paths. See AGENTS.md 2 for
 // the honesty rules this project follows.
 //
 // This helper provides two macros: DIFFABLE_EXTERN and DIFFABLE_STATIC. All

@@ -1,4 +1,4 @@
-// IPbg4Parser — interface stub for th07's pbg4 archive bitstream parser.
+// IPbg4Parser  interface stub for th07's pbg4 archive bitstream parser.
 //
 // The real IPbg4Parser class lives at FUN_0045ef00..FUN_0045fb50 (decompress,
 // archive open, entry-table build). Those are large bitstream codecs that are

@@ -154,7 +154,7 @@ class CSound
 //   +0x4c m_dwLastPlayPos
 //   +0x50 m_dwPlayProgress
 //   +0x54 reserved
-//   +0x58 m_pSoundManager  (CSoundManager* — used to reach m_pDS)
+//   +0x58 m_pSoundManager  (CSoundManager*  used to reach m_pDS)
 //   +0x5c m_dwLastPlayPos2 (also written by HandleWaveStreamNotification)
 //   +0x60 m_dwPlayProgress2
 //   +0x64 m_dwNextWriteOffset

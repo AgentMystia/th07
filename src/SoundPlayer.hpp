@@ -49,9 +49,9 @@ namespace th07
 // "unk" slot.  Same layout as th06's SoundBufferIdxVolume.  Size 0x8.
 struct SoundBufferIdxVolume
 {
-    i32 bufferIdx; // 0x00 — indexes g_SFXList
-    i16 volume;    // 0x04 — IDirectSoundBuffer::SetVolume argument
-    i16 unk;       // 0x06 — play counter reset to zero before each playback
+    i32 bufferIdx; // 0x00  indexes g_SFXList
+    i16 volume;    // 0x04  IDirectSoundBuffer::SetVolume argument
+    i16 unk;       // 0x06  play counter reset to zero before each playback
 };
 ZUN_ASSERT_SIZE(SoundBufferIdxVolume, 0x8);
 

@@ -3,11 +3,11 @@
 // Source of truth: th07.exe via ghidra. These are the Pbg4 LZSS dictionary
 // helpers (reset / index set / node advance). The full Pbg4Parser class lives
 // across FUN_0045ef00 (decompress), FUN_0045fb50 (archive open), FUN_0045fde0
-// (entry table build) — those are large bitstream codecs not yet ported.
+// (entry table build)  those are large bitstream codecs not yet ported.
 //
 // Globals:
 //   DAT_004b7e40 = LZSS dictionary (0x2000 bytes)
-//   DAT_0049fe30 = node table (0x2001 entries × 0xc bytes)
+//   DAT_0049fe30 = node table (0x2001 entries  0xc bytes)
 
 #include "diffbuild.hpp"
 #include "inttypes.hpp"
@@ -18,7 +18,7 @@ namespace th07
 // slots" used for objdiff reloc hacking). They are declared extern here
 // because the owning TU (the full Pbg4 archive codec) is not yet reversed;
 // the linker provides zero-filled storage via the normal-build stub until
-// the real definitions land. See AGENTS.md §2 for the distinction.
+// the real definitions land. See AGENTS.md 2 for the distinction.
 extern "C" u8 g_Pbg4Dict[0x2000];        // DAT_004b7e40 (LZSS dictionary)
 extern "C" u8 g_Pbg4Nodes[0x2001 * 0xc]; // DAT_0049fe30 (LZSS node table)
 

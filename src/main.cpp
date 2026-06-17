@@ -44,7 +44,7 @@ extern "C" i32 __fastcall Supervisor_RunSession();        // FUN_004346e0 (per-f
 extern "C" void __fastcall Supervisor_Teardown();         // FUN_00433e90 (cleanup)
 }
 
-// WinMain — entry point for /subsystem:windows. The MSVC CRT startup code
+// WinMain  entry point for /subsystem:windows. The MSVC CRT startup code
 // parses the command line and calls here with the standard 4 args.
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {

@@ -2,7 +2,7 @@
 //
 // Static player-fire bullet data tables for th07.
 //
-// LOW-CONFIDENCE MODULE — DO NOT TRUST VALUES.
+// LOW-CONFIDENCE MODULE  DO NOT TRUST VALUES.
 //
 // Verified facts (from Ghidra reading th07.exe):
 //   * config/globals.csv addresses for g_CharacterPowerBulletData* are PORTED

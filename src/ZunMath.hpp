@@ -57,7 +57,7 @@ ZUN_ASSERT_SIZE(ZunVec3, 0xC);
 
 // Compute sine and cosine of `in` simultaneously. orig used the x87 fsincos
 // instruction; the th07 reimplementation uses the standard C library which is
-// portable. (No current caller in the project — kept available for future use.)
+// portable. (No current caller in the project  kept available for future use.)
 #define sincos(in, out_sine, out_cosine)                                                                                 \
     {                                                                                                                    \
         *(out_sine) = sinf(in);                                                                                          \
