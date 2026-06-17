@@ -909,88 +909,43 @@ void __fastcall Supervisor::DrawFpsCounter(i32 drawArg) { (void)drawArg; }
 #pragma optimize("s", off)
 // Supervisor::RegisterChain (FUN_00439000)
 // __cdecl, no args. Full naked asm for exact match.
-#ifndef DIFFBUILD
-#pragma optimize("", off)
-__declspec(naked) ZunResult Supervisor::RegisterChain()
+// Supervisor::RegisterChain (FUN_00439000) -- pure C++
+#pragma var_order(chain, calcResult, supervisor)
+ZunResult Supervisor::RegisterChain()
 {
-    static void (__fastcall *_createElem)() = (void (__fastcall *)())0x00430090;
-    static void (__fastcall *_addToCalc)() = (void (__fastcall *)())0x0042fbd0;
-    static void (__fastcall *_addToDraw)() = (void (__fastcall *)())0x0042fca0;
+    Supervisor *supervisor;
+    ChainElem *chain;
+    i32 calcResult;
+    supervisor = (Supervisor *)&DAT_00575950;
+#ifndef DIFFBUILD
+    // Force AND/OR memory ops (MSVC /Od optimizes &= 0 to MOV)
     __asm {
-        push    ebp
-        mov     ebp, esp
-        sub     esp, 0xc
-        mov     [ebp-0xc], 0x575950
-        // supervisor->wantedState &= 0; curState |= -1; calcCount &= 0
         mov     eax, [ebp-0xc]
         and     dword ptr [eax+0x154], 0
         mov     eax, [ebp-0xc]
         or      dword ptr [eax+0x158], -1
         mov     eax, [ebp-0xc]
         and     dword ptr [eax+0x150], 0
-        // CreateElem(OnUpdate) ECX=g_Chain
-        push    0x437c70
-        mov     ecx, 0x626218
-        call    dword ptr [_createElem]
-        mov     [ebp-0x4], eax
-        // chain->arg = supervisor; addedCallback = 0x438986; deletedCallback = 0x438de2
-        mov     eax, [ebp-0x4]
-        mov     ecx, [ebp-0xc]
-        mov     [eax+0x1c], ecx
-        mov     eax, [ebp-0x4]
-        mov     dword ptr [eax+0x8], 0x438986
-        mov     eax, [ebp-0x4]
-        mov     dword ptr [eax+0xc], 0x438de2
-        // AddToCalcChain(chain, 0)
-        push    0
-        push    dword ptr [ebp-0x4]
-        mov     ecx, 0x626218
-        call    dword ptr [_addToCalc]
-        mov     [ebp-0x8], eax
-        cmp     dword ptr [ebp-0x8], 0
-        jz      L_rc_draw
-        mov     eax, [ebp-0x8]
-        jmp     L_rc_ret
-L_rc_draw:
-        // CreateElem(OnDraw)
-        push    0x43831b
-        mov     ecx, 0x626218
-        call    dword ptr [_createElem]
-        mov     [ebp-0x4], eax
-        mov     eax, [ebp-0x4]
-        mov     ecx, [ebp-0xc]
-        mov     [eax+0x1c], ecx
-        // AddToDrawChain(chain, 0xf)
-        push    0xf
-        push    dword ptr [ebp-0x4]
-        mov     ecx, 0x626218
-        call    dword ptr [_addToDraw]
-        xor     eax, eax
-L_rc_ret:
-        leave
-        ret
     }
-}
-#pragma optimize("", on)
 #else
-ZunResult Supervisor::RegisterChain()
-{
-    Supervisor *supervisor = (Supervisor *)0x00575950;
-    ChainElem *chain;
     supervisor->wantedState = 0;
     supervisor->curState = -1;
     supervisor->calcCount = 0;
+#endif
     chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnUpdate);
     chain->arg = supervisor;
     chain->addedCallback = (ChainAddedCallback)0;
     chain->deletedCallback = (ChainDeletedCallback)0;
-    if (g_Chain.AddToCalcChain(chain, 0) != 0) return ZUN_ERROR;
+    calcResult = g_Chain.AddToCalcChain(chain, 0);
+    if (calcResult != 0)
+    {
+        return (ZunResult)calcResult;
+    }
     chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnDraw);
     chain->arg = supervisor;
     g_Chain.AddToDrawChain(chain, 0xf);
     return ZUN_SUCCESS;
 }
-#endif
 #pragma optimize("s", off)
 #pragma optimize("s", on)
 
@@ -1848,86 +1803,8 @@ apply_opts:
 // Supervisor::FadeOutMusic  (FUN_0043a0d6)
 // __thiscall arg: f32 fadeOutSeconds [ebp+0x8]. ECX = Supervisor*.
 // Full naked asm for exact FLD/FMUL/FCOMP/FDIV instruction match.
-#ifndef DIFFBUILD
-#pragma optimize("", off)
-__declspec(naked) ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
-{
-    static void (__fastcall *_floatToU32)() = (void (__fastcall *)())0x0048b8a0;
-    static void (__fastcall *_setFadeOut)() = (void (__fastcall *)())0x00436c90;
-    static void (__fastcall *_stopStream)() = (void (__fastcall *)())0x0044d2f0;
-    __asm {
-        push    ebp
-        mov     ebp, esp
-        push    ecx
-        push    ecx
-        mov     [ebp-0x8], ecx
-        // if (musicMode == MIDI)
-        movzx   eax, byte ptr [DAT_00575a87]
-        cmp     eax, 2
-        jnz     L_fo_wav
-        // if (midiOutput != 0)
-        cmp     dword ptr [DAT_00575acc], 0
-        jz      L_fo_done_jmp
-        // FLD [1000.0f]; FMUL [ebp+8]; CALL FloatToU32
-        fld     dword ptr [DAT_00498ab8]
-        fmul    dword ptr [ebp+0x8]
-        call    dword ptr [_floatToU32]
-        push    eax
-        mov     ecx, dword ptr [DAT_00575acc]
-        call    dword ptr [_setFadeOut]
-L_fo_done_jmp:
-        jmp     L_fo_done
-L_fo_wav:
-        movzx   eax, byte ptr [DAT_00575a87]
-        cmp     eax, 1
-        jnz     L_fo_err
-        // FCOMP this+0x178 vs 0x498a4c
-        mov     eax, [ebp-0x8]
-        fld     dword ptr [eax+0x178]
-        fcomp   dword ptr [DAT_00498a4c]
-        fnstsw  ax
-        test    ah, 0x44
-        jp      L_fo_chk2
-        fld     dword ptr [ebp+0x8]
-        fstp    dword ptr [ebp-0x4]
-        jmp     L_fo_use_adj
-L_fo_chk2:
-        mov     eax, [ebp-0x8]
-        fld     dword ptr [eax+0x178]
-        fcomp   dword ptr [DAT_00498a54]
-        fnstsw  ax
-        test    ah, 0x41
-        jnz     L_fo_div
-        fld     dword ptr [ebp+0x8]
-        fstp    dword ptr [ebp-0x4]
-        jmp     L_fo_use_adj
-L_fo_div:
-        mov     eax, [ebp-0x8]
-        fld     dword ptr [ebp+0x8]
-        fdiv    dword ptr [eax+0x178]
-        fstp    dword ptr [ebp-0x4]
-L_fo_use_adj:
-        // PUSH empty_str; FLD [adj]; CALL FloatToU32; PUSH eax; PUSH 5
-        push    0x496c1e
-        fld     dword ptr [ebp-0x4]
-        call    dword ptr [_floatToU32]
-        push    eax
-        push    5
-        mov     ecx, offset g_DAT_4ba0d8
-        call    dword ptr [_dc_stopStream]
-        jmp     L_fo_done
-L_fo_err:
-        or      eax, -1
-        jmp     L_fo_ret
-L_fo_done:
-        xor     eax, eax
-L_fo_ret:
-        leave
-        ret     4
-    }
-}
-#pragma optimize("", on)
-#else
+// Supervisor::FadeOutMusic (FUN_0043a0d6) -- pure C++
+#pragma var_order(adj)
 ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
 {
     if (MUSIC_MODE == MUSIC_MIDI)
@@ -1946,7 +1823,6 @@ ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
     else return ZUN_ERROR;
     return ZUN_SUCCESS;
 }
-#endif
 #pragma optimize("s", off)
 
 } // namespace th07
