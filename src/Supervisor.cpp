@@ -4,6 +4,7 @@
 
 #include "Supervisor.hpp"
 #include "AsciiManager.hpp"
+#include "AnmManager.hpp"
 #include "Chain.hpp"
 #include "GameErrorContext.hpp"
 #include "GameManager.hpp"
@@ -115,7 +116,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
     i32 cur1, cur5, cur2, cur6, cur8, cur9;
 
     // AnmManager per-frame reset.
-    anm = *(u8 **)0x004b9e44;
+    anm = (u8 *)g_AnmManager;
     anm[0x2e4d2] = 0xff;
     *(u32 *)(anm + 0x2e4d8) = 0;
     *(u32 *)(anm + 0x2e4cc) = 0;
@@ -129,8 +130,8 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
     anm[0x2e4d4] = 0xff;
     *(u32 *)(anm + 0x4) = 0;
     *(u32 *)(anm + 0x0) = 0x80808080;
-    *(f32 *)(*(u8 **)0x004b9e44 + 0x1c) = 0.0f;
-    *(f32 *)(*(u8 **)0x004b9e44 + 0x18) = 0.0f;
+    *(f32 *)((u8 *)g_AnmManager + 0x1c) = 0.0f;
+    *(f32 *)((u8 *)g_AnmManager + 0x18) = 0.0f;
     *(u8 *)0x00575c0c = 0xff;
     if (*(void **)0x004bda94 != 0)
     {
@@ -139,29 +140,29 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
 
     if (*(i8 *)0x0062627d == 0)
     {
-        *(u16 *)0x004b9e54 = *(u16 *)0x004b9e4c;
-        *(u16 *)0x004b9e4c = Controller_GetInput();
-        *(u16 *)0x004b9e5c = 0;
-        if (*(u16 *)0x004b9e54 == *(u16 *)0x004b9e4c)
+        g_LastFrameInput = g_CurFrameInput;
+        g_CurFrameInput = Controller_GetInput();
+        g_IsEigthFrameOfHeldInput = 0;
+        if (g_LastFrameInput == g_CurFrameInput)
         {
-            if (0x1e <= *(u16 *)0x004b9e60)
+            if (0x1e <= g_NumOfFramesInputsWereHeld)
             {
-                *(u16 *)0x004b9e5c = (u16)(*(u16 *)0x004b9e60 % 8 == 0);
-                if (0x26 < *(u16 *)0x004b9e60)
+                g_IsEigthFrameOfHeldInput = (u16)(g_NumOfFramesInputsWereHeld % 8 == 0);
+                if (0x26 < g_NumOfFramesInputsWereHeld)
                 {
-                    *(u16 *)0x004b9e60 = 0x1e;
+                    g_NumOfFramesInputsWereHeld = 0x1e;
                 }
             }
-            *(u16 *)0x004b9e60 = *(u16 *)0x004b9e60 + 1;
+            g_NumOfFramesInputsWereHeld = g_NumOfFramesInputsWereHeld + 1;
         }
         else
         {
-            *(u16 *)0x004b9e60 = 0;
+            g_NumOfFramesInputsWereHeld = 0;
         }
     }
     else
     {
-        *(u16 *)0x004b9e4c = *(u16 *)0x004b9e4c | Controller_GetInput();
+        g_CurFrameInput = g_CurFrameInput | Controller_GetInput();
     }
 
     s->wantedState2 = s->wantedState;
@@ -313,9 +314,9 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             break;
         }
 
-        *(u16 *)0x004b9e5c = 0;
-        *(u16 *)0x004b9e54 = 0;
-        *(u16 *)0x004b9e4c = 0;
+        g_IsEigthFrameOfHeldInput = 0;
+        g_LastFrameInput = 0;
+        g_CurFrameInput = 0;
     }
 
     s->wantedState = s->curState;
