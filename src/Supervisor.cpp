@@ -352,18 +352,45 @@ struct D3DDeviceStub
 ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
 {
     i32 wanted, cur1, cur5, cur2, cur6, cur8, cur9;
-    { u8 *a0 = *(u8**)&DAT_004b9e44; a0[0x2e4d2] = 0xff; }
-    { u8 *a1 = *(u8**)&DAT_004b9e44; *(u32*)(a1+0x2e4d8) = 0; }
-    { u8 *a2 = *(u8**)&DAT_004b9e44; *(u32*)(a2+0x2e4cc) = 0; }
-    { u8 *a3 = *(u8**)&DAT_004b9e44; a3[0x2e4d1] = 0xff; }
-    { u8 *a4 = *(u8**)&DAT_004b9e44; a4[0x2e4d0] = 0xff; }
-    { u8 *a5 = *(u8**)&DAT_004b9e44; a5[0x2e4d3] = 0xff; }
-    { u8 *a6 = *(u8**)&DAT_004b9e44; *(u32*)(a6+0xc)=0; *(u32*)(a6+0x10)=0; *(u32*)(a6+0x8)=0; *(u32*)(a6+0x14)=0; }
-    { u8 *a7 = *(u8**)&DAT_004b9e44; a7[0x2e4d4] = 0xff; }
-    { u8 *a8 = *(u8**)&DAT_004b9e44; *(u32*)(a8+0x4)=0; *(u32*)(a8+0x0)=0x80808080; }
+#ifndef DIFFBUILD
+    // AnmMgr reset via inline asm with DAT_ externs for reloc matching.
+    // Uses 9 named locals that MSVC places at [ebp-0x4]..[ebp-0x24],
+    // matching orig's frame layout.
+    {
+        u8 *anm0 = *(u8**)&DAT_004b9e44; anm0[0x2e4d2] = 0xff;
+        u8 *anm1 = *(u8**)&DAT_004b9e44; *(u32*)(anm1+0x2e4d8) = 0;
+        u8 *anm2 = *(u8**)&DAT_004b9e44; *(u32*)(anm2+0x2e4cc) = 0;
+        u8 *anm3 = *(u8**)&DAT_004b9e44; anm3[0x2e4d1] = 0xff;
+        u8 *anm4 = *(u8**)&DAT_004b9e44; anm4[0x2e4d0] = 0xff;
+        u8 *anm5 = *(u8**)&DAT_004b9e44; anm5[0x2e4d3] = 0xff;
+        u8 *anm6 = *(u8**)&DAT_004b9e44; *(u32*)(anm6+0xc)=0; *(u32*)(anm6+0x10)=0; *(u32*)(anm6+0x8)=0; *(u32*)(anm6+0x14)=0;
+        u8 *anm7 = *(u8**)&DAT_004b9e44; anm7[0x2e4d4] = 0xff;
+        u8 *anm8 = *(u8**)&DAT_004b9e44; *(u32*)(anm8+0x4)=0; *(u32*)(anm8+0x0)=0x80808080;
+    }
     *(f32*)(*(u8**)&DAT_004b9e44 + 0x1c) = 0.0f;
     *(f32*)(*(u8**)&DAT_004b9e44 + 0x18) = 0.0f;
     *(u8*)&DAT_00575c0c = 0xff;
+#else
+    {
+        u8 *anm = *(u8 **)0x004b9e44;
+        anm[0x2e4d2] = 0xff;
+        *(u32 *)(anm + 0x2e4d8) = 0;
+        *(u32 *)(anm + 0x2e4cc) = 0;
+        anm[0x2e4d1] = 0xff;
+        anm[0x2e4d0] = 0xff;
+        anm[0x2e4d3] = 0xff;
+        *(u32 *)(anm + 0xc) = 0;
+        *(u32 *)(anm + 0x10) = 0;
+        *(u32 *)(anm + 0x8) = 0;
+        *(u32 *)(anm + 0x14) = 0;
+        anm[0x2e4d4] = 0xff;
+        *(u32 *)(anm + 0x4) = 0;
+        *(u32 *)(anm + 0x0) = 0x80808080;
+        *(f32 *)(anm + 0x1c) = 0.0f;
+        *(f32 *)(anm + 0x18) = 0.0f;
+    }
+    *(u8 *)0x00575c0c = 0xff;
+#endif
     if (*(void **)&DAT_004bda94 != 0)
     {
         CStreamingSound_UpdateFadeOut();
