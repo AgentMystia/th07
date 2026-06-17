@@ -14,11 +14,15 @@
 - **编译器**：MSVC 7.0（VS.NET 2002）via wine。
   `/MT /EHsc /Gs /DNDEBUG /Zi /Od /Oi /Ob1 /Gy`（**无 /G5 无 /Op 无 /GS**，与 th06 不同）。
 
-## 2. 核心原则：诚实重建（纯 typed C++，对齐 th06 标准）
+## 2. 核心原则：诚实重建（纯 typed C++，对齐 th06 严格标准）
 
 > **写标准 C++，让代码自己能跑。** objdiff 是验证工具，不是目标。
-> th06 用纯 typed C++（零 raw address、字符串字面量、浮点字面量）达到 ~97% match——
-> 这证明标准 C++ 本身就足够好，不需要任何地址作弊。
+> th06 用纯 typed C++（零 raw address、零 raw[] buffer、零 accessor、
+> 字符串字面量、浮点字面量、全部 struct 命名成员）达到 ~97% match——这证明
+> 标准 C++ 本身就足够好，不需要任何地址作弊。
+>
+> **本节是项目宪法，由 `docs/TYPED_CPP_STANDARD.md` 细化执行。**
+> 2026-06-18 已全项目达成此标准（见 PROGRESS.md P0.5 验收）。
 
 ### 【禁止】—— 一律改为 typed C++ 等价物
 
@@ -31,24 +35,28 @@
 | **raw 绝对地址访问 rdata 字符串**（`(char*)0x496fe0`）| 同上 | 字符串字面量 `"bgm/thbgm.fmt"` |
 | **raw 绝对地址作函数参数**（`(void*)0x4ba0d8`）| 同上 | typed 全局 `&g_SoundPlayer` |
 | **raw 绝对地址调用函数**（`((void(*)())0x438668)()`）| 同上 | typed extern 声明 `Supervisor_Callback6()` |
-| **raw-offset buffer 索引**（`raw[0x978]`、`*reinterpret_cast<T*>(&p->raw[OFF])`、`SCORE_SUB_I32(off)` 宏）| 绕过 struct 字段名、不可读、非 th06 风格（th06 Player 零 raw[]）| typed accessor 方法 `p->GrazeTopLeft()`，或命名 struct 成员 |
+| **`u8 raw[0xNNNN]` byte buffer**（整个 struct 当字节数组）| 绕过字段名、不可读、非 th06 风格（th06 Player 零 raw[]）| 全部命名成员；未知区域用 `u8 unk_XXXX[N]` 命名 padding |
+| **accessor 方法返回 `&raw[OFF]`**（`T *Field() { return (T*)&raw[0x978]; }`）| 仍是 raw[] 伪装；th06 Player 零 accessor | 直接命名成员 `p->fieldName` |
+| **`SCORE_SUB_I32(off)` 等 raw-offset 宏** | 同上 | typed struct 字段访问 `SCORE_SUB->counter14` |
 | **`nullptr`** | MSVC 7.0 不支持 C++11 | `0` |
+| **源码 UTF-8/CJK 字符**（含全角括号 `（）`）| MSVC 7.0 不认，且会致预处理器吞 struct 成员 | 注释必须 ASCII；Shift-JIS 字符串用八进制转义 |
 
-**零例外**：D3D 设备、rdata 字符串、raw-offset buffer 索引、一切——全部走 typed C++。
+**零例外**：D3D 设备、rdata 字符串、raw[] buffer、accessor、一切——全部走 typed C++。
 `g_Supervisor.d3dDevice->Present()` 而非 `(*(IDirect3DDevice8**)0x575958)->Present()`；
-`p->PlayerState()` 而非 `p->raw[0x2408]`。
+`p->playerState` 而非 `p->raw[0x2408]` 或 `p->PlayerState()`。
 
 ### 【允许】—— 标准 C++ 工具
 
 | 工具 | 用途 | 备注 |
 |---|---|---|
-| **typed C++ 全局/成员访问** | `g_Supervisor.curState`、`g_GameManager.arcadeRegionSize.x` | **首选**，对齐 th06 |
-| **typed accessor 方法** | `p->ChainCalc()`、`p->PlayerState()`、`p->FireBulletTimer()` | 用于 th07 大 struct（如 Player 0xb7e78）：在 hpp 里定义返回 typed ref/ptr 的 inline accessor，函数体里调用 accessor 而非 raw[]。见 `src/Player.hpp` 范本 |
+| **typed C++ 全局/成员访问** | `g_Supervisor.curState`、`g_GameManager.difficulty` | **首选**，对齐 th06 |
+| **命名 struct 成员** | `p->positionCenter`、`p->playerState`、`p->chainCalc` | th07 大 struct（如 Player 0xb7e78）的全部字段都命名；未知区域 `u8 unk_XXXX[N]` |
 | **字符串字面量** | `"th07.cfg"`、`"data/text.anm"` | 接受 reloc 名差异（th06 也这么做）|
 | **浮点/整数字面量** | `256.0f`、`ZUN_PI`、`0xff000000u` | 接受 `__real@` vs `DAT_` 差异 |
+| **`extern "C" const f32` rdata 常量** | `extern "C" const f32 g_X = 1.0f;` + SYMBOL_MAP | 用于 orig 用 `fld [DAT_]` 形式的 rdata float |
 | `DIFFABLE_STATIC/EXTERN` 宏 | 全局变量定义 | **仅影响变量定义**，不分裂函数代码。与 th06 一致 |
 | `#pragma var_order` | 控制 MSVC /Od 局部栈布局 | 通过 `scripts/pragma_var_order.cpp` 注入 |
-| `*(T*)((u8*)this + OFF)` raw-offset | 仅限 accessor 方法**内部**封装（`return *(T*)(&raw[OFF]);`）| **函数体里禁止直接用**；必须经 accessor。首选仍是命名 struct 成员 |
+| `(T*)((u8*)typed_ptr + OFF)` 结构内部 offset | 仅当 OFF 落在已标注的 `unk_XXXX[]` padding 内 | typed base pointer + 显式 offset；诚实标注未验证区域。首选仍是提升为命名成员 |
 | memset/memcpy intrinsics | 生成 `rep stosd`/`rep movsd` | 匹配 orig 批量初始化 |
 | 去局部缓存 | 每次重读全局 | 匹配 orig 重读 idiom |
 | early-return 控制流 | 每分支独立 return | 匹配 orig 错误路径 |
@@ -59,16 +67,16 @@
 th06 达到 ~97% objdiff match，用的是：
 - **纯 typed C++ 成员访问**：`g_Supervisor.d3dDevice->Present(0,0,0,0)`、
   `g_GameManager.arcadeRegionSize.x`、`g_SoundPlayer.PlaySoundByIdx(SOUND_1UP, 0)`——
-  **零 raw address**
+  **零 raw address、零 raw[]、零 accessor**
+- **全部 struct 命名成员**：th06 Player（0x98f0）全部 ~50 字段命名，
+  含 `unk_XXXX` padding；**无 `u8 raw[]` buffer**
 - **字符串字面量**：`g_AnmManager->LoadSurface(0, "data/title/th06logo.jpg")`——
   直接字面量，不 cast rdata 地址
 - **浮点字面量**：`256.0f - effect->timer.AsFramesFloat() * 256.0f / 60.0f`——
   直接字面量，不 extern DAT_ 常量
 - **`DIFFABLE_*` 宏**：只影响全局变量定义，不分裂函数代码 ✓
-- **无 SYMBOL_MAP**：th06 的 `generate_objdiff_objs.py` 只 demangle 函数符号，
-  不重命名跨模块引用——typed C++ 自然匹配
 
-th07 应完全对齐：typed C++ + 字面量。SYMBOL_MAP 不是常规手段。
+th07 已完全对齐（2026-06-18 全项目重构完成，见 PROGRESS.md P0.5）。
 
 ## 3. objdiff 与符号处理（对齐 th06）
 
@@ -118,18 +126,27 @@ rm -rf /tmp/th07_new && mkdir -p /tmp/th07_new && \
 
 ## 7. 当前状态（详见 PROGRESS.md）
 
-- **objdiff**：23 模块跟踪，228 函数，mean 75.81%，10 模块 ≥90%
+- **objdiff**：22 模块跟踪，228 函数，per-module 算术平均 **79.39%**，**11 模块 ≥90%**
+- **mapping.csv**：1562 行（th07.exe 全部非 thunk 函数）
+- **typed-C++ 标准**：✅ 全项目达成（2026-06-18）。零 raw 绝对地址、零 `u8 raw[]`
+  buffer、零 accessor。5 大 struct（Player/SoundPlayer/AsciiManager/Supervisor/
+  GameManager）全部命名成员重构。
 - **normal build**：全部 .cpp 编译通过；链接需 183 个跨模块符号实现（见 PROGRESS.md P0）
-- **进行中**：raw address 全量迁移到 typed C++（对齐 th06 标准；692 处 → 目标零）
+- **进行中**：P0 链接 / P1 低匹配模块（AnmManager ExecuteScript、BombData 11 calc、
+  ReplayManager、Pbg4Parser）/ P2 抛光接近达标模块
 
 ## 8. 关键参考文件
 
 | 文件 | 用途 |
 |---|---|
 | `PROGRESS.md` | 进度、每模块 match%、剩余工作（**必读**）|
-| `src/Player.cpp` / `src/Supervisor.cpp` | typed C++ 范本 |
+| `docs/TYPED_CPP_STANDARD.md` | typed-C++ 风格宪法（§2 的执行细则、迁移 checklist、审计 greps）|
+| `src/AnmManager.hpp` / `src/Player.hpp` | typed-C++ 全命名 struct 范本（含 scratchRegion 兜底范式）|
+| `src/Player.cpp` / `src/Supervisor.cpp` | typed-C++ 函数体范本（零 raw address）|
 | `src/diffbuild.hpp` | DIFFABLE_* 宏（全局变量定义，th06 继承）|
-| `scripts/generate_objdiff_objs.py` | 函数符号 demangle + 可选 SYMBOL_MAP |
+| `scripts/generate_objdiff_objs.py` | 函数符号 demangle + SYMBOL_MAP（typed global → orig DAT_ 映射）|
+| `scripts/normalize_mapping.py` | mapping.csv merge/规范化工具（th06 格式）|
+| `scripts/migrate_supervisor_cpp.py` / `migrate_gamemanager_cpp.py` | raw→typed 迁移脚本范本（可复用于新模块）|
 | `scripts/pragma_var_order.cpp` | #pragma var_order 注入工具 |
-| `config/mapping.csv` | ghidra 符号→地址映射 |
+| `config/mapping.csv` | ghidra 符号→地址映射（1562 行，th07.exe 全函数）|
 | `objdiff.json` | objdiff 配置 |

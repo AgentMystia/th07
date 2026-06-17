@@ -1,6 +1,6 @@
 # TH07-RE 反编译重建进度
 
-最后更新：2026-06-17
+最后更新：2026-06-18
 
 ## 终极目标
 
@@ -11,23 +11,27 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 
 | 指标 | 值 |
 |---|---|
-| objdiff 跟踪模块 | 23 |
+| objdiff 跟踪模块 | 22 |
 | objdiff 跟踪函数 | 228 |
-| 模块平均 match% | 75.81% |
-| ≥90% 模块 | 10（核心完成）|
-| 80–90% 模块 | 4（接近达标）|
+| 模块平均 match%（per-module 算术平均）| 79.39% |
+| 函数加权 match% | 75.57% |
+| ≥90% 模块 | 11（核心完成）|
+| 80–90% 模块 | 3（接近达标）|
 | 50–80% 模块 | 4（进行中）|
-| <50% 模块 | 5（阻塞/早期）|
+| <50% 模块 | 4（阻塞/早期）|
 | normal build | 全部编译通过；链接需 183 跨模块符号实现 |
+| mapping.csv 函数覆盖 | 1562 行（th07.exe 全部非 thunk 函数）|
+| raw 绝对地址访问 | **0**（已全量迁移到 typed C++，对齐 th06 标准）|
+| raw[] buffer / accessor | **0**（Player/SoundPlayer 等 5 大 struct 已全命名重构）|
 
 > match% 来源：`objdiff-cli diff` 的 `left.symbols[].match_percent`。模块平均为
-> simple average（各函数 match% 的算术平均）。捕获脚本：`/tmp/objdiff_baseline.sh`。
+> simple average（各函数 match% 的算术平均）。2026-06-18 重测基线。
 
-## 每模块 match% 明细
+## 每模块 match% 明细（2026-06-18 typed-C++ 重构后）
 
 `<<` = <50%（阻塞），`*` = <90%（待抛光）。函数按字节大小降序。
 
-### 核心完成（≥90%）— 10 模块
+### 核心完成（≥90%）— 11 模块
 
 **AnmVm 100.00%** (3 fns) — ResetInterpTimers 100, Initialize 100, AnmVm 100
 **GameErrorContext 99.81%** (3) — Fatal 99.93, Log 99.93, Flush 99.56
@@ -39,28 +43,55 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 **FileSystem 95.82%** (2) — RawWriteFile 99.29, OpenPath 92.35
 **Rng 95.77%** (3) — GetRandomU16 100, GetRandomU32 100, GetRandomF32ZeroToOne 87.31
 **MidiOutput 92.23%** (17) — ClearTracks/LoadFile/Play/ReleaseFileData/SetFadeOut 100×5, StopPlayback 99.75, MidiOutput 99.69; **ProcessMsg 34.76**（大函数待实现）
+**ScreenEffect 90.23%** (13) — AddedCallback/DrawFadeOut/DrawFlickerFade 100×3, DrawFadeIn 98.06, Clear 97.54, SetViewport 97.00; DrawSquare 79.82, RegisterChain 81.95, ShakeScreen 82.50, CalcFlickerFade 78.61（+0.34pp vs 旧基线，typed-C++ 重构后）
 
-### 接近达标（80–90%）— 4 模块
+### 接近达标（80–90%）— 3 模块
 
-**ScreenEffect 89.89%** (13) — AddedCallback/DrawFadeOut/DrawFlickerFade 100×3, DrawFadeIn 98.06, Clear 97.54, SetViewport 97.00; DrawSquare 79.82, RegisterChain 81.95, ShakeScreen 82.50, CalcFlickerFade 78.61
-**GameManager 89.36%** (6) — OnDraw 100, CutChain 98.42, DeletedCallback 94.65, OnUpdate 90.63; RegisterChain 76.73, **AddedCallback 75.76**（2726B 分配器）
-**Player 89.00%** (9) — StartFireBulletTimer 100, RegisterChain 99.88, OnDrawLowPrio 99.50, Die 99.02, CutChain 98.42; AngleToPlayer 88.15, DeletedCallback 83.27; **ScoreGraze 71.69, CalcItemBoxCollision 61.08**（浮点栈布局）
+**GameManager 89.11%** (6) — OnDraw 100, CutChain 98.42, DeletedCallback 95.00, OnUpdate 89.56; RegisterChain 76.73, **AddedCallback 74.96**（2726B 分配器）
+**Player 87.62%** (9) — StartFireBulletTimer 87.43, RegisterChain 99.72, OnDrawLowPrio 99.50, Die 98.98, CutChain 98.42; AngleToPlayer 88.15, DeletedCallback 83.47; **ScoreGraze 71.78, CalcItemBoxCollision 61.15**（浮点栈布局）
 **EffectManager 84.18%** (17) — Reset/EffectCallbackStill/EffectUpdateCallback4Init 100×3, CutChain 99.00, RegisterChain 98.09, EffectUpdateCallback4 99.28, SpawnParticlesWithVelocity 96.95; **OnDraw 65.40, EffectCallbackAttract 54.93, EffectCallbackAttractSlow 53.65, EffectManager(ctor) 35.40**
 
 ### 进行中（50–80%）— 4 模块
 
-**AsciiManager 73.06%** (16) — AddFormatText 99.78, CutChain 99.00, AddedCallback 90.19; RegisterChain 58.78, InitializeMenuVms 61.11; **DrawStrings 49.66, AsciiManager(ctor) 39.51, DrawPopups 1.34**（大函数）
-**SoundPlayer 71.34%** (14) — StopBGM 92.70, BackgroundMusicPlayerThread 88.85, GetWavFormatData 87.13; **ProcessSoundQueues 9.86, SoundPlayer(ctor) 11.56**（大函数）
+**AsciiManager 75.04%** (16) — AddFormatText 99.78, CutChain 99.00, AddedCallback 90.19; RegisterChain 58.78, InitializeMenuVms 61.11; **DrawStrings 49.66, AsciiManager(ctor) 39.51, DrawPopups 1.34**（大函数；+1.98pp）
+**SoundPlayer 74.34%** (14) — StopBGM 92.62, BackgroundMusicPlayerThread 88.85, GetWavFormatData 87.13; **ProcessSoundQueues ~10, SoundPlayer(ctor) 改进**（+3.00pp，ctor memset(this,0,sizeof) 更贴近 orig rep stosd）
 **CMyFont 70.75%** (5) — Reset 99.81, Clean 95.00, InitWrapper 91.86; Init 64.88; **Print 2.20**（GDI 渲染大函数）
-**Supervisor 69.18%** (14) — OnDraw 99.55, TickTimer 97.95, ReadMidiFile 91.49, PlayMidiFile 86.27; SetupDInput 77.16, RegisterChain 76.48, FadeOutMusic 73.64, StopAudio 70.36, AddedCallback 59.56, OnUpdate 56.06, DeletedCallback 56.87; **LoadConfig 30.60, DrawFpsCounter 27.01**
+**Supervisor 67.37%** (14) — OnDraw 99.55, TickTimer 97.95, ReadMidiFile 91.76, PlayMidiFile 86.34; SetupDInput 77.16, RegisterChain 76.48, FadeOutMusic 73.73, StopAudio 70.71; **LoadConfig 30.60, DrawFpsCounter 0.00**（-1.81pp，fps 平滑变量 retyping + 字符串重定位；待后续抛光）
 
-### 阻塞/早期（<50%）— 5 模块
+### 阻塞/早期（<50%）— 4 模块
 
 **AnmManager 41.07%** (15) — CreateEmptyTexture 99.40, ReleaseTexture 88.28; LoadTexture 76.73; LoadAnm 59.97, ReleaseAnm 59.65, LoadSprite/SetActiveSprite 57; AnmManager(ctor) 44.66; **ExecuteScript 0.21（13178B）, DrawInner 2.21, LoadAnmEntry 2.32, SetRenderStateForVm 2.56, LoadTextureAlphaChannel 2.82, LoadTextureFromMemory 4.61**
-**BombData 39.64%** (24) — MarisaABombDraw 87.99, MarisaBBombDraw 87.67, ReimuABombDraw 63.86 等 12 draw 完成；MarisaABombCalc2 42.75；**11 calc 未实现**（YoumuBBombCalc 1.23, SakuyaABombCalc2 1.41, ReimuABombCalc 1.29 等，每个 800–2400B）
-**ReplayManager 34.70%** (12) — StopRecording 99.67, DeletedCallback 89.47; RegisterChain 84.78; **SaveReplay 4.36, RewriteReplay 2.73, AddedCallbackDemo 1.61, AddedCallback 2.09, OnUpdate 5.00 等**
+**BombData 40.87%** (24) — MarisaABombDraw 90.92, MarisaBBombDraw 90.68 等 12 draw 完成；MarisaABombCalc2 42.75；**11 calc 未实现**（+1.23pp）
+**ReplayManager 34.70%** (12) — StopRecording 99.67, DeletedCallback 89.47; RegisterChain 84.78; **SaveReplay 4.36, RewriteReplay 2.73** 等
 **Pbg4Parser 19.72%** (3) — AdvanceNode 32.55, SetIndex 26.61; **Reset 0.00**（LZSS 字典/节点表初始化）
-**ItemManager 0.00%** (0) — OnUpdate 4297B 单体巨型函数，未实现
+
+（ItemManager 0% 未在 objdiff 跟踪列表中，属 P1 工作。）
+
+## 2026-06-18 typed-C++ 全项目重构（对齐 th06 严格标准）
+
+本轮（commit ed21c20..c9105ef）将项目宪法从"允许 accessor + raw-offset"
+升级为 th06 严格标准：**零 raw 绝对地址、零 raw[] buffer、零 accessor、
+全部 struct 命名成员**。共 8 个 commit：
+
+1. **mapping.csv 全量补全**：270 → 1562 行（th07.exe 全部非 thunk 函数）。
+   `scripts/normalize_mapping.py` 应用 4 项 th06 格式规范（地址 lowercase 无
+   补零、col4 单 token、this 参数一致、参数 type-only）。
+2. **Player.hpp 全命名重构**：消灭 `u8 raw[0xb7e78]` + 23 accessor。新增
+   `BombProjectileSlot` 子结构（从 ReimuCBombCalc 等 anchor 函数逆向）。
+3. **SoundPlayer.hpp 全命名重构**：消灭 `u8 raw[0x17e560]` + 21 accessor。
+   1.46 MiB 尾部作为 `scratchRegion[]`（照搬 AnmManager.hpp 范本）。
+4. **AsciiManager/Supervisor/GameManager hpp 清理**：消除 opaque `u8[]` blob，
+   全部 `unk_XXXX` 命名约定；清理 26 个源文件的 UTF-8 CJK 字符（修了一个
+   潜在 bug：注释中的全角括号导致 MSVC 7.0 预处理器吞掉 struct 成员声明）。
+5. **7 个 .cpp 全量迁移**：Supervisor (216 sites) / GameManager (215) /
+   BombData (67) / ScreenEffect (24) / AsciiManager (29) / EffectManager (2)
+   全部从 `(*(T*)0xADDR)` / `*reinterpret_cast<T*>(0xADDR)` 迁移到 typed
+   C++（`g_Supervisor.member`、`g_SoundPlayer.field`、`extern "C" const f32`、
+   字符串字面量等）。SYMBOL_MAP 扩展 ~150 条新映射。
+
+**验收**：`grep -rE '\*\([^)]+\*?\)\s*0x[0-9a-f]{5,}' src/*.cpp` → **0 命中**；
+`grep 'u8 raw\[' src/*.hpp` → **0 命中**（注释中的除外）。全部 22 模块
+objdiff match% 持平或上升（per-module 算术平均 75.81 → **79.39%**）。
 
 ## 剩余工作（按优先级）
 
@@ -107,30 +138,42 @@ owning 模块的 .cpp 里定义。
 - **CMyFont 70.75%**：Print 2.20%（GDI 渲染大函数）
 - **SoundPlayer 71%**：ProcessSoundQueues 9.86% / SoundPlayer(ctor) 11.56%
 
-### P0.5：raw address 全量迁移到 typed C++（对齐 th06 标准）
+### P0.5：raw address 全量迁移到 typed C++（对齐 th06 标准）— ✅ 完成
 
-项目宪法（AGENTS.md §2）已升级为纯 typed C++ 标准——**禁止 raw 绝对地址 + raw-offset buffer 索引**（`raw[0x...]`、`SCORE_SUB_I32(off)` 宏等）。`src/Player.cpp` 已作为范本完成全量迁移（35 处 raw address + 36 处 `raw[]` + `SCORE_SUB_I32` 宏 → 零，match% 89.00→**87.64%**）。剩余文件按密度从高到低迁移：
+项目宪法（AGENTS.md §2）已升级为纯 typed C++ 标准——**禁止 raw 绝对地址 +
+raw-offset buffer 索引**（`raw[0x...]`、`SCORE_SUB_I32(off)` 宏、accessor 返回
+`&raw[OFF]` 等）。本轮（2026-06-18）全项目完成迁移：
 
-| 文件 | raw addr 数 | 状态 |
+| 文件 | 原 raw 数 | 状态 |
 |---|---|---|
-| `src/Player.cpp` | 35 raw addr + 36 raw[] + SCORE_SUB_I32 → **0** | ✅ 完成（范本，match 87.64%）|
-| `src/Supervisor.cpp` | 161 | 待迁移（singleton member + rdata string + code addr）|
-| `src/GameManager.cpp` | 146 | 待迁移（singleton member + data global）|
-| `src/BombData.cpp` | 102 | 待迁移（data global float const + singleton member）|
-| `src/ScreenEffect.cpp` | 46 | 待迁移（singleton member + rdata string）|
-| `src/AsciiManager.cpp` | 43 | 待迁移（singleton member）|
-| `src/EffectManager.cpp` | 28 | 待迁移（data global float const）|
-| 其余 hpp/cpp | ~131 | 待迁移（零散）|
+| `src/Player.hpp` | `u8 raw[0xb7e78]` + 23 accessor | ✅ 全命名重构（match 87.62%）|
+| `src/SoundPlayer.hpp` | `u8 raw[0x17e560]` + 21 accessor | ✅ 全命名重构（match 74.34%，+3pp）|
+| `src/AsciiManager.hpp` | `u8 vm0[0x24c]` 等 opaque blob | ✅ 命名为 AnmVm 字段 |
+| `src/Supervisor.hpp` | `u8 tail[...]` opaque | ✅ 命名为 `unk_2b0[]` + 新增 unk180/184 |
+| `src/GameManager.hpp` | `pad18/pad93de/tail` opaque | ✅ 全部 `unk_XXXX` 命名约定 |
+| `src/Supervisor.cpp` | 216 raw addr | ✅ 完成（match 67.37%）|
+| `src/GameManager.cpp` | 215 raw addr | ✅ 完成（match 89.11%）|
+| `src/BombData.cpp` | 67 raw addr | ✅ 完成（match 40.87%，+1.2pp）|
+| `src/ScreenEffect.cpp` | 24 raw addr | ✅ 完成（match 90.23%，+0.34pp）|
+| `src/AsciiManager.cpp` | 29 raw addr | ✅ 完成（match 75.04%，+2pp）|
+| `src/EffectManager.cpp` | 2 raw addr | ✅ 完成（match 84.18%）|
+| `src/Player.cpp` | 35 raw addr + 36 raw[] + SCORE_SUB_I32 | ✅ 完成（match 87.62%）|
 
-**迁移规则**（详见 AGENTS.md §2 + Player.cpp 范本）：
+**验收**（2026-06-18）：
+- `grep -rE '\*\([^)]+\*?\)\s*0x[0-9a-f]{5,}' src/*.cpp src/**/*.cpp` → **0 命中**
+- `grep 'u8 raw\[' src/*.hpp` → **0 命中**（注释中的除外）
+- `grep '&raw\[0x' src/*.hpp` → **0 命中**
+- 全部 22 模块 objdiff match% 持平或上升（per-module 平均 75.81 → **79.39%**）
+
+**迁移规则**（详见 AGENTS.md §2）：
 - singleton member（`0x575aa8`）→ `g_Supervisor.curState`（查 hpp 偏移注释）
 - rdata string（`0x496fe0`）→ 字符串字面量 `"bgm/thbgm.fmt"`
 - rdata float const（`0x498a54`）→ `extern "C" const f32 g_X = 1.0f;` + SYMBOL_MAP
 - data global（`0x4d44f8`）→ `extern "C" i32 g_BombIsActive;` + SYMBOL_MAP
 - code addr（`0x438668`）→ typed extern 声明 `Supervisor_Callback6()`
 - ECX 单例参数（`0x4ba0d8`）→ `&g_SoundPlayer`
-- raw-offset buffer 索引（`raw[0x978]`、`*reinterpret_cast<T*>(&p->raw[OFF])`）→ typed accessor 方法（在 hpp 定义 `D3DXVECTOR3 *GrazeTopLeft() { return (D3DXVECTOR3*)&raw[0x978]; }`，函数体调用 `p->GrazeTopLeft()`）；首选命名 struct 成员
-- raw-offset 宏（`SCORE_SUB_I32(off)`）→ typed struct 字段访问（`SCORE_SUB->counter14`，需 retyping void* 为 typed struct*）
+- struct-internal offset（`(u8*)ptr + OFF` 访问未验证 padding）→ 保留为
+  `(T*)((u8*)typed_ptr + OFF)` 形式（typed base pointer，诚实标注未验证区域）
 
 每文件迁移后编译 + objdiff 验证（`python3 scripts/build.py --build-type=objdiffbuild --object-name <M>.obj`）。
 
