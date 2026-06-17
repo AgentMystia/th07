@@ -1,31 +1,12 @@
 // Supervisor module for th07 (Perfect Cherry Blossom).
-//
-// Source of truth: th07.exe read via ghidra. Every address/offset used below
-// was verified against the binary. Plain C++ so it ports cleanly to the SDL2
-// build; orig (DIFFBUILD) addresses are confined to #ifdef DIFFBUILD macros.
-//
-// Function addresses (verified from ghidra):
-//   Supervisor::RegisterChain   FUN_00439000  __cdecl  no args
-//   Supervisor::OnUpdate        FUN_00437c70  __fastcall ECX=Supervisor*
-//   Supervisor::OnDraw          FUN_0043831b  __fastcall ECX=Supervisor*
-//   Supervisor::AddedCallback   FUN_00438986  __fastcall ECX=Supervisor*
-//   Supervisor::DeletedCallback FUN_00438de2  __fastcall ECX=Supervisor*
-//   Supervisor::DrawFpsCounter  FUN_004390a5  __fastcall arg: i32 drawArg
-//   Supervisor::TickTimer       FUN_0043958d  __thiscall args: i32*, f32*
-//   Supervisor::SetupDInput     FUN_004383d8  __fastcall ECX=Supervisor*
-//   Supervisor::LoadConfig      FUN_004398b6  __thiscall arg: char*
-//   Supervisor::PlayAudio       FUN_00439dd0  __fastcall args: i32, char*
-//   Supervisor::StopAudio       FUN_00439ec1  __thiscall arg: i32
-//   Supervisor::PlayMidiFile    FUN_00439f4d  __fastcall arg: char*
-//   Supervisor::FadeOutMusic    FUN_0043a0d6  __thiscall arg: f32
-//   Supervisor::ReadMidiFile    FUN_0043a05f  __fastcall arg: u32
+// Pure C++ following th06 pattern. NO naked asm, NO #ifndef DIFFBUILD splits.
+// #pragma var_order used for stack layout matching.
 
 #include "Supervisor.hpp"
 #include "AsciiManager.hpp"
-#include "GameManager.hpp"
-
 #include "Chain.hpp"
 #include "GameErrorContext.hpp"
+#include "GameManager.hpp"
 #include "ZunResult.hpp"
 #include "diffbuild.hpp"
 #include "inttypes.hpp"
@@ -37,6 +18,56 @@
 #include <stdio.h>
 #include <string.h>
 
+// Forward-declared classes for modules without headers yet.
+struct MainMenu { static ZunResult RegisterChain(i32 b); };
+struct MusicRoom { static ZunResult RegisterChain(i32 b); };
+struct Ending { static ZunResult RegisterChain(); };
+struct ReplayManager { static void SaveReplay(char *a, char *b); };
+
+// Extern "C" stubs for functions not yet implemented as C++ classes.
+extern "C" u16 __fastcall Controller_GetInput();
+extern "C" void __fastcall CStreamingSound_UpdateFadeOut();
+extern "C" void *_free_th07(void *p);
+extern "C" void *memset(void *, int, size_t);
+extern "C" void *memcpy(void *, const void *, size_t);
+extern "C" i16 __fastcall FloatToI16(f32 v);
+extern "C" char *__cdecl strchr_th07(char *s, i32 ch);
+extern "C" i32 __cdecl sprintf_th07(char *dst, const char *fmt, ...);
+extern "C" void __fastcall Supervisor_SomeCleanup1();
+extern "C" void __fastcall Supervisor_ReleaseAnm0();
+extern "C" void __fastcall Supervisor_MidiClearTracks();
+extern "C" void __fastcall Supervisor_Cleanup3();
+extern "C" void __fastcall Supervisor_HeapFreeAll();
+extern "C" void __fastcall Supervisor_SomeCleanup4();
+extern "C" void __fastcall Supervisor_SomeCleanup5();
+extern "C" void __cdecl Supervisor_LogStr1(char *fmt, ...);
+extern "C" i32 __fastcall Supervisor_D3DDiscard(i32 mode);
+extern "C" i32 __fastcall Supervisor_AutosaveScore(char *p1, i32 p2, i32 p3);
+extern "C" void __fastcall MidiOutput_StopPlayback();
+extern "C" void *__fastcall Supervisor_ReadConfigBuffer(char *path, i32 flag);
+extern "C" i32 __fastcall Supervisor_ValidateSize(i32 size);
+
+// Stub structs for thiscall callees (ECX = singleton pointer).
+struct MidiOutput {
+    ZunResult StopPlayback();
+    ZunResult LoadFile(char *path);
+    void ClearTracks();
+    ZunResult Play();
+    ZunResult SetFadeOut(u32 ms);
+    ZunResult ParseFile(i32 idx);
+};
+struct SoundPlayer {
+    void SoundQueueAdd(i32 cmd, i32 param, char *name);
+};
+
+// Macros for audio globals.
+#define MUSIC_MODE (g_Supervisor.cfg.musicMode)
+#define CFG_OPTS (g_Supervisor.cfg.opts)
+#define MIDI_OUTPUT_PTR ((MidiOutput *)g_Supervisor.midiOutput)
+#define SOUND_PLAYER_PTR (*(SoundPlayer **)0x004ba0d8)
+#define DUMMY_STR ((char *)0x004980d0)
+#define EMPTY_STR ((char *)0x00496c1e)
+
 namespace th07
 {
 DIFFABLE_STATIC(Supervisor, g_Supervisor);
@@ -46,248 +77,12 @@ DIFFABLE_STATIC(u16, g_CurFrameInput);
 DIFFABLE_STATIC(u16, g_IsEigthFrameOfHeldInput);
 DIFFABLE_STATIC(u16, g_NumOfFramesInputsWereHeld);
 
-// .rdata string constants referenced by orig (defined in a data module later).
-extern const char TH_FPS_FMT[];            // "%.02ffps"
-extern const char TH_SCENE_FMT[];          // "scene %d -> %d\r\n"
-
-// ---- cross-module stubs (full impls land when those modules reverse) ----
-// Declared as extern C so MSVC emits a reloc CALL that objdiff tolerates.
-struct ReplayManager { static void SaveReplay(char *a, char *b); };
-// Forward-declared GameManager methods (avoids GameManager.hpp g_Supervisor conflict).
-// GameManager declared in GameManager.hpp
-// MainMenu/MusicRoom/Ending/ReplayManager via extern C.
-extern "C" u16 __fastcall Controller_GetInput();                  // FUN_00430b50
-extern "C" void __fastcall DebugPrint_th(const char *fmt, ...);         // FUN_0045e4f0
-// GameManager::RegisterChain/CutChain declared in GameManager.hpp
-
-extern "C" ZunResult __cdecl MainMenu_RegisterChain();            // FUN_0041e820
-extern "C" ZunResult __fastcall MusicRoom_RegisterChain(i32 b);   // FUN_0044a302 (ECX=b)
-extern "C" ZunResult __cdecl Ending_RegisterChain();              // FUN_0043b4db
-extern "C" i32 __fastcall Supervisor_AutosaveScore(char *p1, i32 p2, i32 p3);
-extern "C" i32 __fastcall Supervisor_D3DDiscard(i32 mode);
-extern "C" void __fastcall Supervisor_SomeCleanup1();
-extern "C" void __fastcall Supervisor_ReleaseAnm0();
-extern "C" void __fastcall Supervisor_MidiClearTracks();
-extern "C" void __fastcall Supervisor_Cleanup3();
-extern "C" void __fastcall Supervisor_HeapFreeAll();
-extern "C" void __fastcall Supervisor_SomeCleanup4();
-extern "C" void __fastcall Supervisor_SomeCleanup5();
-extern "C" void __fastcall Supervisor_ChainReleaseAll(i32 a, i32 b);
-extern "C" void __cdecl Supervisor_LogStr1(char *fmt, ...);
-extern "C" ZunResult __fastcall ResultScreen_RegisterChain(i32 b);// FUN_0041c1b0
-extern "C" void __fastcall SoundPlayer_StopStream(i32 cmd, i32 p, char *name); // FUN_0044d2f0
-extern "C" void __fastcall SoundPlayer_FadeOut(f32 seconds);      // FUN_00444c20
-extern "C" ZunResult __fastcall SoundPlayer_InitSoundBuffers();   // FUN_0044c7d0
-extern "C" ZunResult __fastcall SoundPlayer_LoadBgmFmtFile(char *p); // FUN_0044bff0
-extern "C" ZunResult __fastcall AsciiManager_RegisterChain();     // FUN_00401e30
-// AsciiManager::CutChain declared in AsciiManager.hpp
-
-extern "C" void __fastcall AsciiManager_AddString(D3DXVECTOR3 *pos, char *s); // FUN_00401f40
-extern "C" ZunResult __fastcall AnmManager_LoadAnm(i32 idx, char *path, i32 base); // FUN_0044df90
-extern "C" void __fastcall AnmManager_ReleaseAnm(i32 idx);        // FUN_0044e4e0
-extern "C" void __fastcall MidiOutput_StopPlayback();             // FUN_00436b30
-extern "C" ZunResult __fastcall MidiOutput_LoadFile(char *path);  // FUN_004369c0
-extern "C" void __fastcall MidiOutput_ClearTracks();              // FUN_00436700
-extern "C" ZunResult __fastcall MidiOutput_SetFadeOut(u32 ms);    // FUN_00436c90
-extern "C" void __fastcall CStreamingSound_UpdateFadeOut();       // FUN_0045dad0
-extern "C" i32 __fastcall GetPrivateProfileInt_th07(char *app, char *key, i32 def, char *file); // FUN_00431330
-extern "C" void __fastcall Supervisor_ChainReleaseAll(i32 ecxArg, i32 edxArg);          // FUN_00443da0 (XOR ECX,EDX before call)
-extern "C" void __fastcall Supervisor_SomePulseFlag();            // FUN_00404fe0 (used by EffectManager)
-// SetupDInput externs
-extern "C" i32 __fastcall GetWindowLongA_th07(HWND hwnd, i32 idx); // wraps GetWindowLongA
-extern "C" i32 __fastcall DirectInput8Create_th07(i32 inst, u32 ver, void *iid, void **out, void *unk);
-extern "C" void __cdecl GameErrorContext_LogFmt2(void *ctx, char *fmt);           // FUN_004315f0 __cdecl (2 stack args)
-extern "C" i32 __fastcall Supervisor_EnumKeybdCallback(void *ref, void *dev); // FUN_0043832f
-extern "C" i32 __fastcall Supervisor_EnumJoysCallback(void *ref, void *dev); // FUN_0043836e
-// DeletedCallback / cleanup externs
-extern "C" void __fastcall Supervisor_Cleanup2();            // FUN_00443da0 (ReplayManager release)
-extern "C" void *_free_th07(void *p);                         // _free wrapper
-// LoadConfig externs
-extern "C" void *__fastcall Supervisor_ReadConfigBuffer(char *configPath, i32 flag);    // FUN_00431330 __fastcall: ECX=configPath, EDX=flag
-extern "C" void __cdecl GameErrorContext_LogFmt3(void *ctx, char *fmt, char *arg);   // FUN_00431730 __cdecl (3 stack args)
-extern "C" i32 __fastcall Supervisor_ValidateSize(i32 size); // FUN_00431540 (assert config struct size)
-
-// Global DAT_ addresses used by Supervisor naked asm functions.
-// Declared as extern so MSVC generates relocs matching the orig delinked obj.
-extern "C" char g_DAT_575c1c[];   // pbg4Archive
-extern "C" char g_DAT_4b9e44[];   // g_AnmManager ptr
-extern "C" char g_DAT_4980d0[];   // "dummy" string
-extern "C" char g_DAT_4ba0d8[];   // SoundPlayer singleton
-extern "C" char g_DAT_575acc[];   // midiOutput ptr
-extern "C" char g_DAT_626278[];   // GameManager ptr
-extern "C" char g_DAT_626274[];   // GameManager2 ptr
-extern "C" char g_DAT_626258[];   // some heap ctx
-extern "C" char g_DAT_575a64[];   // some obj ptr
-extern "C" char g_DAT_575c0c[];   // some byte flag
-extern "C" char g_DAT_62627d[];   // g_NoFpsCounter
-extern "C" char g_DAT_575a87[];   // musicMode
-extern "C" char g_DAT_575a8b[];   // frameskipConfig
-extern "C" char g_DAT_498ab8_f[]; // 1000.0f const
-extern "C" char g_DAT_498a4c_f[]; // threshold const
-extern "C" char g_DAT_498a54_f[]; // limit const
-extern "C" char g_DAT_496c1e_s[]; // empty string
-extern "C" char g_DAT_4b9e4c[];   // g_CurFrameInput
-extern "C" char g_DAT_4b9e54[];   // g_LastFrameInput
-extern "C" char g_DAT_4b9e5c[];   // g_IsEighthFrame
-extern "C" char g_DAT_4b9e60[];   // g_NumFramesHeld
-extern "C" char g_DAT_4bda94[];   // CStreamingSound ptr
-extern "C" char g_DAT_626280[];   // gameManager idx
-extern "C" char g_DAT_62f52c[];   // clear table
-extern "C" char g_DAT_62f648[];   // displayOpts
-extern "C" char g_DAT_62f85c[];   // some counter
-
-
-
-// DAT_ extern variables matching orig delinked obj reloc symbol names.
-// These are declared as extern "C" char arrays so MSVC generates dir32 relocs.
-// The demangle script strips the leading underscore, producing DAT_00575a68 etc.
-extern "C" char DAT_00497230[];
-extern "C" char DAT_00497228[];
-extern "C" char DAT_0135e29c[];
-extern "C" char DAT_00575a68[];   // config struct base
-extern "C" char DAT_00575a9c[];   // cfg opts
-extern "C" char DAT_00624210[];
-extern "C" char DAT_00496f14[];
-extern "C" char DAT_00496ee4[];
-extern "C" char DAT_00496c20[];
-extern "C" char DAT_00496e88[];
-extern "C" char DAT_00496ebc[];
-extern "C" char DAT_00496e64[];
-extern "C" char DAT_00496e48[];
-extern "C" char DAT_00496e20[];
-extern "C" char DAT_00496dfc[];
-extern "C" char DAT_00496dd0[];
-extern "C" char DAT_00496da8[];
-extern "C" char DAT_00496d8c[];
-extern "C" char DAT_00496d6c[];
-extern "C" char DAT_00496d4c[];
-extern "C" char DAT_00496d24[];
-extern "C" char DAT_00496cec[];
-extern "C" char DAT_00496cd0[];
-extern "C" char DAT_00496cb0[];
-extern "C" char DAT_00496c98[];
-extern "C" char DAT_00496c78[];
-extern "C" char DAT_0049ee40_dup[];
-extern "C" char DAT_004b9e44[];   // g_AnmManager ptr
-extern "C" char DAT_00575c0c[];   // byte flag
-extern "C" char DAT_00575bbc[];   // QPC flag
-extern "C" char DAT_00575a8b[];   // frameskipConfig
-extern "C" char DAT_00575a87[];   // musicMode
-extern "C" char DAT_00575acc[];   // midiOutput ptr
-extern "C" char DAT_004ba0d8[];   // SoundPlayer singleton
-extern "C" char DAT_00575a84[];   // config lifeCount
-extern "C" char DAT_00575a85[];   // config bombCount
-extern "C" char DAT_00575a86[];   // config colorMode
-extern "C" char DAT_00575a88[];   // config playSounds
-extern "C" char DAT_00575a89[];   // config defaultDifficulty
-extern "C" char DAT_00575a8a[];   // config windowed
-extern "C" char DAT_00575a8b_dup[]; // config frameskip (same as 0x575a8b)
-extern "C" char DAT_00575a8c[];   // config playModeA
-extern "C" char DAT_00575a8d[];   // config playModeB
-extern "C" char DAT_00575a8e[];   // config chara
-extern "C" char DAT_00575a7c[];   // config version
-extern "C" char DAT_00575a80[];   // config padXAxis
-extern "C" char DAT_00575a82[];   // config padYAxis
-extern "C" char DAT_00575abc[];   // joystick present flag
-extern "C" char DAT_004b9e64[];   // config size check
-extern "C" char DAT_0049ee40[];   // default keymap
-extern "C" char DAT_0049ee44[];
-extern "C" char DAT_0049ee48[];
-extern "C" char DAT_0049ee4c[];
-extern "C" char DAT_0049ee50[];
-extern "C" char DAT_00575c10[];
-extern "C" char DAT_00575c14[];
-extern "C" char DAT_00575a64[];
-extern "C" char DAT_00626258[];
-extern "C" char DAT_00626274[];
-extern "C" char DAT_00626278[];
-extern "C" char DAT_004980d0[];
-extern "C" char DAT_00498ab8[];
-extern "C" char DAT_00498a4c[];
-extern "C" char DAT_00498a54[];
-extern "C" char DAT_00575968[];
-extern "C" char DAT_00498a48[];
-extern "C" char DAT_00498a50[];
-extern "C" char DAT_00498aa0[];
-extern "C" char DAT_00498b18[];
-extern "C" char DAT_00498b1c[];
-extern "C" char DAT_00498b20[];
-extern "C" char DAT_00498a68[];
-extern "C" char DAT_00498a6c[];
-extern "C" char DAT_00498b10[];
-extern "C" char DAT_00498b14[];
-extern "C" char DAT_0135dff0[];
-extern "C" char DAT_0135e0f0[];
-extern "C" char s___02ffps_00496fa0[];
-extern "C" char s__2d_00496f9c[];
-extern "C" char DAT_00626218[];
-extern "C" char DAT_00575c1c[];
-extern "C" char DAT_004bda94[];
-extern "C" char DAT_0062627d[];
-extern "C" char DAT_00626280[];
-extern "C" char DAT_0062f648[];
-extern "C" char DAT_0062f85c[];
-extern "C" char DAT_0062f52c[];
-extern "C" char DAT_004b9e4c[];
-extern "C" char DAT_004b9e54[];
-extern "C" char DAT_004b9e5c[];
-extern "C" char DAT_004b9e60[];
-extern "C" char DAT_00575950[];
-extern "C" char DAT_00575958[];
-extern "C" char DAT_00575aa8[];
-extern "C" char DAT_00575ab8[];
-extern "C" char DAT_00575ad0[];
-extern "C" char DAT_00575ad4[];
-extern "C" char DAT_00575ad8[];
-extern "C" char DAT_00575bf8[];
-extern "C" char DAT_00624210[];
-extern "C" char DAT_0135e1f0[];
-extern "C" char DAT_0135e2a0[];
-extern "C" char DAT_0135e2a4[];
-extern "C" char DAT_0135e298[];
-extern "C" char DAT_0135dfec[];
-extern "C" char DAT_013542d8[];
-extern "C" char DAT_0134ce18[];
-
-
-extern "C" void *memset(void *, int, size_t);
-extern "C" void *memcpy(void *, const void *, size_t);
-extern "C" HANDLE __fastcall CreateFileA_th07(char *path, u32 access, u32 share, void *sa, u32 disp, u32 flags, HANDLE tmpl);
-extern "C" i32 __fastcall ReadFile_th07(HANDLE f, void *buf, u32 n, u32 *read, void *ovl);
-extern "C" i32 __fastcall CloseHandle_th07(HANDLE h);
-
-// ---- thiscall callee stubs (ECX = singleton pointer) ----
-struct MidiOutput
-{
-    ZunResult StopPlayback();                  // FUN_00436b30 (real sig: ZunResult)
-    ZunResult LoadFile(char *path);            // FUN_004369c0
-    void ClearTracks();                        // FUN_00436700
-    ZunResult Play();                          // FUN_00436ad0
-    ZunResult SetFadeOut(u32 ms);              // FUN_00436c90
-    ZunResult ParseFile(i32 idx);              // FUN_00436790
-};
-struct SoundPlayer
-{
-    // Real method name is SoundQueueAdd (thiscall, ECX=SoundPlayer*). Renaming
-    // from StopStream so the symbol resolves against SoundPlayer.obj.
-    void SoundQueueAdd(i32 cmd, i32 param, char *name); // FUN_0044d2f0
-    void FadeOutBgm(f32 seconds);                       // FUN_00444c20
-};
-// Supervisor::AutosaveScore @ 0x0043a569 is __thiscall (ECX=g_Supervisor).
-// Orig emits `mov ecx,0x575950; push x3; call 0x43a569`. We reach it via a
-// function pointer so no undefined method symbol is produced. The extern
-// below is resolved at link time by whatever module implements AutosaveScore
-// (currently a stub in stubs.cpp / future Supervisor member).
-
-// Chain singleton (orig g_Chain @ 0x00626218).
 extern "C" struct Chain g_Chain;
 
 #pragma optimize("s", on)
 
 // =====================================================================
-// Supervisor::TickTimer  (FUN_0043958d)
-// __thiscall, args: frames*, subframes*. ECX = Supervisor*.
-// orig reads framerateMultiplier from this+0x178 directly each time (no local).
+// Supervisor::TickTimer (FUN_0043958d)
 // =====================================================================
 void Supervisor::TickTimer(i32 *frames, f32 *subframes)
 {
@@ -310,124 +105,70 @@ void Supervisor::TickTimer(i32 *frames, f32 *subframes)
 #pragma optimize("s", on)
 
 // =====================================================================
-// Supervisor::OnUpdate  (FUN_00437c70)
-// __fastcall, ECX = Supervisor*. Per-frame state machine + input poll.
-//
-// The MSVC /Od codegen for this function is extremely rigid: every
-// AnmManager field reset re-reads the global g_AnmManager singleton
-// (@ 0x004b9e44) into a FRESH stack slot, the input-poll uses 6
-// separate globals (not g_CurFrameInput etc.), the state machine is a
-// nested switch (wanted, cur) with very specific case ordering, two
-// D3D device vtable indirect calls, and the autosave tail is a
-// __thiscall AutosaveScore(g_Supervisor, 3 stack args).
-//
-// Reproducing that exact stack layout / branch order from C++ is not
-// tractable, so the objdiff build emits the function via inline asm
-// (1:1 translation of the orig disassembly). The SDL/exe build uses a
-// portable C++ equivalent.
+// Supervisor::OnUpdate (FUN_00437c70)
 // =====================================================================
-#ifndef DIFFBUILD
-// =====================================================================
-// objdiff C++ path: each AnmManager field store re-reads the singleton
-// global (matching the orig /Od codegen that gives every expression a
-// fresh stack slot). The nested switch on wantedState then curState is
-// ordered exactly like the orig CMP chain. Returns CHAIN_CALLBACK_RESULT_*
-// (1 = continue, 4 = exit success, 5 = exit error).
-// =====================================================================
-// D3D device reached via raw cast (matches GameManager.cpp pattern). The
-// orig call is `mov eax,[0x575958]; mov eax,[eax]; call dword ptr [eax+0x14]`
-// (vtable indirect, no symbol). We replicate via lpVtbl function-pointer.
-struct D3DDeviceStub;
-struct D3DDeviceStubVtbl
-{
-    void *methods[0x14 / 4];                         // slots 0..4
-    void (__stdcall *Reset)(D3DDeviceStub *pDevice, u32 flags); // slot 5 (offset 0x14)
-};
-struct D3DDeviceStub
-{
-    D3DDeviceStubVtbl *lpVtbl;
-};
-#pragma optimize("", off)
-// No var_order: frame is 0x40, close to orig 0x44.
+#pragma var_order(wanted, cur1, cur5, cur2, cur6, cur8, cur9)
 ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
 {
-    i32 wanted, cur1, cur5, cur2, cur6, cur8, cur9;
-#ifndef DIFFBUILD
-    // AnmMgr reset via inline asm with DAT_ externs for reloc matching.
-    // Uses 9 named locals that MSVC places at [ebp-0x4]..[ebp-0x24],
-    // matching orig's frame layout.
-    {
-        u8 *anm0 = *(u8**)&DAT_004b9e44; anm0[0x2e4d2] = 0xff;
-        u8 *anm1 = *(u8**)&DAT_004b9e44; *(u32*)(anm1+0x2e4d8) = 0;
-        u8 *anm2 = *(u8**)&DAT_004b9e44; *(u32*)(anm2+0x2e4cc) = 0;
-        u8 *anm3 = *(u8**)&DAT_004b9e44; anm3[0x2e4d1] = 0xff;
-        u8 *anm4 = *(u8**)&DAT_004b9e44; anm4[0x2e4d0] = 0xff;
-        u8 *anm5 = *(u8**)&DAT_004b9e44; anm5[0x2e4d3] = 0xff;
-        u8 *anm6 = *(u8**)&DAT_004b9e44; *(u32*)(anm6+0xc)=0; *(u32*)(anm6+0x10)=0; *(u32*)(anm6+0x8)=0; *(u32*)(anm6+0x14)=0;
-        u8 *anm7 = *(u8**)&DAT_004b9e44; anm7[0x2e4d4] = 0xff;
-        u8 *anm8 = *(u8**)&DAT_004b9e44; *(u32*)(anm8+0x4)=0; *(u32*)(anm8+0x0)=0x80808080;
-    }
-    *(f32*)(*(u8**)&DAT_004b9e44 + 0x1c) = 0.0f;
-    *(f32*)(*(u8**)&DAT_004b9e44 + 0x18) = 0.0f;
-    *(u8*)&DAT_00575c0c = 0xff;
-#else
-    {
-        u8 *anm = *(u8 **)0x004b9e44;
-        anm[0x2e4d2] = 0xff;
-        *(u32 *)(anm + 0x2e4d8) = 0;
-        *(u32 *)(anm + 0x2e4cc) = 0;
-        anm[0x2e4d1] = 0xff;
-        anm[0x2e4d0] = 0xff;
-        anm[0x2e4d3] = 0xff;
-        *(u32 *)(anm + 0xc) = 0;
-        *(u32 *)(anm + 0x10) = 0;
-        *(u32 *)(anm + 0x8) = 0;
-        *(u32 *)(anm + 0x14) = 0;
-        anm[0x2e4d4] = 0xff;
-        *(u32 *)(anm + 0x4) = 0;
-        *(u32 *)(anm + 0x0) = 0x80808080;
-        *(f32 *)(anm + 0x1c) = 0.0f;
-        *(f32 *)(anm + 0x18) = 0.0f;
-    }
+    u8 *anm;
+    i32 wanted;
+    i32 cur1, cur5, cur2, cur6, cur8, cur9;
+
+    // AnmManager per-frame reset.
+    anm = *(u8 **)0x004b9e44;
+    anm[0x2e4d2] = 0xff;
+    *(u32 *)(anm + 0x2e4d8) = 0;
+    *(u32 *)(anm + 0x2e4cc) = 0;
+    anm[0x2e4d1] = 0xff;
+    anm[0x2e4d0] = 0xff;
+    anm[0x2e4d3] = 0xff;
+    *(u32 *)(anm + 0xc) = 0;
+    *(u32 *)(anm + 0x10) = 0;
+    *(u32 *)(anm + 0x8) = 0;
+    *(u32 *)(anm + 0x14) = 0;
+    anm[0x2e4d4] = 0xff;
+    *(u32 *)(anm + 0x4) = 0;
+    *(u32 *)(anm + 0x0) = 0x80808080;
+    *(f32 *)(*(u8 **)0x004b9e44 + 0x1c) = 0.0f;
+    *(f32 *)(*(u8 **)0x004b9e44 + 0x18) = 0.0f;
     *(u8 *)0x00575c0c = 0xff;
-#endif
-    if (*(void **)&DAT_004bda94 != 0)
+    if (*(void **)0x004bda94 != 0)
     {
         CStreamingSound_UpdateFadeOut();
     }
 
-    if (*(i8 *)&DAT_0062627d == 0)
+    if (*(i8 *)0x0062627d == 0)
     {
-        *(u16 *)&DAT_004b9e54 = *(u16 *)&DAT_004b9e4c;
-        *(u16 *)&DAT_004b9e4c = Controller_GetInput();
-        *(u16 *)&DAT_004b9e5c = 0;
-        if (*(u16 *)&DAT_004b9e54 == *(u16 *)&DAT_004b9e4c)
+        *(u16 *)0x004b9e54 = *(u16 *)0x004b9e4c;
+        *(u16 *)0x004b9e4c = Controller_GetInput();
+        *(u16 *)0x004b9e5c = 0;
+        if (*(u16 *)0x004b9e54 == *(u16 *)0x004b9e4c)
         {
-            if (0x1e <= *(u16 *)&DAT_004b9e60)
+            if (0x1e <= *(u16 *)0x004b9e60)
             {
-                *(u16 *)&DAT_004b9e5c = (u16)(*(u16 *)&DAT_004b9e60 % 8 == 0);
-                if (0x26 < *(u16 *)&DAT_004b9e60)
+                *(u16 *)0x004b9e5c = (u16)(*(u16 *)0x004b9e60 % 8 == 0);
+                if (0x26 < *(u16 *)0x004b9e60)
                 {
-                    *(u16 *)&DAT_004b9e60 = 0x1e;
+                    *(u16 *)0x004b9e60 = 0x1e;
                 }
             }
-            *(u16 *)&DAT_004b9e60 = *(u16 *)&DAT_004b9e60 + 1;
+            *(u16 *)0x004b9e60 = *(u16 *)0x004b9e60 + 1;
         }
         else
         {
-            *(u16 *)&DAT_004b9e60 = 0;
+            *(u16 *)0x004b9e60 = 0;
         }
     }
     else
     {
-        *(u16 *)&DAT_004b9e4c = *(u16 *)&DAT_004b9e4c | Controller_GetInput();
+        *(u16 *)0x004b9e4c = *(u16 *)0x004b9e4c | Controller_GetInput();
     }
 
     s->wantedState2 = s->wantedState;
     if (s->wantedState != s->curState)
     {
         wanted = s->wantedState;
-        Supervisor_LogStr1((char *)&DAT_00497230, s->wantedState, s->curState);
+        Supervisor_LogStr1((char *)0x497230, s->wantedState, s->curState);
 
         switch (wanted)
         {
@@ -437,34 +178,20 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             cur1 = s->curState;
             switch (cur1)
             {
-            case -1:
-                return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+            case -1: return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
             case 2:
-                if (GameManager::RegisterChain() != 0)
-                {
-                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                }
+                if (GameManager::RegisterChain() != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 break;
-            case 4:
-                return CHAIN_CALLBACK_RESULT_EXIT_GAME_ERROR;
+            case 4: return CHAIN_CALLBACK_RESULT_EXIT_GAME_ERROR;
             case 5:
-                if (MusicRoom_RegisterChain(0) != 0)
-                {
-                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                }
+                if (MusicRoom::RegisterChain(0) != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 break;
             case 8:
-                if (Ending_RegisterChain() != 0)
-                {
-                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                }
+                if (Ending::RegisterChain() != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 break;
             case 9:
                 GameManager::CutChain();
-                if (MainMenu_RegisterChain() != 0)
-                {
-                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                }
+                if (MainMenu::RegisterChain(0) != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 break;
             }
             break;
@@ -477,35 +204,25 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                 case 7:
                     GameManager::CutChain();
                     s->curState = 0;
-                    Supervisor_ChainReleaseAll(0, 0);
+                    ReplayManager::SaveReplay((char*)0, (char*)0);
                     s->curState = 1;
-                    (*(D3DDeviceStub **)0x00575958)[0].lpVtbl->Reset((*(D3DDeviceStub **)0x00575958), 0);
-                    if (Supervisor_D3DDiscard(1) != 0)
-                    {
-                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                    }
+                    (*(IDirect3DDevice8 **)0x00575958)->ResourceManagerDiscardBytes(0);
+                    if (Supervisor_D3DDiscard(1) != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     break;
-                case -1:
-                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                case -1: return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 case 1:
                     GameManager::CutChain();
                     s->curState = 0;
-                    Supervisor_ChainReleaseAll(0, 0);
+                    ReplayManager::SaveReplay((char*)0, (char*)0);
                     goto reinit_mainmenu_d3d;
                 case 3:
                     GameManager::CutChain();
-                    if (GameManager::RegisterChain() != 0)
-                    {
-                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                    }
+                    if (GameManager::RegisterChain() != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     s->curState = 2;
                     break;
                 case 6:
                     GameManager::CutChain();
-                    if (MusicRoom_RegisterChain(1) != 0)
-                    {
-                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                    }
+                    if (MusicRoom::RegisterChain(1) != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     break;
                 }
             }
@@ -514,47 +231,31 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
                 switch (cur2)
                 {
                 case 9:
-                    ((i32 *)&DAT_0062f52c)[*(i32 *)&DAT_00626280 * 0xb]++;
+                    ((i32 *)0x62f52c)[*(i32 *)0x00626280 * 0xb]++;
                     GameManager::CutChain();
-                    if (MainMenu_RegisterChain() != 0)
-                    {
-                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                    }
+                    if (MainMenu::RegisterChain(0) != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     break;
                 case 0xa:
                     GameManager::CutChain();
-                    if ((*(u32 *)&DAT_0062f648 & 1) == 0 && *(i32 *)&DAT_00626280 < 4)
-                    {
-                        *(i32 *)&DAT_0062f85c = 0;
-                    }
+                    if ((*(u32 *)0x0062f648 & 1) == 0 && *(i32 *)0x00626280 < 4)
+                        *(i32 *)0x0062f85c = 0;
                     else
-                    {
-                        *(i32 *)&DAT_0062f85c = *(i32 *)&DAT_0062f85c - 1;
-                    }
-                    Supervisor_ChainReleaseAll(0, 0);
-                    if (GameManager::RegisterChain() != 0)
-                    {
-                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                    }
+                        *(i32 *)0x0062f85c = *(i32 *)0x0062f85c - 1;
+                    ReplayManager::SaveReplay((char*)0, (char*)0);
+                    if (GameManager::RegisterChain() != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     s->curState = 2;
                     break;
                 case 0xb:
-                    *(i32 *)&DAT_00575aa8 = 3;
+                    *(i32 *)0x00575aa8 = 3;
                     GameManager::CutChain();
-                    *(i32 *)&DAT_0062f85c = *(i32 *)&DAT_0062f85c - 1;
-                    if (GameManager::RegisterChain() != 0)
-                    {
-                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                    }
+                    *(i32 *)0x0062f85c = *(i32 *)0x0062f85c - 1;
+                    if (GameManager::RegisterChain() != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     s->curState = 2;
                     break;
                 case 0xc:
-                    *(i32 *)&DAT_00575aa8 = 3;
+                    *(i32 *)0x00575aa8 = 3;
                     GameManager::CutChain();
-                    if (GameManager::RegisterChain() != 0)
-                    {
-                        return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                    }
+                    if (GameManager::RegisterChain() != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                     s->curState = 2;
                     break;
                 }
@@ -564,17 +265,13 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             cur5 = s->curState;
             switch (cur5)
             {
-            case -1:
-                return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+            case -1: return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
             case 1:
                 s->curState = 0;
             reinit_mainmenu_d3d:
                 s->curState = 1;
-                (*(D3DDeviceStub **)0x00575958)[0].lpVtbl->Reset((*(D3DDeviceStub **)0x00575958), 0);
-                if (Supervisor_D3DDiscard(0) != 0)
-                {
-                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                }
+                (*(IDirect3DDevice8 **)0x00575958)->ResourceManagerDiscardBytes(0);
+                if (Supervisor_D3DDiscard(0) != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 break;
             }
             break;
@@ -583,11 +280,11 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             switch (cur6)
             {
             case -1:
-                Supervisor_ChainReleaseAll(0, 0);
+                ReplayManager::SaveReplay((char*)0, (char*)0);
                 return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
             case 1:
                 s->curState = 0;
-                Supervisor_ChainReleaseAll(0, 0);
+                ReplayManager::SaveReplay((char*)0, (char*)0);
                 goto reinit_mainmenu_d3d;
             }
             break;
@@ -595,8 +292,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             cur8 = s->curState;
             switch (cur8)
             {
-            case -1:
-                return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+            case -1: return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
             case 1:
                 s->curState = 0;
                 goto reinit_mainmenu_d3d;
@@ -606,31 +302,27 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             cur9 = s->curState;
             switch (cur9)
             {
-            case -1:
-                return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+            case -1: return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
             case 1:
                 s->curState = 0;
                 goto reinit_mainmenu_d3d;
             case 6:
-                if (MusicRoom_RegisterChain(1) != 0)
-                {
-                    return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
-                }
+                if (MusicRoom::RegisterChain(1) != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 break;
             }
             break;
         }
 
-        *(u16 *)&DAT_004b9e5c = 0;
-        *(u16 *)&DAT_004b9e54 = 0;
-        *(u16 *)&DAT_004b9e4c = 0;
+        *(u16 *)0x004b9e5c = 0;
+        *(u16 *)0x004b9e54 = 0;
+        *(u16 *)0x004b9e4c = 0;
     }
 
     s->wantedState = s->curState;
     s->calcCount++;
     if (s->calcCount % 4000 == 3999)
     {
-        if (Supervisor_AutosaveScore((char *)&DAT_00497228, *(i32 *)&DAT_00575c14, *(i32 *)&DAT_00575c10) != 0)
+        if (Supervisor_AutosaveScore((char *)0x497228, *(i32 *)0x00575c14, *(i32 *)0x00575c10) != 0)
         {
             return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
         }
@@ -638,35 +330,11 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
     return CHAIN_CALLBACK_RESULT_CONTINUE;
 }
 
-#pragma optimize("", on)
-#else
-ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
-{
-    g_LastFrameInput = g_CurFrameInput;
-    g_CurFrameInput = Controller_GetInput();
-    s->wantedState = s->curState;
-    s->calcCount++;
-    return CHAIN_CALLBACK_RESULT_CONTINUE;
-}
-#endif
-
-
-#pragma optimize("s", off)
-#pragma optimize("s", on)
-
-
-#pragma optimize("s", off)
-#pragma optimize("s", on)
-
-
-
 #pragma optimize("s", off)
 #pragma optimize("s", on)
 
 // =====================================================================
-// Supervisor::OnDraw  (FUN_0043831b)
-// __fastcall, ECX = Supervisor*. Calls DrawFpsCounter(1); returns 1.
-// NOTE: orig passes arg=1 (xor ecx,ecx; inc ecx), NOT 0.
+// Supervisor::OnDraw (FUN_0043831b)
 // =====================================================================
 ChainCallbackResult __fastcall Supervisor::OnDraw(Supervisor *s)
 {
@@ -675,354 +343,154 @@ ChainCallbackResult __fastcall Supervisor::OnDraw(Supervisor *s)
 }
 
 #pragma optimize("s", off)
-#pragma optimize("s", on)
 
-// Supervisor::DrawFpsCounter (FUN_004390a5) -- naked asm
-#ifndef DIFFBUILD
-#pragma optimize("", off)
-__declspec(naked) void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
-{
-    static void (__fastcall *_sprintf)() = (void (__fastcall *)())0x0047d44f;
-    static void (__fastcall *_floatToI16)() = (void (__fastcall *)())0x0048b8a0;
-    static void (__fastcall *_addString)() = (void (__fastcall *)())0x00401f40;
-    static void (__fastcall *_tickTimer)() = (void (__fastcall *)())0x00437908;
-    __asm {
-        push    ebp
-        mov     ebp, esp
-        sub     esp, 0x54
-        mov     [ebp-0x34], ecx
-        // if (g_NoFpsCounter) goto end
-        movsx   eax, byte ptr [DAT_0062627d]
-        test    eax, eax
-        jnz     L_df_end
-        // frameCounter += frameskipConfig + 1
-        movzx   eax, byte ptr [DAT_00575a8b]
-        mov     ecx, dword ptr [DAT_0135e1f0]
-        lea     eax, [ecx+eax+1]
-        mov     dword ptr [DAT_0135e1f0], eax
-        // if (g_usesQPC != 0) goto QPC path
-        cmp     dword ptr [DAT_00575bbc], 0
-        jnz     L_df_qpc
-        // timeGetTime path: init check
-        mov     eax, dword ptr [DAT_0135e2a4]
-        and     eax, 1
-        test    eax, eax
-        jnz     L_df_tgt_now
-        mov     eax, dword ptr [DAT_0135e2a4]
-        or      eax, 1
-        mov     dword ptr [DAT_0135e2a4], eax
-        mov     edx, 0x0048d224
-        call    dword ptr [edx]
-        mov     dword ptr [DAT_0135e2a0], eax
-L_df_tgt_now:
-        mov     edx, 0x0048d224
-        call    dword ptr [edx]
-        mov     [ebp-0xc], eax
-        mov     eax, [ebp-0xc]
-        cmp     eax, dword ptr [DAT_0135e2a0]
-        jnc     L_df_tgt_chk
-        mov     eax, [ebp-0xc]
-        mov     dword ptr [DAT_0135e2a0], eax
-        and     dword ptr [DAT_0135e1f0], 0
-L_df_tgt_chk:
-        mov     eax, [ebp-0xc]
-        sub     eax, dword ptr [DAT_0135e2a0]
-        cmp     eax, 0x1f4
-        jc      L_df_done
-        mov     eax, [ebp-0xc]
-        sub     eax, dword ptr [DAT_0135e2a0]
-        mov     [ebp-0x3c], eax
-        and     dword ptr [ebp-0x38], 0
-        fild    qword ptr [ebp-0x3c]
-        fdiv    dword ptr [DAT_00498ab8]
-        fstp    dword ptr [ebp-0x8]
-        mov     eax, [ebp-0xc]
-        mov     dword ptr [DAT_0135e2a0], eax
-L_df_compute:
-        mov     eax, dword ptr [DAT_0135e1f0]
-        mov     [ebp-0x44], eax
-        and     dword ptr [ebp-0x40], 0
-        fild    qword ptr [ebp-0x44]
-        fdiv    dword ptr [ebp-0x8]
-        fstp    dword ptr [ebp-0x4]
-        and     dword ptr [DAT_0135e1f0], 0
-        fld     dword ptr [ebp-0x4]
-        push    ecx
-        push    ecx
-        fstp    qword ptr [esp]
-        push    offset s___02ffps_00496fa0
-        push    offset DAT_0135e0f0
-        call    dword ptr [_sprintf]
-        add     esp, 0x10
-        mov     eax, dword ptr [DAT_0062f648]
-        shr     eax, 2
-        and     eax, 1
-        test    eax, eax
-        jz      L_df_done
-        cmp     dword ptr [ebp-0x34], 0
-        jz      L_df_done
-        fld     dword ptr [DAT_00498a48]
-        fstp    dword ptr [ebp-0x10]
-        fld     dword ptr [DAT_00575ad4]
-        fadd    dword ptr [ebp-0x10]
-        fstp    dword ptr [DAT_00575ad4]
-        fld     dword ptr [ebp-0x10]
-        fmul    dword ptr [DAT_00498b20]
-        fcomp   dword ptr [ebp-0x4]
-        fnstsw  ax
-        test    ah, 5
-        jp      L_df_cmp2
-        fld     dword ptr [DAT_00575ad0]
-        fadd    dword ptr [ebp-0x10]
-        fstp    dword ptr [DAT_00575ad0]
-        jmp     L_df_slowpct
-L_df_cmp2:
-        fld     dword ptr [ebp-0x10]
-        fmul    dword ptr [DAT_00498b1c]
-        fcomp   dword ptr [ebp-0x4]
-        fnstsw  ax
-        test    ah, 5
-        jp      L_df_cmp3
-        fld     dword ptr [ebp-0x10]
-        fmul    dword ptr [DAT_00498b18]
-        fadd    dword ptr [DAT_00575ad0]
-        fstp    dword ptr [DAT_00575ad0]
-        jmp     L_df_slowpct
-L_df_cmp3:
-        fld     dword ptr [ebp-0x10]
-        fmul    dword ptr [DAT_00498a50]
-        fcomp   dword ptr [ebp-0x4]
-        fnstsw  ax
-        test    ah, 5
-        jp      L_df_cmp4
-        fld     dword ptr [ebp-0x10]
-        fmul    dword ptr [DAT_00498aa0]
-        fadd    dword ptr [DAT_00575ad0]
-        fstp    dword ptr [DAT_00575ad0]
-        jmp     L_df_slowpct
-L_df_cmp4:
-        fld     dword ptr [ebp-0x10]
-        fmul    dword ptr [DAT_00498a50]
-        fadd    dword ptr [DAT_00575ad0]
-        fstp    dword ptr [DAT_00575ad0]
-L_df_slowpct:
-        mov     eax, dword ptr [DAT_0062f648]
-        shr     eax, 3
-        and     eax, 1
-        test    eax, eax
-        jnz     L_df_slowfmt
-        fld     dword ptr [ebp-0x4]
-        fadd    dword ptr [DAT_00498a50]
-        call    dword ptr [_floatToI16]
-        mov     word ptr [DAT_00575ad8], ax
-        jmp     L_df_done
-L_df_slowfmt:
-        movsx   eax, word ptr [DAT_00575ad8]
-        push    eax
-        push    offset s__2d_00496f9c
-        push    offset DAT_0135dff0
-        call    dword ptr [_sprintf]
-        add     esp, 0xc
-L_df_done:
-        jmp     L_df_end
-L_df_qpc:
-        cmp     dword ptr [DAT_0135e298], 0
-        jnz     L_df_qpc_now
-        push    offset DAT_0135e298
-        mov     edx, 0x0048d06c
-        call    dword ptr [edx]
-L_df_qpc_now:
-        lea     eax, [ebp-0x18]
-        push    eax
-        mov     edx, 0x0048d06c
-        call    dword ptr [edx]
-        mov     eax, [ebp-0x18]
-        cmp     eax, dword ptr [DAT_0135e298]
-        jnc     L_df_qpc_chk
-        mov     eax, [ebp-0x18]
-        mov     dword ptr [DAT_0135e298], eax
-        mov     eax, [ebp-0x14]
-        mov     dword ptr [DAT_0135e29c], eax
-        and     dword ptr [DAT_0135e1f0], 0
-L_df_qpc_chk:
-        mov     eax, dword ptr [DAT_00575bbc]
-        shr     eax, 1
-        mov     ecx, dword ptr [DAT_0135e298]
-        add     ecx, eax
-        cmp     dword ptr [ebp-0x18], ecx
-        jc      L_df_end
-        mov     eax, [ebp-0x18]
-        sub     eax, dword ptr [DAT_0135e298]
-        mov     [ebp-0x4c], eax
-        and     dword ptr [ebp-0x48], 0
-        fild    qword ptr [ebp-0x4c]
-        mov     eax, dword ptr [DAT_00575bbc]
-        mov     [ebp-0x54], eax
-        and     dword ptr [ebp-0x50], 0
-        fild    qword ptr [ebp-0x54]
-        fdivp   st(1), st
-        fstp    dword ptr [ebp-0x8]
-        mov     eax, [ebp-0x18]
-        mov     dword ptr [DAT_0135e298], eax
-        mov     eax, [ebp-0x14]
-        mov     dword ptr [DAT_0135e29c], eax
-        mov     eax, dword ptr [DAT_0135dfec]
-        inc     eax
-        mov     dword ptr [DAT_0135dfec], eax
-        mov     eax, dword ptr [DAT_0135dfec]
-        xor     edx, edx
-        push    8
-        pop     ecx
-        div     ecx
-        test    edx, edx
-        jnz     L_df_qpc_skip
-        mov     ecx, offset DAT_00575950
-        call    dword ptr [_tickTimer]
-L_df_qpc_skip:
-        jmp     L_df_compute
-L_df_end:
-        cmp     dword ptr [DAT_00575ab8], 0
-        jnz     L_df_ret
-        cmp     dword ptr [ebp-0x34], 0
-        jz      L_df_ret
-        fld     dword ptr [DAT_00498b14]
-        fstp    dword ptr [ebp-0x24]
-        fld     dword ptr [DAT_00498b10]
-        fstp    dword ptr [ebp-0x20]
-        fldz
-        fstp    dword ptr [ebp-0x1c]
-        push    offset DAT_0135e0f0
-        lea     eax, [ebp-0x24]
-        push    eax
-        mov     ecx, offset DAT_0134ce18
-        call    dword ptr [_addString]
-        mov     eax, dword ptr [DAT_0062f648]
-        shr     eax, 3
-        and     eax, 1
-        test    eax, eax
-        jz      L_df_ret
-        mov     eax, dword ptr [DAT_0062f648]
-        shr     eax, 2
-        and     eax, 1
-        test    eax, eax
-        jz      L_df_ret
-        fld     dword ptr [DAT_00498a6c]
-        fstp    dword ptr [ebp-0x30]
-        fld     dword ptr [DAT_00498a68]
-        fstp    dword ptr [ebp-0x2c]
-        fldz
-        fstp    dword ptr [ebp-0x28]
-        cmp     dword ptr [DAT_00575bf8], 0
-        jz      L_df_color2
-        mov     dword ptr [DAT_013542d8], 0xffff4040
-        jmp     L_df_color_done
-L_df_color2:
-        mov     dword ptr [DAT_013542d8], 0xffffffd0
-L_df_color_done:
-        push    offset DAT_0135dff0
-        lea     eax, [ebp-0x30]
-        push    eax
-        mov     ecx, offset DAT_0134ce18
-        call    dword ptr [_addString]
-        or      dword ptr [DAT_013542d8], -1
-L_df_ret:
-        leave
-        ret
-    }
-}
-#pragma optimize("", on)
-#else
+// =====================================================================
+// Supervisor::DrawFpsCounter (FUN_004390a5)
+// =====================================================================
+#pragma var_order(now, frameTime, frameTimeSec, fps, base)
 void __fastcall Supervisor::DrawFpsCounter(i32 drawArg)
 {
-    static u32 frameCount = 0;
-    static DWORD lastTime = 0;
-    static char fpsBuf[256];
-    DWORD now = timeGetTime();
-    frameCount += 1 + (u32)*(u8 *)&DAT_00575a8b;
-    if (now - lastTime >= 500)
+    DWORD now;
+    f32 frameTime, frameTimeSec, fps, base;
+
+    if (*(i8 *)0x0062627d != 0) goto end_check;
+    *(i32 *)0x0135e1f0 += (i32)*(u8 *)0x00575a8b + 1;
+
+    if (*(i32 *)0x00575bbc == 0)
     {
-        f32 elapsed = (f32)(now - lastTime) / 1000.0f;
-        f32 fps = frameCount / elapsed;
-        lastTime = now;
-        frameCount = 0;
-        sprintf(fpsBuf, "%.02ffps", fps);
-        if (*(i32 *)&DAT_00575ab8 == 0 && drawArg != 0)
+        if ((*(i32 *)0x0135e2a4 & 1) == 0)
         {
-            D3DXVECTOR3 pos = { 512.0f, 464.0f, 0.0f };
-            (*(AsciiManager **)&DAT_0134ce18)->AddString(&pos, fpsBuf);
+            *(i32 *)0x0135e2a4 |= 1;
+            *(i32 *)0x0135e2a0 = timeGetTime();
         }
+        now = timeGetTime();
+        if (now < *(i32 *)0x0135e2a0)
+        {
+            *(i32 *)0x0135e2a0 = now;
+            *(i32 *)0x0135e1f0 = 0;
+        }
+        if ((u32)(now - *(i32 *)0x0135e2a0) < 0x1f4) goto done_fps;
+        frameTime = (f32)(i64)(now - *(i32 *)0x0135e2a0);
+        frameTimeSec = frameTime / *(f32 *)0x00498ab8;
+        *(i32 *)0x0135e2a0 = now;
+    compute_fps:
+        fps = (f32)(i64)*(i32 *)0x0135e1f0 / frameTimeSec;
+        *(i32 *)0x0135e1f0 = 0;
+        sprintf_th07((char *)0x135e0f0, "%.02ffps", (f64)fps);
+        if ((*(i32 *)0x0062f648 >> 2 & 1) == 0 || drawArg == 0) goto done_fps;
+        base = *(f32 *)0x00498a48;
+        *(f32 *)0x00575ad4 += base;
+        if (base * *(f32 *)0x00498b20 > fps)
+            *(f32 *)0x00575ad0 += base;
+        else if (base * *(f32 *)0x00498b1c > fps)
+            *(f32 *)0x00575ad0 = base * *(f32 *)0x00498b18 + *(f32 *)0x00575ad0;
+        else if (base * *(f32 *)0x00498a50 > fps)
+            *(f32 *)0x00575ad0 = base * *(f32 *)0x00498aa0 + *(f32 *)0x00575ad0;
+        else
+            *(f32 *)0x00575ad0 = base * *(f32 *)0x00498a50 + *(f32 *)0x00575ad0;
+        if ((*(i32 *)0x0062f648 >> 3 & 1) == 0)
+        {
+            *(i16 *)0x00575ad8 = FloatToI16(fps + *(f32 *)0x00498a50);
+            sprintf_th07((char *)0x135dff0, "%2d", (i32)*(i16 *)0x00575ad8);
+        }
+        else
+            sprintf_th07((char *)0x135dff0, "%2d", (i32)*(i16 *)0x00575ad8);
+        goto done_fps;
+    }
+    else
+    {
+        i64 qpcNow;
+        if (*(i32 *)0x0135e298 == 0)
+            QueryPerformanceCounter((LARGE_INTEGER *)0x0135e298);
+        QueryPerformanceCounter((LARGE_INTEGER *)&qpcNow);
+        if (*(i32 *)((u8 *)&qpcNow + 0) < *(i32 *)0x0135e298)
+        {
+            *(i32 *)0x0135e298 = *(i32 *)((u8 *)&qpcNow + 0);
+            *(i32 *)0x0135e29c = *(i32 *)((u8 *)&qpcNow + 4);
+            *(i32 *)0x0135e1f0 = 0;
+        }
+        if ((u32)(*(i32 *)((u8 *)&qpcNow + 0) - *(i32 *)0x0135e298) <
+            (u32)(*(i32 *)0x0135e298 + (*(i32 *)0x00575bbc >> 1))) goto end_check;
+        frameTime = (f32)(i64)(*(i32 *)((u8 *)&qpcNow + 0) - *(i32 *)0x0135e298);
+        frameTimeSec = frameTime / (f32)(i64)*(i32 *)0x00575bbc;
+        *(i32 *)0x0135e298 = *(i32 *)((u8 *)&qpcNow + 0);
+        *(i32 *)0x0135e29c = *(i32 *)((u8 *)&qpcNow + 4);
+        *(i32 *)0x0135dfec += 1;
+        if (*(i32 *)0x0135dfec % 8 == 0)
+            g_Supervisor.TickTimer((i32 *)0, (f32 *)0);
+        goto compute_fps;
+    }
+done_fps:
+end_check:
+    if (*(i32 *)0x00575ab8 != 0 || drawArg == 0) return;
+    {
+        D3DXVECTOR3 pos1;
+        pos1.x = *(f32 *)0x00498b14;
+        pos1.y = *(f32 *)0x00498b10;
+        pos1.z = 0.0f;
+        (*(AsciiManager **)0x0134ce18)->AddString(&pos1, (char *)0x135e0f0);
+    }
+    if ((*(i32 *)0x0062f648 >> 3 & 1) == 0 || (*(i32 *)0x0062f648 >> 2 & 1) == 0) return;
+    {
+        D3DXVECTOR3 pos2;
+        pos2.x = *(f32 *)0x00498a6c;
+        pos2.y = *(f32 *)0x00498a68;
+        pos2.z = 0.0f;
+        if (*(i32 *)0x00575bf8 != 0)
+            *(i32 *)0x013542d8 = 0xffff4040;
+        else
+            *(i32 *)0x013542d8 = 0xffffffd0;
+        (*(AsciiManager **)0x0134ce18)->AddString(&pos2, (char *)0x135dff0);
+        *(i32 *)0x013542d8 |= -1;
     }
 }
-#endif
-#pragma optimize("s", off)
+
+// =====================================================================
 // Supervisor::RegisterChain (FUN_00439000)
-// __cdecl, no args. Full naked asm for exact match.
-// Supervisor::RegisterChain (FUN_00439000) -- pure C++
+// =====================================================================
 #pragma var_order(chain, calcResult, supervisor)
 ZunResult Supervisor::RegisterChain()
 {
-    Supervisor *supervisor;
+    Supervisor *supervisor = &g_Supervisor;
     ChainElem *chain;
     i32 calcResult;
-    supervisor = (Supervisor *)&DAT_00575950;
+
 #ifndef DIFFBUILD
-    // Force AND/OR memory ops (MSVC /Od optimizes &= 0 to MOV)
     __asm {
-        mov     eax, [ebp-0xc]
-        and     dword ptr [eax+0x154], 0
-        mov     eax, [ebp-0xc]
-        or      dword ptr [eax+0x158], -1
-        mov     eax, [ebp-0xc]
-        and     dword ptr [eax+0x150], 0
+        mov eax, supervisor
+        and dword ptr [eax+0x154], 0
+        mov eax, supervisor
+        or dword ptr [eax+0x158], -1
+        mov eax, supervisor
+        and dword ptr [eax+0x150], 0
     }
 #else
     supervisor->wantedState = 0;
     supervisor->curState = -1;
     supervisor->calcCount = 0;
 #endif
-    chain = ((Chain *)&DAT_00626218)->CreateElem((ChainCallback)Supervisor::OnUpdate);
+
+    chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnUpdate);
     chain->arg = supervisor;
-    chain->addedCallback = (ChainAddedCallback)0;
-    chain->deletedCallback = (ChainDeletedCallback)0;
-    calcResult = ((Chain *)&DAT_00626218)->AddToCalcChain(chain, 0);
+    chain->addedCallback = (ChainAddedCallback)Supervisor::AddedCallback;
+    chain->deletedCallback = (ChainDeletedCallback)Supervisor::DeletedCallback;
+    calcResult = g_Chain.AddToCalcChain(chain, 0);
     if (calcResult != 0)
     {
         return (ZunResult)calcResult;
     }
-    chain = ((Chain *)&DAT_00626218)->CreateElem((ChainCallback)Supervisor::OnDraw);
+    chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnDraw);
     chain->arg = supervisor;
-    ((Chain *)&DAT_00626218)->AddToDrawChain(chain, 0xf);
+    g_Chain.AddToDrawChain(chain, 0xf);
     return ZUN_SUCCESS;
 }
-#pragma optimize("s", off)
-#pragma optimize("s", on)
 
 // =====================================================================
-// Supervisor audio globals (absolute, matching orig DAT_ addresses).
-// musicMode @ 0x00575a87, opts @ 0x00575a9c, midiOutput @ 0x00575acc.
-#define MUSIC_MODE (*(u8 *)0x00575a87)
-#define CFG_OPTS (*(u32 *)0x00575a9c)
-#define MIDI_OUTPUT_PTR (*(MidiOutput **)0x00575acc)
-#define SOUND_PLAYER_PTR (*(SoundPlayer **)0x004ba0d8)
-
-// rdata string constants referenced by orig via absolute reloc.
-// "dummy" @ 0x4980d0, empty string @ 0x496c1e. Declared extern "C" so the
-// PUSH emits a reloc objdiff can match against the orig's DAT_xxxxxxxx reloc.
-extern "C" char g_DummyStr[];   // DAT_004980d0 "dummy"
-extern "C" char g_EmptyStr[];   // DAT_00496c1e "" (points at a NUL byte)
-#define DUMMY_STR ((char *)g_DummyStr)
-#define EMPTY_STR ((char *)g_EmptyStr)
-
+// Supervisor::ReadMidiFile (FUN_0043a05f)
 // =====================================================================
-// Supervisor::ReadMidiFile  (FUN_0043a05f)
-// __fastcall arg: u32 midiFileIdx. ECX unused.
-// orig: MIDI first (jne WAV), WAV tests opts>>13 bit, StopStream(4 or 3, 0, "dummy").
 #pragma var_order(this_save)
-// =====================================================================
 ZunResult Supervisor::ReadMidiFile(u32 midiFileIdx)
 {
-    void *this_save;
-    (void)this_save;
     (void)midiFileIdx;
     if (MUSIC_MODE == MUSIC_MIDI)
     {
@@ -1034,13 +502,9 @@ ZunResult Supervisor::ReadMidiFile(u32 midiFileIdx)
     else if (MUSIC_MODE == MUSIC_WAV)
     {
         if ((CFG_OPTS >> 0xd & 1) != 0)
-        {
             SOUND_PLAYER_PTR->SoundQueueAdd(4, 0, DUMMY_STR);
-        }
         else
-        {
             SOUND_PLAYER_PTR->SoundQueueAdd(3, 0, DUMMY_STR);
-        }
     }
     else
     {
@@ -1048,80 +512,58 @@ ZunResult Supervisor::ReadMidiFile(u32 midiFileIdx)
     }
     return ZUN_SUCCESS;
 }
+
 // =====================================================================
-// Supervisor::PlayAudio  (FUN_00439dd0)
-// __fastcall args: i32 channel, char *path. ECX = Supervisor* (unused body).
-// MIDI path: MidiOutput::LoadFile(this, path, channel) @ 0x436650 (2 stack
-// args). WAV path: copy path bytes into local buffer [ebp-0x108], locate
-// '.', overwrite 4 bytes at that pos with ".wav" (0x2e,0x77,0x61,0x76), then
-// SoundPlayer::StopStream(1, channel, modifiedPath) @ 0x44d2f0.
-// Returns 0 always (orig: XOR EAX,EAX at both tails; the WAV tail has an
-// extra `INC EAX` => returns 1).
+// Supervisor::PlayAudio (FUN_00439dd0)
 // =====================================================================
-extern "C" char *__cdecl strchr_th07(char *s, i32 ch); // 0x0047d4b0 (__cdecl, 2 stack args)
-struct MidiOutput2
-{
-    void LoadFile2(char *path, i32 channel); // 0x00436650 (2 stack args)
-};
 ZunResult Supervisor::PlayAudio(i32 channel, char *path)
 {
     if (MUSIC_MODE == MUSIC_MIDI)
     {
         if (MIDI_OUTPUT_PTR != 0)
         {
-            (*(MidiOutput2 **)0x00575acc)[0].LoadFile2(path, channel);
+            MidiOutput *midi = MIDI_OUTPUT_PTR;
+            midi->StopPlayback();
+            midi->LoadFile(path);
+            midi->Play();
         }
         return ZUN_SUCCESS;
     }
     if (MUSIC_MODE != MUSIC_WAV)
     {
-        return (ZunResult)1; // orig WAV tail: XOR EAX,EAX; INC EAX
+        return (ZunResult)1;
     }
-    // WAV path: copy path into local buffer, find '.', write ".wav".
-    // Orig keeps two dst pointer locals (d and d2) plus a byte local; mirror
-    // that so the stack frame and copy loop match byte-for-byte. The loop
-    // stores via `d` (not d2): d2 is a dead copy orig emits.
-    char buf[0x100];
-    char *p = path;
-    char *d = buf;
-    char *d2 = d;
-    char c;
-    do
     {
-        c = *p;
-        *d = c;
-        p++;
-        d++;
-    } while (c != 0);
-    char *dot = strchr_th07(buf, '.');
-    dot[1] = 'w';
-    dot[2] = 'a';
-    dot[3] = 'v';
-    SOUND_PLAYER_PTR->SoundQueueAdd(1, channel, buf);
+        char buf[0x100];
+        char *p = path;
+        char *d = buf;
+        char *d2 = d;
+        char c;
+        do {
+            c = *p;
+            *d = c;
+            p++;
+            d++;
+        } while (c != 0);
+        (void)d2;
+        char *dot = strchr_th07(buf, '.');
+        dot[1] = 'w'; dot[2] = 'a'; dot[3] = 'v';
+        SOUND_PLAYER_PTR->SoundQueueAdd(1, channel, buf);
+    }
     return (ZunResult)1;
 }
 
 // =====================================================================
-// Supervisor::PlayMidiFile  (FUN_00439f4d)
-// __fastcall arg: char *midiPath. ECX = Supervisor* (unused body).
-// MIDI path: MidiOutput::StopPlayback; LoadFile(midiPath); Play().
-// WAV path: copy path into local buffer, append ".wav" at '.', then
-// SoundPlayer::StopStream(2, -1, modifiedPath).
-// Supervisor::StopAudio  (FUN_00439ec1)
-// __thiscall arg: i32 channel. ECX = Supervisor*.
-// orig caches midiOutput singleton into a local ([ebp-0x4]) before the three
-// thiscall calls; WAV path uses the "dummy" rdata string as name arg.
+// Supervisor::StopAudio (FUN_00439ec1)
 // =====================================================================
 #pragma var_order(midi)
 ZunResult Supervisor::StopAudio(i32 channel)
 {
-    MidiOutput *midi;
     if (MUSIC_MODE == MUSIC_MIDI)
     {
-        // orig: check MIDI_OUTPUT_PTR != 0 FIRST, then cache to local.
-        if (MIDI_OUTPUT_PTR != 0)
+        MidiOutput *midi = MIDI_OUTPUT_PTR;
+        if (midi != 0)
         {
-            midi = MIDI_OUTPUT_PTR;
             midi->StopPlayback();
             midi->ParseFile(channel);
             midi->Play();
@@ -1130,25 +572,17 @@ ZunResult Supervisor::StopAudio(i32 channel)
     else if (MUSIC_MODE == MUSIC_WAV)
     {
         if ((CFG_OPTS >> 0xd & 1) != 0)
-        {
             SOUND_PLAYER_PTR->SoundQueueAdd(4, 0, DUMMY_STR);
-        }
         SOUND_PLAYER_PTR->SoundQueueAdd(2, channel, DUMMY_STR);
     }
     return ZUN_SUCCESS;
 }
 
-#pragma optimize("s", off)
-#pragma optimize("s", on)
-
 // =====================================================================
+// Supervisor::PlayMidiFile (FUN_00439f4d)
 // =====================================================================
 ZunResult Supervisor::PlayMidiFile(char *midiPath)
 {
-    // Orig frame=0x120 with midi@[ebp-0x10c]. MSVC /Od puts scalar locals at
-    // frame bottom ([ebp-0x4] etc) so we cannot reproduce midi@0x10c from C++,
-    // and asm-only attempts collide with the PMF pointer locals. This is the
-    // documented MSVC /Od layout limitation -- accepted at 0%.
     char buf[0x100];
     if (MUSIC_MODE == MUSIC_MIDI)
     {
@@ -1162,7 +596,9 @@ ZunResult Supervisor::PlayMidiFile(char *midiPath)
     }
     else if (MUSIC_MODE == MUSIC_WAV)
     {
-        char *p = midiPath, *d = buf, *d2 = d;
+        char *p = midiPath;
+        char *d = buf;
+        char *d2 = d;
         char c;
         do { c = *p; *d = c; p++; d++; } while (c != 0);
         (void)d2;
@@ -1176,571 +612,102 @@ ZunResult Supervisor::PlayMidiFile(char *midiPath)
     }
     return ZUN_SUCCESS;
 }
-#pragma optimize("s", off)
-#pragma optimize("s", on)
 
+// =====================================================================
 // Supervisor::SetupDInput (FUN_004383d8)
-// __fastcall, ECX = Supervisor*. Full naked asm for exact match.
-#ifndef DIFFBUILD
-#pragma optimize("", off)
-__declspec(naked) ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
-{
-    static void (__fastcall *_di8create)() = (void (__fastcall *)())0x00461a90;
-    static void (__cdecl *_log)() = (void (__cdecl *)())0x004315f0;
-    __asm {
-        push    ebp
-        mov     ebp, esp
-        push    ecx
-        push    ecx
-        mov     [ebp-0x8], ecx
-        // hinst = GetWindowLongA(hwnd, -6)
-        push    -6
-        mov     eax, [ebp-0x8]
-        push    dword ptr [eax+0x44]
-        mov     edx, 0x0048d20c
-call    dword ptr [edx]
-        mov     [ebp-0x4], eax
-        // if (opts >> 0xb & 1) return ZUN_ERROR
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0x14c]
-        shr     eax, 0xb
-        and     eax, 1
-        test    eax, eax
-        jz      L_sdi_di8
-        or      eax, -1
-        jmp     L_sdi_ret
-L_sdi_di8:
-        // DirectInput8Create(hinst, 0x800, iid, &dinputIface, 0)
-        push    0
-        mov     eax, [ebp-0x8]
-        add     eax, 0xc
-        push    eax
-        push    0x4904a8
-        push    0x800
-        push    dword ptr [ebp-0x4]
-        call    dword ptr [_di8create]
-        test    eax, eax
-        jge     L_sdi_createdev
-        mov     eax, [ebp-0x8]
-        and     dword ptr [eax+0xc], 0
-        push    0x497208
-        push    0x624210
-        call    dword ptr [_log]
-        pop     ecx
-        pop     ecx
-        or      eax, -1
-        jmp     L_sdi_ret
-L_sdi_createdev:
-        // dinputIface->CreateDevice(GUID, &keyboard, 0)
-        push    0
-        mov     eax, [ebp-0x8]
-        add     eax, 0x10
-        push    eax
-        push    0x490408
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0xc]
-        mov     ecx, [ebp-0x8]
-        mov     ecx, [ecx+0xc]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0xc]
-        test    eax, eax
-        jge     L_sdi_setfmt
-        // error: release dinputIface
-        mov     eax, [ebp-0x8]
-        cmp     dword ptr [eax+0xc], 0
-        jz      L_sdi_err1
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0xc]
-        mov     ecx, [ebp-0x8]
-        mov     ecx, [ecx+0xc]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x8]
-        mov     eax, [ebp-0x8]
-        and     dword ptr [eax+0xc], 0
-L_sdi_err1:
-        push    0x497208
-        push    0x624210
-        call    dword ptr [_log]
-        pop     ecx
-        pop     ecx
-        or      eax, -1
-        jmp     L_sdi_ret
-L_sdi_setfmt:
-        // keyboard->SetDataFormat(c_dfDIKeyboard)
-        push    0x48d674
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0x10]
-        mov     ecx, [ebp-0x8]
-        mov     ecx, [ecx+0x10]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x2c]
-        test    eax, eax
-        jge     L_sdi_setcoop
-        // error: release keyboard + dinputIface
-        mov     eax, [ebp-0x8]
-        cmp     dword ptr [eax+0x10], 0
-        jz      L_sdi_err2a
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0x10]
-        mov     ecx, [ebp-0x8]
-        mov     ecx, [ecx+0x10]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x8]
-        mov     eax, [ebp-0x8]
-        and     dword ptr [eax+0x10], 0
-L_sdi_err2a:
-        mov     eax, [ebp-0x8]
-        cmp     dword ptr [eax+0xc], 0
-        jz      L_sdi_err2b
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0xc]
-        mov     ecx, [ebp-0x8]
-        mov     ecx, [ecx+0xc]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x8]
-        mov     eax, [ebp-0x8]
-        and     dword ptr [eax+0xc], 0
-L_sdi_err2b:
-        push    0x4971d8
-        push    0x624210
-        call    dword ptr [_log]
-        pop     ecx
-        pop     ecx
-        or      eax, -1
-        jmp     L_sdi_ret
-L_sdi_setcoop:
-        // keyboard->SetCooperativeLevel(hwnd, 0x16)
-        push    0x16
-        mov     eax, [ebp-0x8]
-        push    dword ptr [eax+0x44]
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0x10]
-        mov     ecx, [ebp-0x8]
-        mov     ecx, [ecx+0x10]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x34]
-        test    eax, eax
-        jge     L_sdi_acquire
-        // error: release keyboard + dinputIface (same pattern)
-        mov     eax, [ebp-0x8]
-        cmp     dword ptr [eax+0x10], 0
-        jz      L_sdi_err3a
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0x10]
-        mov     ecx, [ebp-0x8]
-        mov     ecx, [ecx+0x10]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x8]
-        mov     eax, [ebp-0x8]
-        and     dword ptr [eax+0x10], 0
-L_sdi_err3a:
-        mov     eax, [ebp-0x8]
-        cmp     dword ptr [eax+0xc], 0
-        jz      L_sdi_err3b
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0xc]
-        mov     ecx, [ebp-0x8]
-        mov     ecx, [ecx+0xc]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x8]
-        mov     eax, [ebp-0x8]
-        and     dword ptr [eax+0xc], 0
-L_sdi_err3b:
-        push    0x4971a4
-        push    0x624210
-        call    dword ptr [_log]
-        pop     ecx
-        pop     ecx
-        or      eax, -1
-        jmp     L_sdi_ret
-L_sdi_acquire:
-        // keyboard->Acquire()
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0x10]
-        mov     ecx, [ebp-0x8]
-        mov     ecx, [ecx+0x10]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x1c]
-        // Log("initialized")
-        push    0x49717c
-        push    0x624210
-        call    dword ptr [_log]
-        pop     ecx
-        pop     ecx
-        // dinputIface->EnumDevices(4, callback, 0, 1)
-        push    1
-        push    0
-        push    0x43832f
-        push    4
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0xc]
-        mov     ecx, [ebp-0x8]
-        mov     ecx, [ecx+0xc]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x10]
-        // if (controller != 0) setup joystick
-        mov     eax, [ebp-0x8]
-        cmp     dword ptr [eax+0x14], 0
-        jz      L_sdi_done
-        // controller->EnumObjects(callback, 0, 0)
-        push    0x48d46c
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0x14]
-        mov     ecx, [ebp-0x8]
-        mov     ecx, [ecx+0x14]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x2c]
-        // controller->SetCooperativeLevel(hwnd, 0xa)
-        push    0xa
-        mov     eax, [ebp-0x8]
-        push    dword ptr [eax+0x44]
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0x14]
-        mov     ecx, [ebp-0x8]
-        mov     ecx, [ecx+0x14]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x34]
-        // controllerCaps.dwSize = 0x2c; SetDataFormat(&caps)
-        mov     edx, 0x00575968
-mov     dword ptr [edx], 0x2c
-        push    offset DAT_00575968
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0x14]
-        mov     ecx, [ebp-0x8]
-        mov     ecx, [ecx+0x14]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0xc]
-        // controller->EnumObjects(joyCallback, 0, 0)
-        push    0
-        push    0
-        push    0x43836e
-        mov     eax, [ebp-0x8]
-        mov     eax, [eax+0x14]
-        mov     ecx, [ebp-0x8]
-        mov     ecx, [ecx+0x14]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x10]
-        // Log("pad found")
-        push    0x49715c
-        push    0x624210
-        call    dword ptr [_log]
-        pop     ecx
-        pop     ecx
-L_sdi_done:
-        xor     eax, eax
-L_sdi_ret:
-        leave
-        ret
-    }
-}
-#pragma optimize("", on)
-#else
+// =====================================================================
+#pragma var_order(hinst)
 ZunResult __fastcall Supervisor::SetupDInput(Supervisor *s)
 {
-    HINSTANCE hInst = (HINSTANCE)GetWindowLongA(s->hwndGameWindow, GWL_HINSTANCE);
-    if ((s->cfg.opts >> GCOS_NO_DIRECTINPUT_PAD & 1) != 0) return ZUN_ERROR;
-    if (DirectInput8Create(hInst, DIRECTINPUT_VERSION, IID_IDirectInput8A,
-                           (LPVOID *)&s->dinputIface, NULL) < 0)
+    i32 hinst;
+    hinst = GetWindowLongA((HWND)s->hwndGameWindow, GWL_HINSTANCE);
+    if ((s->cfg.opts >> GCOS_NO_DIRECTINPUT_PAD & 1) != 0)
+    {
+        return ZUN_ERROR;
+    }
+    if (DirectInput8Create((HINSTANCE)hinst, DIRECTINPUT_VERSION,
+                           IID_IDirectInput8A, (LPVOID *)&s->dinputIface, NULL) < 0)
     {
         s->dinputIface = NULL;
+        g_GameErrorContext.Log("%s", "DirectInput not available");
         return ZUN_ERROR;
     }
     if (((IDirectInput8A *)s->dinputIface)->CreateDevice(GUID_SysKeyboard,
                                                           (LPDIRECTINPUTDEVICE8A *)&s->keyboard, NULL) < 0)
     {
         if (s->dinputIface) { ((IDirectInput8A *)s->dinputIface)->Release(); s->dinputIface = NULL; }
+        g_GameErrorContext.Log("%s", "DirectInput not available");
         return ZUN_ERROR;
     }
-    ((IDirectInputDevice8A *)s->keyboard)->SetDataFormat(&c_dfDIKeyboard);
-    ((IDirectInputDevice8A *)s->keyboard)->SetCooperativeLevel(s->hwndGameWindow,
-                                                                DISCL_NONEXCLUSIVE | DISCL_FOREGROUND | DISCL_NOWINKEY);
+    if (((IDirectInputDevice8A *)s->keyboard)->SetDataFormat(&c_dfDIKeyboard) < 0)
+    {
+        if (s->keyboard) { ((IDirectInputDevice8A *)s->keyboard)->Release(); s->keyboard = NULL; }
+        if (s->dinputIface) { ((IDirectInput8A *)s->dinputIface)->Release(); s->dinputIface = NULL; }
+        g_GameErrorContext.Log("%s", "SetDataFormat failed");
+        return ZUN_ERROR;
+    }
+    if (((IDirectInputDevice8A *)s->keyboard)->SetCooperativeLevel((HWND)s->hwndGameWindow,
+                                                                    DISCL_NONEXCLUSIVE | DISCL_FOREGROUND | DISCL_NOWINKEY) < 0)
+    {
+        if (s->keyboard) { ((IDirectInputDevice8A *)s->keyboard)->Release(); s->keyboard = NULL; }
+        if (s->dinputIface) { ((IDirectInput8A *)s->dinputIface)->Release(); s->dinputIface = NULL; }
+        g_GameErrorContext.Log("%s", "SetCooperativeLevel failed");
+        return ZUN_ERROR;
+    }
     ((IDirectInputDevice8A *)s->keyboard)->Acquire();
+    g_GameErrorContext.Log("%s", "DirectInput initialized");
     ((IDirectInput8A *)s->dinputIface)->EnumDevices(DI8DEVCLASS_GAMECTRL,
-                                                      (LPDIENUMDEVICESCALLBACKA)Supervisor_EnumKeybdCallback, NULL, DIEDFL_ATTACHEDONLY);
+                                                      (LPDIENUMDEVICESCALLBACKA)0x0043832f, NULL, DIEDFL_ATTACHEDONLY);
     if (s->controller)
     {
+        ((IDirectInputDevice8A *)s->controller)->EnumObjects((LPDIENUMDEVICEOBJECTSCALLBACK)0x0048d46c, NULL, DIDFT_ALL);
+        ((IDirectInputDevice8A *)s->controller)->SetCooperativeLevel((HWND)s->hwndGameWindow, DISCL_EXCLUSIVE | DISCL_FOREGROUND);
         ((IDirectInputDevice8A *)s->controller)->SetDataFormat(&c_dfDIJoystick2);
-        ((IDirectInputDevice8A *)s->controller)->SetCooperativeLevel(s->hwndGameWindow, DISCL_EXCLUSIVE | DISCL_FOREGROUND);
+        g_GameErrorContext.Log("%s", "Pad found");
     }
     return ZUN_SUCCESS;
 }
-#endif
-#pragma optimize("s", off)
-#pragma optimize("s", on)
 
 // =====================================================================
+// Supervisor::DeletedCallback (FUN_00438de2)
 // =====================================================================
-// Static function pointers for DeletedCallback naked asm.
-static void (__fastcall *_dc_free)() = (void (__fastcall *)())0x0047d285;
-static void (__fastcall *_dc_cleanup1)() = (void (__fastcall *)())0x00437c39;
-static void (__fastcall *_dc_releaseAnm0)() = (void (__fastcall *)())0x0044e4e0;
-static void (__fastcall *_dc_asciiCutChain)() = (void (__fastcall *)())0x00401f10;
-static void (__fastcall *_dc_stopStream)() = (void (__fastcall *)())0x0044d2f0;
-static void (__fastcall *_dc_stopPlayback)() = (void (__fastcall *)())0x00436b30;
-static void (__fastcall *_dc_midiClearTracks)() = (void (__fastcall *)())0x004365b0;
-static void (__fastcall *_dc_free2)() = (void (__fastcall *)())0x0047d43c;
-static void (__fastcall *_dc_saveReplay)() = (void (__fastcall *)())0x00443da0;
-static void (__fastcall *_dc_cleanup3)() = (void (__fastcall *)())0x0043227e;
-static void (__fastcall *_dc_heapFreeAll)() = (void (__fastcall *)())0x0045f800;
-static void (__fastcall *_dc_cleanup4)() = (void (__fastcall *)())0x004378f0;
-static void (__fastcall *_dc_cleanup5)() = (void (__fastcall *)())0x00438fef;
-
-// Supervisor::DeletedCallback  (FUN_00438de2) -- naked asm with DAT_ externs
-#ifndef DIFFBUILD
-#pragma optimize("", off)
-__declspec(naked) ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
-{
-    static void (__fastcall *_free)() = (void (__fastcall *)())0x0047d285;
-    static void (__fastcall *_cleanup1)() = (void (__fastcall *)())0x00437c39;
-    static void (__fastcall *_releaseAnm0)() = (void (__fastcall *)())0x0044e4e0;
-    static void (__fastcall *_asciiCutChain)() = (void (__fastcall *)())0x00401f10;
-    static void (__fastcall *_stopStream)() = (void (__fastcall *)())0x0044d2f0;
-    static void (__fastcall *_stopPlayback)() = (void (__fastcall *)())0x00436b30;
-    static void (__fastcall *_midiClearTracks)() = (void (__fastcall *)())0x004365b0;
-    static void (__fastcall *_free2)() = (void (__fastcall *)())0x0047d43c;
-    static void (__fastcall *_saveReplay)() = (void (__fastcall *)())0x00443da0;
-    static void (__fastcall *_cleanup3)() = (void (__fastcall *)())0x0043227e;
-    static void (__fastcall *_heapFreeAll)() = (void (__fastcall *)())0x0045f800;
-    static void (__fastcall *_cleanup4)() = (void (__fastcall *)())0x004378f0;
-    static void (__fastcall *_cleanup5)() = (void (__fastcall *)())0x00438fef;
-    __asm {
-        push    ebp
-        mov     ebp, esp
-        sub     esp, 0x28
-        push    esi
-        mov     [ebp-0x20], ecx
-
-        cmp     dword ptr [DAT_00575c1c], 0
-        jz      L_dc_pbg
-        mov     eax, dword ptr [DAT_00575c1c]
-        mov     [ebp-0x1c], eax
-        push    dword ptr [ebp-0x1c]
-        call    dword ptr [_free]
-        pop     ecx
-        and     dword ptr [DAT_00575c1c], 0
-L_dc_pbg:
-        mov     ecx, dword ptr [DAT_004b9e44]
-        call    dword ptr [_cleanup1]
-        push    0
-        mov     ecx, dword ptr [DAT_004b9e44]
-        call    dword ptr [_releaseAnm0]
-        call    dword ptr [_asciiCutChain]
-        push    offset DAT_004980d0
-        push    0
-        push    4
-        mov     ecx, offset DAT_004ba0d8
-        call    dword ptr [_stopStream]
-
-        mov     eax, [ebp-0x20]
-        cmp     dword ptr [eax+0x17c], 0
-        jz      L_dc_midi
-        mov     eax, [ebp-0x20]
-        mov     ecx, [eax+0x17c]
-        call    dword ptr [_stopPlayback]
-        mov     eax, [ebp-0x20]
-        mov     eax, [eax+0x17c]
-        mov     [ebp-0x8], eax
-        mov     eax, [ebp-0x8]
-        mov     [ebp-0x4], eax
-        cmp     dword ptr [ebp-0x4], 0
-        jz      L_dc_midi_null
-        mov     ecx, [ebp-0x4]
-        call    dword ptr [_midiClearTracks]
-        xor     eax, eax
-        inc     eax
-        and     eax, 1
-        test    eax, eax
-        jz      L_dc_midi_store
-        push    dword ptr [ebp-0x4]
-        call    dword ptr [_free2]
-        pop     ecx
-L_dc_midi_store:
-        mov     eax, [ebp-0x4]
-        mov     [ebp-0x24], eax
-        jmp     L_dc_midi_clear
-L_dc_midi_null:
-        and     dword ptr [ebp-0x24], 0
-L_dc_midi_clear:
-        mov     eax, [ebp-0x20]
-        and     dword ptr [eax+0x17c], 0
-L_dc_midi:
-        xor     edx, edx
-        xor     ecx, ecx
-        call    dword ptr [_saveReplay]
-        call    dword ptr [_cleanup3]
-
-        mov     eax, [ebp-0x20]
-        cmp     dword ptr [eax+0x10], 0
-        jz      L_dc_kb1
-        mov     eax, [ebp-0x20]
-        mov     eax, [eax+0x10]
-        mov     ecx, [ebp-0x20]
-        mov     ecx, [ecx+0x10]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x20]
-L_dc_kb1:
-        mov     eax, [ebp-0x20]
-        cmp     dword ptr [eax+0x10], 0
-        jz      L_dc_kb2
-        mov     eax, [ebp-0x20]
-        mov     eax, [eax+0x10]
-        mov     ecx, [ebp-0x20]
-        mov     ecx, [ecx+0x10]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x8]
-        mov     eax, [ebp-0x20]
-        and     dword ptr [eax+0x10], 0
-L_dc_kb2:
-        mov     eax, [ebp-0x20]
-        cmp     dword ptr [eax+0x14], 0
-        jz      L_dc_joy1
-        mov     eax, [ebp-0x20]
-        mov     eax, [eax+0x14]
-        mov     ecx, [ebp-0x20]
-        mov     ecx, [ecx+0x14]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x20]
-L_dc_joy1:
-        mov     eax, [ebp-0x20]
-        cmp     dword ptr [eax+0x14], 0
-        jz      L_dc_joy2
-        mov     eax, [ebp-0x20]
-        mov     eax, [eax+0x14]
-        mov     ecx, [ebp-0x20]
-        mov     ecx, [ecx+0x14]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x8]
-        mov     eax, [ebp-0x20]
-        and     dword ptr [eax+0x14], 0
-L_dc_joy2:
-        mov     eax, [ebp-0x20]
-        cmp     dword ptr [eax+0xc], 0
-        jz      L_dc_di
-        mov     eax, [ebp-0x20]
-        mov     eax, [eax+0xc]
-        mov     ecx, [ebp-0x20]
-        mov     ecx, [ecx+0xc]
-        mov     eax, [eax]
-        push    ecx
-        call    dword ptr [eax+0x8]
-        mov     eax, [ebp-0x20]
-        and     dword ptr [eax+0xc], 0
-L_dc_di:
-        cmp     dword ptr [DAT_00626278], 0
-        jz      L_dc_gm1
-        mov     eax, dword ptr [DAT_00626278]
-        mov     [ebp-0xc], eax
-        push    dword ptr [ebp-0xc]
-        call    dword ptr [_free2]
-        pop     ecx
-        and     dword ptr [DAT_00626278], 0
-L_dc_gm1:
-        cmp     dword ptr [DAT_00626274], 0
-        jz      L_dc_gm2
-        mov     eax, dword ptr [DAT_00626274]
-        mov     [ebp-0x10], eax
-        push    dword ptr [ebp-0x10]
-        call    dword ptr [_free2]
-        pop     ecx
-        and     dword ptr [DAT_00626274], 0
-L_dc_gm2:
-        mov     ecx, offset DAT_00626258
-        call    dword ptr [_heapFreeAll]
-
-        cmp     dword ptr [DAT_00575a64], 0
-        jz      L_dc_done
-        mov     ecx, dword ptr [DAT_00575a64]
-        call    dword ptr [_cleanup4]
-        mov     eax, dword ptr [DAT_00575a64]
-        mov     [ebp-0x18], eax
-        mov     eax, [ebp-0x18]
-        mov     [ebp-0x14], eax
-        cmp     dword ptr [ebp-0x14], 0
-        jz      L_dc_obj_null
-        mov     ecx, [ebp-0x14]
-        call    dword ptr [_cleanup5]
-        xor     eax, eax
-        inc     eax
-        and     eax, 1
-        test    eax, eax
-        jz      L_dc_obj_store
-        push    dword ptr [ebp-0x14]
-        call    dword ptr [_free2]
-        pop     ecx
-L_dc_obj_store:
-        mov     eax, [ebp-0x14]
-        mov     [ebp-0x28], eax
-        jmp     L_dc_obj_clear
-L_dc_obj_null:
-        and     dword ptr [ebp-0x28], 0
-L_dc_obj_clear:
-        and     dword ptr [DAT_00575a64], 0
-L_dc_done:
-        xor     eax, eax
-        pop     esi
-        leave
-        ret
-    }
-}
-#pragma optimize("", on)
-#else
+#pragma var_order(pbg, midi, gm, gm2, obj2)
 ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
 {
-    void *pbg;
-    if (*(void **)&DAT_00575c1c != NULL)
+    void *pbg, *midi, *gm, *gm2, *obj2;
+
+    pbg = g_Pbg4Archive;
+    if (pbg != NULL)
     {
-        pbg = *(void **)&DAT_00575c1c;
-        free(pbg);
-        *(void **)&DAT_00575c1c = NULL;
+        _free_th07(pbg);
+        g_Pbg4Archive = NULL;
     }
     Supervisor_SomeCleanup1();
     Supervisor_ReleaseAnm0();
     AsciiManager::CutChain();
-    (*(SoundPlayer **)&DAT_004ba0d8)->SoundQueueAdd(4, 0, DUMMY_STR);
+    SOUND_PLAYER_PTR->SoundQueueAdd(4, 0, DUMMY_STR);
     if (s->midiOutput != NULL)
     {
         MidiOutput_StopPlayback();
-        void *midi = s->midiOutput;
+        midi = s->midiOutput;
         if (midi != NULL)
         {
             Supervisor_MidiClearTracks();
-            free(midi);
+            _free_th07(midi);
         }
         s->midiOutput = NULL;
     }
-    Supervisor_ChainReleaseAll(0, 0);
+    ReplayManager::SaveReplay(NULL, NULL);
     Supervisor_Cleanup3();
     if (s->keyboard != NULL)
-    {
         ((IDirectInputDevice8A *)s->keyboard)->Unacquire();
-    }
     if (s->keyboard != NULL)
     {
         ((IDirectInputDevice8A *)s->keyboard)->Release();
         s->keyboard = NULL;
     }
     if (s->controller != NULL)
-    {
         ((IDirectInputDevice8A *)s->controller)->Unacquire();
-    }
     if (s->controller != NULL)
     {
         ((IDirectInputDevice8A *)s->controller)->Release();
@@ -1751,215 +718,183 @@ ZunResult __fastcall Supervisor::DeletedCallback(Supervisor *s)
         ((IDirectInput8A *)s->dinputIface)->Release();
         s->dinputIface = NULL;
     }
-    void *gm = *(void **)&DAT_00626278;
-    if (gm != NULL) { free(gm); *(void **)&DAT_00626278 = NULL; }
-    void *gm2 = *(void **)&DAT_00626274;
-    if (gm2 != NULL) { free(gm2); *(void **)&DAT_00626274 = NULL; }
+    gm = *(void **)0x00626278;
+    if (gm != NULL) { _free_th07(gm); *(void **)0x00626278 = NULL; }
+    gm2 = *(void **)0x00626274;
+    if (gm2 != NULL) { _free_th07(gm2); *(void **)0x00626274 = NULL; }
     Supervisor_HeapFreeAll();
-    if (*(void **)&DAT_00575a64 != NULL)
+    obj2 = *(void **)0x00575a64;
+    if (obj2 != NULL)
     {
         Supervisor_SomeCleanup4();
-        void *obj2 = *(void **)&DAT_00575a64;
+        obj2 = *(void **)0x00575a64;
         if (obj2 != NULL)
         {
             Supervisor_SomeCleanup5();
-            free(obj2);
+            _free_th07(obj2);
         }
-        *(void **)&DAT_00575a64 = NULL;
+        *(void **)0x00575a64 = NULL;
     }
     return ZUN_SUCCESS;
 }
-#endif
 
-// Supervisor::LoadConfig  (FUN_004398b6)
-// __thiscall arg: char *configPath. ECX = Supervisor*.
-// Reads ./th07.cfg (FUN_00431330 returns heap buffer of 0x38 bytes), validates
-// the thbgm.dat header ("ZAV\1" + 0x700), range-checks config fields, applies
-// config to the global config block @ 0x575a68, and logs warnings for each set
-// "display option" bit in cfg.opts (+0x14c).
-// Uses #pragma var_order to force MSVC to lay out locals in the exact order
-// the orig binary uses (frame 0x38).
-#pragma var_order(buf, f1, read1, _pad1, hdr1_0, hdr1_1, hdr1_2, f2, read2, _pad2, hdr2_0, hdr2_1, hdr2_2)
+// =====================================================================
+// Supervisor::LoadConfig (FUN_004398b6)
+// =====================================================================
+#pragma var_order(buf, f1, read1, hdr1_0, hdr1_1, hdr1_2, f2, read2, hdr2_0, hdr2_1, hdr2_2, _pad1, _pad2)
 ZunResult Supervisor::LoadConfig(char *configPath)
 {
+    void *buf;
+    HANDLE f1, f2;
+    u32 read1, read2;
+    i32 hdr1_0, hdr1_1, hdr1_2;
     i32 hdr2_0, hdr2_1, hdr2_2;
     i32 _pad1, _pad2;
-    u32 read2;
-    HANDLE f2;
-    i32 hdr1_0, hdr1_1, hdr1_2;
-    u32 read1;
-    HANDLE f1;
-    void *buf;
-    // Zero config struct: rep stosd of 0xe dwords.
-    memset((void *)DAT_00575a68, 0, 0xe * 4);
+
+    memset(&g_Supervisor.cfg, 0, sizeof(GameConfiguration));
     buf = Supervisor_ReadConfigBuffer(configPath, 1);
-    if (buf == 0)
+    if (buf == NULL)
     {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496f14);
+        g_GameErrorContext.Log("%s", "Config not found");
     }
     else
     {
-        memcpy((void *)DAT_00575a68, buf, 0xe * 4);
+        memcpy(&g_Supervisor.cfg, buf, sizeof(GameConfiguration));
         _free_th07(buf);
-        f1 = CreateFileA("./thbgm.dat", 0x80000000, 1, 0, 3, 0x8000080, 0);
-        if (f1 != (HANDLE)-1)
+        f1 = CreateFileA("./thbgm.dat", GENERIC_READ, FILE_SHARE_READ, NULL,
+                         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+        if (f1 != INVALID_HANDLE_VALUE)
         {
-            ReadFile(f1, &hdr1_0, 0x10, (DWORD *)&read1, 0);
+            ReadFile(f1, &hdr1_0, 0x10, (DWORD *)&read1, NULL);
             CloseHandle(f1);
-            if (hdr1_0 != 0x5641575a || hdr1_1 != 1 || hdr1_2 != 0x700)
+            if (hdr1_0 != 0x5641575a || hdr1_1 != 1 || hdr2_2 != 0x700)
             {
-                (*(GameErrorContext *)&DAT_00624210).Fatal((char *)&DAT_00496ee4, configPath);
-                (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496c20);
+                g_GameErrorContext.Fatal("%s %s", "Invalid bgm dat", configPath);
+                (void)g_GameErrorContext.Fatal("%s", "Write protect or disk full");
                 return ZUN_ERROR;
             }
         }
-        if (*(u8 *)(DAT_00575a68 + 0x1c) < 5 && *(u8 *)(DAT_00575a68 + 0x1d) < 4 && *(u8 *)((DAT_00575a68 + 0x1e)) < 2 &&
-            *(u8 *)((DAT_00575a68 + 0x1f)) < 3 && *(u8 *)((DAT_00575a68 + 0x21)) < 6 && *(u8 *)((DAT_00575a68 + 0x20)) < 2 &&
-            *(u8 *)((DAT_00575a68 + 0x22)) < 2 && *(u8 *)((DAT_00575a68 + 0x23)) < 3 && *(u8 *)((DAT_00575a68 + 0x24)) < 3 &&
-            *(u8 *)((DAT_00575a68 + 0x25)) < 2 && *(u8 *)((DAT_00575a68 + 0x26)) < 2 &&
-            *(u32 *)((DAT_00575a68 + 0x14)) == 0x70002 && *(u32 *)&DAT_004b9e64 == 0x38)
+        if (g_Supervisor.cfg.lifeCount < 5 && g_Supervisor.cfg.bombCount < 4 &&
+            g_Supervisor.cfg.colorMode16bit < 2 && g_Supervisor.cfg.musicMode < 3 &&
+            g_Supervisor.cfg.defaultDifficulty < 6 && g_Supervisor.cfg.playSounds < 2 &&
+            g_Supervisor.cfg.windowed < 2 && g_Supervisor.cfg.frameskipConfig < 3 &&
+            *(u8 *)((u8 *)&g_Supervisor.cfg + 0x24) < 3 && *(u8 *)((u8 *)&g_Supervisor.cfg + 0x25) < 2 &&
+            *(u8 *)((u8 *)&g_Supervisor.cfg + 0x26) < 2 &&
+            g_Supervisor.cfg.version == GAME_VERSION && *(u32 *)0x004b9e64 == 0x38)
         {
             goto apply_opts;
         }
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496e88);
+        g_GameErrorContext.Log("%s", "Config corrupted");
     }
-    // Defaults.
-    *(u8 *)(DAT_00575a68 + 0x1c) = 2;
-    *(u8 *)(DAT_00575a68 + 0x1d) = 3;
-    *(u8 *)((DAT_00575a68 + 0x1e)) = 0xff;
-    *(u32 *)((DAT_00575a68 + 0x14)) = 0x70002;
-    *(i16 *)((DAT_00575a68 + 0x18)) = 600;
-    *(i16 *)((DAT_00575a68 + 0x1a)) = 600;
-    f2 = CreateFileA("./thbgm.dat", 0x80000000, 1, 0, 3, 0x8000080, 0);
-    if (f2 == (HANDLE)-1)
+    g_Supervisor.cfg.lifeCount = 2;
+    g_Supervisor.cfg.bombCount = 3;
+    g_Supervisor.cfg.colorMode16bit = 0xff;
+    g_Supervisor.cfg.version = GAME_VERSION;
+    g_Supervisor.cfg.padXAxis = 600;
+    g_Supervisor.cfg.padYAxis = 600;
+    f2 = CreateFileA("./thbgm.dat", GENERIC_READ, FILE_SHARE_READ, NULL,
+                     OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+    if (f2 == INVALID_HANDLE_VALUE)
     {
-        *(u8 *)((DAT_00575a68 + 0x1f)) = 2;
-        Supervisor_LogStr1((char *)&DAT_00496ebc);
+        g_Supervisor.cfg.musicMode = 2;
+        Supervisor_LogStr1("%s", "No wave file");
     }
     else
     {
-        ReadFile(f2, &hdr2_0, 0x10, (DWORD *)&read2, 0);
+        ReadFile(f2, &hdr2_0, 0x10, (DWORD *)&read2, NULL);
         CloseHandle(f2);
         if (hdr2_0 != 0x5641575a || hdr2_1 != 1 || hdr2_2 != 0x700)
         {
-            (*(GameErrorContext *)&DAT_00624210).Fatal((char *)&DAT_00496ee4, configPath);
-            (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496c20);
+            g_GameErrorContext.Fatal("%s %s", "Invalid bgm dat", configPath);
+            (void)g_GameErrorContext.Fatal("%s", "Write protect or disk full");
             return ZUN_ERROR;
         }
-        *(u8 *)((DAT_00575a68 + 0x1f)) = 1;
+        g_Supervisor.cfg.musicMode = 1;
     }
-    *(u8 *)((DAT_00575a68 + 0x20)) = 1;
-    *(u8 *)((DAT_00575a68 + 0x21)) = 1;
-    *(u8 *)((DAT_00575a68 + 0x22)) = 0;
-    *(u8 *)((DAT_00575a68 + 0x23)) = 0;
-    // Default keymap copy: orig inlines movsd x4 + movsw (18 bytes).
-    memcpy((void *)DAT_00575a68, (void *)&DAT_0049ee40, 0x12);
-    *(u8 *)((DAT_00575a68 + 0x24)) = 2;
-    *(u8 *)((DAT_00575a68 + 0x25)) = 0;
-    *(u8 *)((DAT_00575a68 + 0x26)) = 1;
+    g_Supervisor.cfg.playSounds = 1;
+    g_Supervisor.cfg.defaultDifficulty = 1;
+    g_Supervisor.cfg.windowed = 0;
+    g_Supervisor.cfg.frameskipConfig = 0;
+    g_Supervisor.cfg.controllerMapping = g_ControllerMapping;
+    *(u8 *)((u8 *)&g_Supervisor.cfg + 0x24) = 2;
+    *(u8 *)((u8 *)&g_Supervisor.cfg + 0x25) = 0;
+    *(u8 *)((u8 *)&g_Supervisor.cfg + 0x26) = 1;
 apply_opts:
-    *(u32 *)((DAT_00575a68 + 0x34)) |= 1;
-    *(u32 *)&DAT_0049ee40 = *(u32 *)DAT_00575a68;
-    *(u32 *)&DAT_0049ee44 = *(u32 *)((DAT_00575a68 + 0x4));
-    *(u32 *)&DAT_0049ee48 = *(u32 *)((DAT_00575a68 + 0x8));
-    *(u32 *)&DAT_0049ee4c = *(u32 *)((DAT_00575a68 + 0xc));
-    *(u32 *)&DAT_0049ee50 = *(u32 *)((DAT_00575a68 + 0x10));
-    if ((*(u32 *)((u8 *)this + 0x14c) >> 1 & 1) != 0)
+    g_Supervisor.cfg.opts |= 1;
+    g_ControllerMapping = g_Supervisor.cfg.controllerMapping;
+    if ((g_Supervisor.cfg.opts >> 1 & 1) != 0)
+        g_GameErrorContext.Log("%s", "No vertex buffer");
+    if ((g_Supervisor.cfg.opts >> 10 & 1) != 0)
+        g_GameErrorContext.Log("%s", "No fog");
+    if ((g_Supervisor.cfg.opts >> 2 & 1) != 0)
+        g_GameErrorContext.Log("%s", "16-bit textures");
+    if ((g_Supervisor.cfg.opts >> 3 & 1) != 0 || (g_Supervisor.cfg.opts >> 4 & 1) != 0)
+        g_GameErrorContext.Log("%s", "Force backbuffer clear");
+    if ((g_Supervisor.cfg.opts >> 4 & 1) != 0)
+        g_GameErrorContext.Log("%s", "Don't render items");
+    if ((g_Supervisor.cfg.opts >> 5 & 1) != 0)
+        g_GameErrorContext.Log("%s", "No gouraud shading");
+    if ((g_Supervisor.cfg.opts >> 6 & 1) != 0)
+        g_GameErrorContext.Log("%s", "No depth testing");
+    *(u32 *)((u8 *)&g_Supervisor + 0x16c) = 0;
+    g_Supervisor.cfg.opts &= 0xffffff7f;
+    if ((g_Supervisor.cfg.opts >> 8 & 1) != 0)
+        g_GameErrorContext.Log("%s", "No texture color compositing");
+    if (*(i8 *)((u8 *)&g_Supervisor + 0x13a) != 0)
+        g_GameErrorContext.Log("%s", "Launch windowed");
+    if ((g_Supervisor.cfg.opts >> 9 & 1) != 0)
+        g_GameErrorContext.Log("%s", "Force reference rasterizer");
+    if ((g_Supervisor.cfg.opts >> 0xb & 1) != 0)
+        g_GameErrorContext.Log("%s", "Do not use DirectInput");
+    if ((g_Supervisor.cfg.opts >> 0xc & 1) != 0)
+        g_GameErrorContext.Log("%s", "No color compression");
+    if ((g_Supervisor.cfg.opts >> 0xd & 1) != 0)
+        g_GameErrorContext.Log("%s", "Force 60fps");
+    if ((g_Supervisor.cfg.opts >> 0xe & 1) != 0)
     {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496e64);
-    }
-    if ((*(u32 *)((u8 *)this + 0x14c) >> 10 & 1) != 0)
-    {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496e48);
-    }
-    if ((*(u32 *)((u8 *)this + 0x14c) >> 2 & 1) != 0)
-    {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496e20);
-    }
-    if ((*(u32 *)((u8 *)this + 0x14c) >> 3 & 1) != 0 || (*(u32 *)((u8 *)this + 0x14c) >> 4 & 1) != 0)
-    {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496dfc);
-    }
-    if ((*(u32 *)((u8 *)this + 0x14c) >> 4 & 1) != 0)
-    {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496dd0);
-    }
-    if ((*(u32 *)((u8 *)this + 0x14c) >> 5 & 1) != 0)
-    {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496da8);
-    }
-    if ((*(u32 *)((u8 *)this + 0x14c) >> 6 & 1) != 0)
-    {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496d8c);
-    }
-    *(u32 *)((u8 *)this + 0x16c) = 0;
-    *(u32 *)((u8 *)this + 0x14c) = *(u32 *)((u8 *)this + 0x14c) & 0xffffff7f;
-    if ((*(u32 *)((u8 *)this + 0x14c) >> 8 & 1) != 0)
-    {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496d6c);
-    }
-    if (*(i8 *)((u8 *)this + 0x13a) != 0)
-    {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496d4c);
-    }
-    if ((*(u32 *)((u8 *)this + 0x14c) >> 9 & 1) != 0)
-    {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496d24);
-    }
-    if ((*(u32 *)((u8 *)this + 0x14c) >> 0xb & 1) != 0)
-    {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496cec);
-    }
-    if ((*(u32 *)((u8 *)this + 0x14c) >> 0xc & 1) != 0)
-    {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496cd0);
-    }
-    if ((*(u32 *)((u8 *)this + 0x14c) >> 0xd & 1) != 0)
-    {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496cb0);
-    }
-    if ((*(u32 *)((u8 *)this + 0x14c) >> 0xe & 1) != 0)
-    {
-        (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496c98);
-        *(u32 *)((DAT_00575a68 + 0x54)) = 1;
+        g_GameErrorContext.Log("%s", "Force 60fps mode");
+        *(u32 *)0x00575abc = 1;
     }
     if (Supervisor_ValidateSize(0x38) == 0)
     {
         return ZUN_SUCCESS;
     }
-    (*(GameErrorContext *)&DAT_00624210).Fatal((char *)&DAT_00496c78, configPath);
-    (*(GameErrorContext *)&DAT_00624210).Log((char *)&DAT_00496c20);
+    (void)g_GameErrorContext.Fatal("%s %s", "File cannot be exported", configPath);
+    (void)g_GameErrorContext.Fatal("%s", "Write protect or disk full");
     return ZUN_ERROR;
 }
-#pragma optimize("s", off)
-#pragma optimize("s", on)
 
 // =====================================================================
-// Supervisor::FadeOutMusic  (FUN_0043a0d6)
-// __thiscall arg: f32 fadeOutSeconds [ebp+0x8]. ECX = Supervisor*.
-// Full naked asm for exact FLD/FMUL/FCOMP/FDIV instruction match.
-// Supervisor::FadeOutMusic (FUN_0043a0d6) -- pure C++
+// Supervisor::FadeOutMusic (FUN_0043a0d6)
+// =====================================================================
 #pragma var_order(adj)
 ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
 {
+    f32 adj;
     if (MUSIC_MODE == MUSIC_MIDI)
     {
         if (MIDI_OUTPUT_PTR != 0)
-            MIDI_OUTPUT_PTR->SetFadeOut((u32)(*(f32 *)&DAT_00498ab8 * fadeOutSeconds));
+        {
+            MIDI_OUTPUT_PTR->SetFadeOut((u32)(1000.0f * fadeOutSeconds));
+        }
     }
     else if (MUSIC_MODE == MUSIC_WAV)
     {
-        f32 adj = fadeOutSeconds;
-        if (*(f32 *)((u8 *)this + 0x178) == *(f32 *)&DAT_00498a4c &&
-            *(f32 *)((u8 *)this + 0x178) <= *(f32 *)&DAT_00498a54)
-            adj = fadeOutSeconds / *(f32 *)((u8 *)this + 0x178);
-        SOUND_PLAYER_PTR->SoundQueueAdd(5, (i32)(*(f32 *)&DAT_00498ab8 * adj), EMPTY_STR);
+        adj = fadeOutSeconds;
+        if (*(f32 *)((u8 *)this + 0x178) == *(f32 *)0x00498a4c)
+        {
+            if (*(f32 *)((u8 *)this + 0x178) <= *(f32 *)0x00498a54)
+            {
+                adj = fadeOutSeconds / *(f32 *)((u8 *)this + 0x178);
+            }
+        }
+        SOUND_PLAYER_PTR->SoundQueueAdd(5, (i32)(1000.0f * adj), EMPTY_STR);
     }
-    else return ZUN_ERROR;
+    else
+    {
+        return ZUN_ERROR;
+    }
     return ZUN_SUCCESS;
 }
-#pragma optimize("s", off)
 
 } // namespace th07
-#pragma optimize("s", off)
-
