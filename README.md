@@ -2,6 +2,42 @@
 
 This project aims to perfectly reconstruct the source code of [Touhou Youyoumu ~ Perfect Cherry Blossom v1.00b](https://en.touhouwiki.net/wiki/Perfect_Cherry_Blossom) by Team Shanghai Alice.
 
+The ultimate acceptance criterion is that the compiled product's **game behavior matches the original `th07.exe`**. [`objdiff`](https://github.com/encounter/objdiff) is our verification tool: it measures how faithfully our reconstruction matches the original at the byte level (match%).
+
+## Progress
+
+Two complementary metrics track how close we are to a complete, behavior-identical reconstruction.
+
+### Overall completion: 228 / 1721 functions under objdiff verification
+
+Of the original exe's **1721 functions**, **228** are currently implemented enough to be objdiff-verified (the rest are either stubbed or not yet reversed). Among those 228:
+
+```
+Functions under objdiff verification        228 / 1721  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  13.2 %
+```
+
+### Match quality across tracked modules (mean 75.81%)
+
+Of the 23 modules currently tracked, here is the match% tier breakdown. A module is "done" at ≥90%.
+
+```
+Modules at >=90% match (core done)          10  ██████████████████████████████████████████  43.5 %
+Modules at 80–90% match (near done)          4  ███████████████████                        17.4 %
+Modules at 50–80% match (in progress)        4  ███████████████████                        17.4 %
+Modules at <50% match (early / blocked)      5  ██████████████████████                     21.7 %
+```
+
+### Match quality across the 228 tracked functions
+
+```
+Functions in modules >=90%                  80  ████████████████████████████████████        35.1 %
+Functions in modules 80–90%                 45  ████████████████████                        19.7 %
+Functions in modules 50–80%                 49  █████████████████████                       21.5 %
+Functions in modules <50%                   54  ███████████████████████                     23.7 %
+```
+
+> The "tracked functions" denominator (228) is much smaller than the target (1721) because many modules are not yet reversed at all. As more modules land, both the completion bar and the match-quality bars grow together. The detailed per-module breakdown lives in [`PROGRESS.md`](PROGRESS.md).
+
 ## Installation
 
 ### Executable
@@ -62,7 +98,16 @@ Look at the `config/stubbed.csv` files for functions that still need to be imple
 
 - **Normal build** (`python3 scripts/build.py`): Produces the final `th07e.exe`.
 - **Objdiff build** (`python3 scripts/build.py --build-type=objdiffbuild --object-name <Module>.obj`): Produces individual `.obj` files for objdiff comparison.
-- **Diffbuild** (`python3 scripts/build.py --build-type=diffbuild`): Produces a build with `DIFFBUILD` defined, using extern globals instead of definitions.
+- **Diffbuild** (`python3 scripts/build.py --build-type=diffbuild`): Produces a build with `DIFFBUILD` defined, using extern globals instead of definitions. *(Legacy; the objdiff build with `SYMBOL_MAP` is the preferred verification path.)*
+
+### Honesty rules (single code path)
+
+This project follows a strict "honest reconstruction" standard — objdiff verifies exactly the code that runs. See [`AGENTS.md`](AGENTS.md) §2 for the full rules. In short:
+
+- ✅ One C++ code path for both objdiff and normal builds
+- ✅ `DIFFABLE_*` macros for global-variable definitions only (inherited from th06)
+- ✅ `#pragma var_order`, raw-offset field access, intrinsics, de-cache
+- ❌ Function-level `#ifdef DIFFBUILD` splits, inline asm, `__declspec(naked)`, DAT_ const-slot externs, `nullptr`
 
 ### Compiler
 
