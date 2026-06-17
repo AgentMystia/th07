@@ -100,13 +100,16 @@ Look at the `config/stubbed.csv` files for functions that still need to be imple
 - **Objdiff build** (`python3 scripts/build.py --build-type=objdiffbuild --object-name <Module>.obj`): Produces individual `.obj` files for objdiff comparison.
 - **Diffbuild** (`python3 scripts/build.py --build-type=diffbuild`): Produces a build with `DIFFBUILD` defined, using extern globals instead of definitions. *(Legacy; the objdiff build with `SYMBOL_MAP` is the preferred verification path.)*
 
-### Honesty rules (single code path)
+### Honesty rules (pure typed C++, th06-aligned)
 
-This project follows a strict "honest reconstruction" standard — objdiff verifies exactly the code that runs. See [`AGENTS.md`](AGENTS.md) §2 for the full rules. In short:
+This project follows a strict "honest reconstruction" standard — objdiff verifies exactly the code that runs, and that code is pure typed C++ (no address hacking). The th06 reference reaches ~97% match this way, proving raw addresses are both unnecessary and harmful (they prevent the code from ever running correctly). See [`AGENTS.md`](AGENTS.md) §2 for the full rules. In short:
 
+- ✅ Typed C++ member/global access: `g_Supervisor.curState`, `g_GameManager.arcadeRegionSize.x`
+- ✅ String literals (`"th07.cfg"`), float literals (`256.0f`, `ZUN_PI`)
 - ✅ One C++ code path for both objdiff and normal builds
 - ✅ `DIFFABLE_*` macros for global-variable definitions only (inherited from th06)
 - ✅ `#pragma var_order`, raw-offset field access, intrinsics, de-cache
+- ❌ Raw absolute addresses (`(*(T*)0xADDR)`, `(char*)0x496fe0`, `(void*)0x4ba0d8`) — zero exceptions, D3D device included
 - ❌ Function-level `#ifdef DIFFBUILD` splits, inline asm, `__declspec(naked)`, DAT_ const-slot externs, `nullptr`
 
 ### Compiler
