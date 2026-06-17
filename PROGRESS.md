@@ -19,13 +19,33 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 | 80–90% 模块 | 3（接近达标）|
 | 50–80% 模块 | 4（进行中）|
 | <50% 模块 | 4（阻塞/早期）|
-| normal build | 全部编译通过；链接需 183 跨模块符号实现 |
+| **normal build** | ✅ **链接成功，产出 `build/th07e.exe`（PE32 i386 GUI）** |
+| **Player 模块** | ✅ **17 缺失函数已实现（OnUpdate/OnDrawHighPrio/AddedCallback/HandlePlayerInputs/SpawnBullets/UpdatePlayerBullets/DrawBullets/DrawBulletExplosions/CalcDamageToEnemy/CheckGraze/CalcKillBoxCollision/CalcLaserHitbox/ClearBombRegions/HandleBombInput/StartSupernaturalBorder/EndSupernaturalBorder/UpdateFireBulletsTimer）**。objdiff 26 函数跟踪（之前 9），加权 40.28%、算术 62.24% |
 | mapping.csv 函数覆盖 | 1562 行（th07.exe 全部非 thunk 函数）|
 | raw 绝对地址访问 | **0**（已全量迁移到 typed C++，对齐 th06 标准）|
 | raw[] buffer / accessor | **0**（Player/SoundPlayer 等 5 大 struct 已全命名重构）|
 
 > match% 来源：`objdiff-cli diff` 的 `left.symbols[].match_percent`。模块平均为
 > simple average（各函数 match% 的算术平均）。2026-06-18 重测基线。
+
+## P0 normal-build 链接达成（2026-06-18 本轮新增）
+
+本轮（commit 待提交）实现 P0 目标：**让 normal build 链接成可启动 exe**。
+
+| 改动 | 状态 |
+|---|---|
+| Player.cpp 补全 17 缺失函数 | ✅ 完成 |
+| Player.hpp 扩展命名字段（BombRegion 表/OptionSlotMeta/unkTimer_16a0c/optionScratch 等） | ✅ 完成（sizeof 仍 0xb7e78） |
+| link_globals.cpp 新文件：primitive `extern "C"` typed global 定义 | ✅ 完成（约 130 个零值槽） |
+| link_stubs.cpp 新文件：`@Name@N` __fastcall + `_Name` cdecl stub | ✅ 完成（90 个零操作 stub） |
+| link_cpp_stubs.cpp 新文件：th07::-namespace + 全局 namespace 自由函数 stub | ✅ 完成 |
+| 各 .cpp 内嵌 stub：AnmMgrStub/AnmManager/AnmManagerFiles/EffectManagerSpawn/GameManagerScore/SoundPlayerPlayback/MidiDevStub/RngStub/ArchiveEntryTable/MidiOutput/ReplayManager 方法 stub | ✅ 完成（AsciiManager/BombData/EffectManager/FileSystem/GameManager/Player/Supervisor 7 个文件） |
+| 链接 unresolved | **311 → 0**（全部 resolved） |
+| `build/th07e.exe` 产物 | ✅ PE32 i386 GUI 135168B（wine 启动后即返回，因 singleton stubs 全零初始化，游戏行为待后续填充） |
+
+**约束遵守**：零 raw 绝对地址、零 inline asm、零 #ifdef DIFFBUILD 函数分裂、`0` 而非 `nullptr`、注释全 ASCII、源码无 CJK。stub 文件均仅参与 normal build，不进入 objdiff（未在 objdiff.json/ghidra_ns_to_obj.csv 注册）。
+
+**验收**：`python3 scripts/build.py --build-type=normal` 产出 `build/th07e.exe`，链接器 0 unresolved；`file build/th07e.exe` 显示 PE32 i386 GUI；`wine build/th07e.exe` 不崩溃（启动即返回）。
 
 ## 每模块 match% 明细（2026-06-18 typed-C++ 重构后）
 
@@ -95,27 +115,25 @@ objdiff match% 持平或上升（per-module 算术平均 75.81 → **79.39%**）
 
 ## 剩余工作（按优先级）
 
-### P0：让 normal build 链接成可启动 exe
+### P0：让 normal build 链接成可启动 exe — ✅ 完成（2026-06-18）
 
-normal build 全部 .cpp 编译通过，但链接失败：**183 个 unresolved 跨模块符号**。
+normal build 全部 .cpp 编译通过，本轮将链接 unresolved 从 **311 降到 0**，
+`build/th07e.exe` 成功产出（PE32 i386 GUI，135168B）。详见上方"当前总览"。
 
-构成：62 stdcall（`@Func@N`）+ 10 cdecl/data（`_Func`/`_g_Foo`）+ 111 C++ 方法（`?Method@Class@th07@@...`）。
+**实施路径**：
+- (a) 实现 Player.cpp 全部 17 缺失函数（OnUpdate/OnDrawHighPrio/AddedCallback/
+  HandlePlayerInputs/SpawnBullets/UpdatePlayerBullets/DrawBullets/DrawBulletExplosions/
+  CalcDamageToEnemy/CheckGraze/CalcKillBoxCollision/CalcLaserHitbox/
+  ClearBombRegions/HandleBombInput/StartSupernaturalBorder/EndSupernaturalBorder/
+  UpdateFireBulletsTimer）；
+- (b) 新建 3 个 stub 文件（link_globals.cpp / link_stubs.cpp / link_cpp_stubs.cpp）
+  集中定义未实现的 typed global（零值）和跨模块函数 stub（no-op）；
+- (c) 各 .cpp 内嵌 stub 方法定义（AnmMgrStub/AnmManager 等本地 stub-struct 的
+  方法），使 C++ mangled 方法符号可解析。
 
-**关键缺失函数**（已实现模块引用、但 owning 模块未逆向）：
-- `Player::OnUpdate`、`Player::OnDrawHighPrio`（Player.cpp 缺这两个大函数）
-- `GameManager::AddedCallback`（2726B 分配器，当前 75.76% 但函数体在 GameManager.cpp）
-- `GameManagerScore::AddScore`/`IncreaseSubrank`/`AddGrazeScoreOnly`（Player.cpp 引用）
-- `AnmManager::Draw*`/`ExecuteScript`（多个模块引用）
-- `SoundPlayer::ProcessSoundQueues`、`MidiOutput::ProcessMsg`
-
-**关键缺失数据全局**：
-- `g_Pbg4Dict`/`g_Pbg4Nodes`/`g_Pbg4CurIndex`（LZSS 静态数据）
-- `g_ScoreSubObj`、`g_CurrentStage`、`g_EffectMgrSpawnObj` 等
-
-**路径**：(a) 逐模块逆向实现这些函数；(b) 扩展 `generate_stubs.py` 自动为
-mapping.csv 中所有未实现符号生成 no-op stub（让 exe 先链接启动，再逐步替换为真实实现）。
-注意 C++ mangled 成员方法（`?Method@Class@...`）不能简单 extern "C" stub，需在
-owning 模块的 .cpp 里定义。
+**注意**：所有 stub 当前为 no-op/零值，singleton 在原 exe 由 Supervisor/
+GameManager 等模块启动时填充；下一步是逐步替换 stub 为真实实现（按 P1 优先级：
+AnmManager 大函数 / BombData calc / ReplayManager / Pbg4Parser）。
 
 ### P1：提升低匹配模块（<50%）
 

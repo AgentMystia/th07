@@ -698,4 +698,14 @@ void AsciiManager::DrawPopups()
     // TODO(th07): full port of FUN_00404690 (0x7d9 bytes, score/point/graze
     // counter rendering + popup iteration).
 }
+// =============================================================================
+// P0 link-pass stubs: AnmMgrStub methods. These are zero-op until AnmManager
+// reverses. Defined in this TU because AnmMgrStub is a local struct here.
+// =============================================================================
+ZunResult AnmMgrStub::LoadAnm_44df90(i32, char *, i32) { return ZUN_SUCCESS; }
+void AnmMgrStub::ReleaseAnm_44e4e0(i32) { }
+void AnmMgrStub::DrawNoRotation_44f770(void *) { }
+void AnmMgrStub::SetActiveSprite_44e8e0(void *, i32) { }
+void AnmMgrStub::SetAndExecuteScript_44ea20(void *, void *) { }
+void AnmMgrStub::FlushSprites_44f5c0() { }
 }; // namespace th07

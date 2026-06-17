@@ -102,6 +102,10 @@ enum PlayerDirection
 // (FUN_0043d2f0) and DrawBullets (FUN_0043d690). Interior layout reconstructed
 // from those reads; intermediate bytes are scratch used by per-character
 // FireBullet callbacks and are left as opaque padding.
+//
+// Field offsets cross-verified against FUN_0043d2f0 (UpdatePlayerBullets),
+// FUN_0043d690 (DrawBullets), FUN_0043d790 (DrawBulletExplosions),
+// FUN_0043d9e0 (CalcDamageToEnemy), FUN_0043d160 (SpawnBullets).
 struct PlayerBullet
 {
     AnmVm sprite;            // +0x000 (0x24c bytes)
@@ -110,21 +114,22 @@ struct PlayerBullet
     D3DXVECTOR2 velocity;    // +0x264
     f32 sidewaysMotion;      // +0x26c
     u8 _pad_270[0x318 - 0x270];
-    D3DXVECTOR3 unk_318;     // +0x318 (collision size used by CalcDamageToEnemy)
-    D3DXVECTOR3 unk_324;     // +0x324 (collision velocity used by CalcDamage)
+    D3DXVECTOR3 collideSize; // +0x318 (collision half-extent; *_DAT_00498a50 in CalcDamage)
+    D3DXVECTOR3 collideVel;  // +0x324 (per-tick velocity used by UpdatePlayerBullets)
     i32 unk_330;             // +0x330
     i32 unk_334;             // +0x334
-    i32 unk_338;             // +0x338 (angle used by DrawBullets autorotate)
-    i32 unk_33c;             // +0x33c
-    ZunTimer unk_340;        // +0x340 (per-bullet age timer)
-    i16 bulletState;         // +0x34a
+    i32 angleRaw;            // +0x338 (angle used by DrawBullets autorotate)
+    i32 anglePrev;           // +0x33c (previous angle; copied from +0x344 in Update)
+    ZunTimer ageTimer;       // +0x340 (per-bullet age timer)
+    i16 damage;              // +0x348 (damage value; read in CalcDamageToEnemy)
+    i16 bulletState;         // +0x34a (0=unused,1=fired,2=collided)
     i16 bulletType;          // +0x34c
-    i16 damage;              // +0x34e
-    i16 unk_350;             // +0x350
-    i32 spawnPositionIdx;    // +0x354 (option index this bullet was fired from)
-    void *unk_358;           // +0x358 (callback ptr consulted in UpdateBullets)
-    void *unk_35c;           // +0x35c (callback ptr consulted in CalcDamage)
-    void *unk_360;           // +0x360 (per-power bullet-data row pointer)
+    i16 unk_34e;             // +0x34e
+    i32 unk_350;             // +0x350
+    i32 (*updateCallback)(); // +0x354 (called each tick in UpdateBullets; ret!=0 disables)
+    i32 (*dmgCallback)(D3DXVECTOR3 *); // +0x358 (called in CalcDamage; ret!=0 skips)
+    void *powerDataRow;      // +0x35c (per-power bullet-data row pointer, SpawnBullets)
+    void *unk_360;           // +0x360
 };
 ZUN_ASSERT_SIZE(PlayerBullet, 0x364);
 
@@ -135,7 +140,7 @@ struct PlayerBombInfo
     i32 isInUse;            // +0x16a20
     i32 isFocus;            // +0x16a24
     i32 duration;           // +0x16a28 (set to 999 at start; counts down via ZunTimer)
-    i32 unk_16a2c;          // +0x16a2c (score/cherry penalty amount)
+    i32 scorePenalty;       // +0x16a2c (score/cherry penalty amount)
     ZunTimer timer;         // +0x16a30 (previous/subFrame/current)
     void (*calcUnfocused)(Player *p); // +0x16a3c
     void (*drawUnfocused)(Player *p); // +0x16a40
@@ -143,6 +148,37 @@ struct PlayerBombInfo
     void (*drawFocused)(Player *p);   // +0x16a48
 };
 ZUN_ASSERT_SIZE(PlayerBombInfo, 0x30);
+
+// Bomb region entry. Stride 0x20, table at Player+0x9dc (0x70..0x80 entries).
+// Layout reconstructed from ClearBombRegions (FUN_00440940) which zeroes
+// +0x9e8+0x20*i, and CalcDamageToEnemy (FUN_0043d9e0) which reads
+// +0x9dc+0x20*i (pos xy), +0x9e8+0x20*i (sizeX), +0x9f4+0x20*i (dmg),
+// +0x9f8+0x20*i (counter). pos.z and sizeY are inferred from pos+0xc/0x14.
+struct BombRegion
+{
+    D3DXVECTOR3 position;   // +0x00 (+0x9dc)
+    f32 sizeX;              // +0x0c (+0x9e8) (cleared each frame by ClearBombRegions)
+    f32 sizeY;              // +0x10
+    f32 sizeZ;              // +0x14
+    i32 damage;             // +0x18 (+0x9f4)
+    i32 hitCounter;         // +0x1c (+0x9f8)
+};
+ZUN_ASSERT_SIZE(BombRegion, 0x20);
+
+// Option-slot metadata. Stride 0x10, 3 (or 4 for Sakuya) entries starting at
+// Player+0x169c4. Layout from UpdatePlayerBullets (FUN_0043d2f0):
+//   +0x169c4+0x10*i: ZunTimer current-frame counter (i32) -- "0x169cc - 0x8"
+//   +0x169c8+0x10*i: ZunTimer subFrame (i32, becomes 0x32 = "decrement to 0x32")
+//   +0x169cc+0x10*i: i32 active-frame counter (read in UpdatePlayerBullets)
+//   +0x169d0+0x10*i: AnmVm *optionSprite (cleared to NULL on despawn)
+struct OptionSlotMeta
+{
+    i32 counter;            // +0x00 (0x169c4)
+    i32 subFrame;           // +0x04 (0x169c8)
+    i32 activeFrames;       // +0x08 (0x169cc)
+    AnmVm *optionSprite;    // +0x0c (0x169d0) - pointer into Player+0x9dc area
+};
+ZUN_ASSERT_SIZE(OptionSlotMeta, 0x10);
 
 // Spell-card / bomb-projectile visual slot. Each entry is 0x1428 bytes
 // (verified by `local_14 = local_14 + 0x50a` dword-pointer stride in the
@@ -257,14 +293,23 @@ struct Player
     D3DXVECTOR3 orbsPosition[2];             // +0x9b4, +0x9c0
     f32 movementSpeedX;                      // +0x9cc
     f32 movementSpeedY;                      // +0x9d0
-    // +0x9dc..+0x23f0 opaque: orb target positions + bomb-region tables.
-    // (th06 modelled bombRegionPositions/Sizes/Damages + bombProjectiles here;
-    //  th07's layout in this range is touched by the bomb callbacks but its
-    //  exact sub-fields are still being reconciled. Reserved as named padding
-    //  to keep the offset math exact.)
-    u8 unk_9dc[0x23f0 - 0x9dc];              // +0x9dc
+    u8 unk_9d4[0x9dc - 0x9d4];               // +0x9d4 (8 bytes scratch)
+    // +0x9dc..+0x19dc: BombRegion table (0x80 entries, stride 0x20).
+    //   - CalcDamageToEnemy walks 0x70 entries; AddedCallback/ClearBombRegions
+    //     walk 0x80 entries (zeroing the +0xc sizeX dword each frame).
+    BombRegion bombRegions[0x80];            // +0x9dc (0x80 * 0x20 = 0x1000 -> ends 0x19dc)
+    // +0x19dc..+0x23f0 opaque: option/characterData scratch + per-bomb motion
+    // tables. The bomb callbacks (ReimuCBombCalc etc.) reach this region via
+    // Player* + imm arithmetic. Reserved as named padding so the offset math
+    // stays exact.
+    u8 unk_19dc[0x23f0 - 0x19dc];            // +0x19dc
 
-    // ===== +0x23f0 .. +0x2450 : per-bomb motion + flags =====
+    // ===== +0x23dc .. +0x2450 : per-bomb motion + flags =====
+    // +0x23dc: supernatural-border "active this frame" flag (set to 1 by
+    // HandleBombInput when a bomb is triggered, cleared otherwise). Distinct
+    // from isInSupernaturalBorder at +0x240d.
+    i32 bombActiveThisFrame;                 // +0x23dc
+    u8 unk_23e0[0x23f0 - 0x23e0];            // +0x23e0
     f32 horizontalMovementSpeedMultiplierDuringBomb; // +0x23f0
     f32 verticalMovementSpeedMultiplierDuringBomb;   // +0x23f4
     i32 unk_23f8;                            // +0x23f8 (lives mirror)
@@ -281,7 +326,16 @@ struct Player
     i32 playerDirection;                     // +0x241c
     f32 previousHorizontalSpeed;             // +0x2420
     f32 previousVerticalSpeed;               // +0x2424
-    u8 unk_2428[0x2444 - 0x2428];            // +0x2428 (focus-movement scratch)
+    // +0x2428..+0x2440: per-option ZunTimer scratch written by
+    // EndSupernaturalBorder (FUN_00441e80). FUN_00441e80 writes
+    // {0xc479c000,0xc479c000,0, 0xc479c000,0xc479c000,0, 0} here.
+    i32 optionScratch_2428;                  // +0x2428 (-1000.0f bits)
+    i32 optionScratch_242c;                  // +0x242c (-1000.0f bits)
+    i32 optionScratch_2430;                  // +0x2430 (0)
+    i32 optionScratch_2434;                  // +0x2434 (-1000.0f bits)
+    i32 optionScratch_2438;                  // +0x2438 (-1000.0f bits)
+    i32 optionScratch_243c;                  // +0x243c (0)
+    i32 optionScratch_2440;                  // +0x2440 (0)
 
     // ===== +0x2444 .. +0x169c4 : player bullets (96 entries) =====
     PlayerBullet bullets[96];                // +0x2444 (96 * 0x364 = 0x14580)
@@ -291,11 +345,17 @@ struct Player
     // records at +0x169c4/+0x169d4/+0x169e4 holding {ZunTimer-ish trio,
     // active-frame counter, AnmVm*}. Used to gate option despawn on focus loss
     // / death.
-    u8 optionSlotMetadata[0x169f4 - 0x169c4]; // +0x169c4 (3 * 0x10)
+    OptionSlotMeta optionSlots[3];           // +0x169c4 (3 * 0x10)
 
     // ===== +0x169f4 .. +0x16a20 : timers =====
     ZunTimer fireBulletTimer;                // +0x169f4
-    ZunTimer invulnerabilityTimer;           // +0x16a00
+    ZunTimer invulnerabilityTimer;           // +0x16a00 (12 bytes -> ends +0x16a0c)
+    // +0x16a0c: second ZunTimer (supernatural-border / bomb-state duration).
+    // StartSupernaturalBorder (FUN_00441960) copies {prev,sub,cur} from
+    // invulnerabilityTimer ({+0x16a00,+0x16a04,+0x16a08}) into here
+    // ({+0x16a0c,+0x16a10,+0x16a14}).
+    ZunTimer unkTimer_16a0c;                 // +0x16a0c (12 bytes -> ends +0x16a18)
+    u8 unk_16a18[0x16a20 - 0x16a18];         // +0x16a18 (8 bytes padding)
 
     // ===== +0x16a20 .. +0x16a50 : bomb info =====
     PlayerBombInfo bombInfo;                 // +0x16a20
@@ -335,10 +395,33 @@ struct Player
     static ChainCallbackResult __fastcall OnDrawLowPrio(Player *p);
     static void __fastcall StartFireBulletTimer(Player *p);
     static void __fastcall Die(Player *p);
+    // Bullet lifetime + collision (th07 splits these out of OnUpdate/Draw).
+    static void __fastcall SpawnBullets(Player *p, u32 timer);
+    static void __fastcall UpdatePlayerBullets(Player *p);
+    static void __fastcall DrawBullets(Player *p);
+    static void __fastcall DrawBulletExplosions(Player *p);
+    static ZunResult __fastcall UpdateFireBulletsTimer(Player *p);
+    static void __fastcall ClearBombRegions(Player *p);
+    static void __fastcall HandleBombInput(Player *p);
+    static void __fastcall StartSupernaturalBorder(Player *p);
+    static void __fastcall EndSupernaturalBorder(Player *p, i32 arg);
+    static ZunResult __fastcall HandlePlayerInputs(Player *p);
+    // Private state-dispatch helpers (orig FUN_00440cf0 / 0x4411c0 / 0x441330 /
+    // 0x441e80). Declared static __fastcall: ECX holds Player*.
+    static i32  __fastcall HandleState_Dying(Player *p);
+    static void __fastcall HandleState_Spawning(Player *p);
+    static void __fastcall DispatchState(Player *p);
+    static void __fastcall ResetOptionScratch(Player *p);
     // __thiscall instance methods (this in ECX, args pushed, callee RET n):
     f32 AngleToPlayer(D3DXVECTOR3 *pos);
     i32 CalcItemBoxCollision(D3DXVECTOR3 *center, D3DXVECTOR3 *size);
     void ScoreGraze(D3DXVECTOR3 *center);
+    i32 CalcDamageToEnemy(D3DXVECTOR3 *enemyPos, D3DXVECTOR3 *enemySize,
+                          ZunBool *hitWithBomb);
+    i32 CalcKillBoxCollision(D3DXVECTOR3 *bulletCenter, D3DXVECTOR3 *bulletSize);
+    i32 CheckGraze(D3DXVECTOR3 *center, D3DXVECTOR3 *size);
+    i32 CalcLaserHitbox(D3DXVECTOR3 *laserCenter, D3DXVECTOR3 *laserSize,
+                        D3DXVECTOR3 *rotation, f32 angle, i32 canGraze);
 };
 ZUN_ASSERT_SIZE(Player, 0xb7e78);
 

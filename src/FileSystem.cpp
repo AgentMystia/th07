@@ -127,4 +127,16 @@ i32 __fastcall RawWriteFile(LPCSTR fileName, LPCVOID buffer, DWORD size)
     utils::DebugPrint("%s write ...\r\n", fileName);
     return 0;
 }
+
+// =============================================================================
+// P0 link-pass stubs: ArchiveEntryTable::GetEntrySize / ReadEntry.
+// =============================================================================
+u32 ArchiveEntryTable::GetEntrySize(char *) { return 0; }
+void ArchiveEntryTable::ReadEntry(char *, void *) { }
+
+// =============================================================================
+// P0 link-pass: g_ArchiveEntries definition. The real initialiser lives in
+// Pbg4Archive; until that module lands we zero-init the singleton here.
+// =============================================================================
+DIFFABLE_STATIC(ArchiveEntryTable, g_ArchiveEntries);
 }; // namespace th07

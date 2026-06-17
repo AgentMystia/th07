@@ -847,4 +847,14 @@ void EffectManager::CutChain()
     g_Chain.Cut(&g_EffectManagerCalcChain);
     g_Chain.Cut(&g_EffectManagerDrawChain);
 }
+
+// =============================================================================
+// P0 link-pass stubs: AnmManager methods (this in ECX, __fastcall member).
+// Zero-op until AnmManager reverses. Defined in this TU because the local
+// AnmManager stub-struct is declared here.
+// =============================================================================
+void __fastcall AnmManager::SetAndExecuteScriptIdx(void *, i32) { }
+i32  __fastcall AnmManager::ExecuteScript(void *) { return 0; }
+void __fastcall AnmManager::Draw3(void *) { }
+void __fastcall AnmManager::Draw3NoOffset(void *) { }
 }; // namespace th07

@@ -892,4 +892,11 @@ ZunResult __fastcall GameManager::AddedCallback(GameManager *gameManager)
 }
 #pragma auto_inline(on)
 
+
+// =============================================================================
+// P0 link-pass stubs: MidiDevStub::Open_436790 and RngStub::Consume_00401390.
+// Defined in this TU because both stub-structs are declared locally here.
+// =============================================================================
+void MidiDevStub::Open_436790(u32) { }
+void RngStub::Consume_00401390(i32) { }
 } // namespace th07

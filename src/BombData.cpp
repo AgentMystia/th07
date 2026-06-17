@@ -768,4 +768,11 @@ void __fastcall BombData::ReimuCBombDraw(Player *p)
     }
 }
 
+
+// =============================================================================
+// P0 link-pass stubs: AnmMgrStub::Draw3 / Draw2. Zero-op until AnmManager
+// reverses. Defined in this TU because AnmMgrStub is a local struct here.
+// =============================================================================
+void AnmMgrStub::Draw3(i32 *) { }
+void AnmMgrStub::Draw2(i32 *) { }
 } // namespace th07

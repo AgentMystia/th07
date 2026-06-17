@@ -1167,3 +1167,18 @@ ZunResult Supervisor::FadeOutMusic(f32 fadeOutSeconds)
 }
 
 } // namespace th07
+
+// =============================================================================
+// P0 link-pass stubs (global namespace). MidiOutput / ReplayManager are
+// referenced here as global-namespace classes via local fwd-decls (the real
+// th07::MidiOutput in MidiOutput.hpp is a different mangled symbol). Defined
+// outside namespace th07 to match the caller's mangling.
+// =============================================================================
+ZunResult MidiOutput::LoadFile(char *) { return ZUN_SUCCESS; }
+ZunResult MidiOutput::ParseFile(int) { return ZUN_SUCCESS; }
+ZunResult MidiOutput::Play() { return ZUN_SUCCESS; }
+ZunResult MidiOutput::SetFadeOut(unsigned int) { return ZUN_SUCCESS; }
+ZunResult MidiOutput::StopPlayback() { return ZUN_SUCCESS; }
+void ReplayManager::SaveReplay(char *, char *) { }
+extern "C" void *_free_th07(void *p) { return 0; }
+
