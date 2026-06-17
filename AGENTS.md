@@ -31,13 +31,47 @@ rm -rf /tmp/th07_new && mkdir -p /tmp/th07_new && /opt/ghidra/support/analyzeHea
 ```
 **mkdir 必需**（analyzeHeadless 不建父目录）。mapping.csv 避免含空格/反引号的名字（如 `scalar deleting destructor`）和 UNKNOWN size，否则 ImportFromCsv 中断。
 
-## 6 大 codegen 匹配技巧（详见记忆 codegen-objdiff-tricks）
-1. 内联 asm 用 `#ifndef DIFFBUILD` 包裹（objdiff build 不定义 DIFFBUILD 走 asm，SDL/exe 走 C）
-2. 跨模块 __thiscall callee 用 stub struct 方法（`((Stub*)0xADDR)->Method(...)` → PUSH/MOV ECX/CALL），不用 extern __fastcall
+## 6 大 codegen 匹配技巧（2026-06-17 polish session 修订）
+
+> **重要**：原技巧 1、6（`#ifndef DIFFBUILD` asm 包裹 + IMUL asm 翻译）已**废弃**。
+> 项目现已**单一 C++ 代码路径**，禁止 `#ifdef DIFFBUILD` 分裂 / inline asm /
+> naked 函数 / DAT_ externs。见下方"反作弊硬约束"。
+
+1. ~~内联 asm 用 `#ifndef DIFFBUILD` 包裹~~ **[已废弃]** — 改用纯 C++（Phase 3 验证：
+   ScreenEffect CalcFlickerFade 删 asm 后 match 75.35→78.61%，**反而更高**）
+2. 跨模块 __thiscall callee 用 stub struct 方法（`struct Stub { void Method(...); };`
+   + `extern Stub g_XxxObj;` + `g_XxxObj.Method(...)` → PUSH/MOV ECX/CALL）。
+   原地址由 `generate_objdiff_objs.py` 的 `SYMBOL_MAP` 恢复（C++ mangled → DAT_ 名）
 3. static inline 辅助在 /Od 下不内联 → 改 `#define` 宏
-4. 去局部缓存匹配 orig 重读全局
-5. objdiff 对外部 CALL/reloc 宽容；atan2 用 extern "C" 符号 call 匹配 orig call imm
-6. IMUL/特殊寻址用 `#ifndef DIFFBUILD __asm` 逐条翻译
+4. **去局部缓存匹配 orig 重读全局**（仍有效）：orig 每次 `MOV reg,[全局]`，C++ 缓存到
+   `[ebp-x]` 不匹配 → 直接表达式或重读
+5. **objdiff 对外部 CALL/reloc 宽容**（仍有效）：atan2 用 `atan2f()`（C 标准库 call）
+   匹配 orig `call 0x48bcaa`（external CALL，objdiff 容忍）
+6. ~~IMUL/特殊寻址用 `#ifndef DIFFBUILD __asm` 逐条翻译~~ **[已废弃]** — 改用
+   raw-offset C++（`*(u16*)(base + i*0x24c) = 0x63;`），MSVC 自行决定 IMUL/shift
+
+### 反作弊硬约束（2026-06-17 polish session 确立）
+项目代码必须满足以下**全部**条件（`src/**/*.cpp` + `src/**/*.hpp`）：
+- **零** `#ifdef DIFFBUILD` / `#ifndef DIFFBUILD` 分裂（仅 `diffbuild.hpp` 宏基础设施例外）
+- **零** inline asm（`__asm { ... }`）
+- **零** `__declspec(naked)`
+- **零** DAT_ 风格 `extern "C" u8 g_Foo[4]` 常量槽（改用 `extern "C" const f32 g_Foo = ...;` + SYMBOL_MAP）
+- **零** `nullptr`（MSVC 7.0 不支持 C++11，用 `0`）
+- raw 绝对地址 `(*(T*)0xADDR)` 仅限**单例对象 + rdata 字面量字符串**（如 `0x4980d0` "dummy"）
+  这种 orig 唯一形式；游戏状态对象必须用 typed C++ global（g_Supervisor 等）
+
+### SYMBOL_MAP 恢复机制（新，Phase 4 验证）
+`scripts/generate_objdiff_objs.py` 的 `SYMBOL_MAP` 把 typed C++ 全局名映射到 orig
+DAT_ 地址。新迁移的 global 按需添加：
+```python
+SYMBOL_MAP = {
+    b"th07::g_Supervisor": b"DAT_00575950",   # 已有
+    b"_g_EffectConst256": b"DAT_00498a98",    # 新增（Phase 4）
+    # ... 迁移 global 时按需添加
+}
+```
+**关键**：`extern "C" const f32 g_X` 生成的 COFF 符号是 `_g_X`（前导下划线保留，
+因 demangle_msvc 不识别为 DAT_/FUN_/PTR_），所以 SYMBOL_MAP key 用 `_g_X` 形式。
 
 ## Session 2026-06-16 新增 codegen 发现（Supervisor/BombData，已验证）
 
@@ -132,10 +166,17 @@ orig `MOV ECX,0x575950; PUSH x3; CALL` = __thiscall ECX=g_Supervisor + 3 stack a
 - 不支持 `nullptr`（C++11）→ 用 `0`（`ptr_field = 0` 编译成 `and [mem],0`，匹配 orig 零初始化 idiom）。
 - 不认 UTF-8 中文注释（无 BOM 也无效）→ **源码注释必须英文**。
 - callback `__fastcall`（th07 第四大差异，非 th06 的 __cdecl）。
-- `extern "C"` 必须文件级（C2598）；inline asm 不接受 `call imm`（C2415）。
+- `extern "C"` 必须文件级（C2598）。
+- **禁止 inline asm / naked / DAT_ externs / `#ifdef DIFFBUILD` 分裂**（2026-06-17 polish 确立，详见上文"反作弊硬约束"）。
 
-## 可移植性原则（硬约束）
-不为 objdiff 100% 牺牲 SDL2 port。内联汇编照搬 th06（仅约 9 处，用 `#ifndef DIFFBUILD` 包裹）。跨模块单例地址用 `#ifdef DIFFBUILD`（地址立即）/ `#else`（extern 真实对象）双分支。
+## 可移植性原则（硬约束，2026-06-17 polish 修订）
+**单一 C++ 代码路径**——objdiff build 和 normal build 走**完全相同**的代码。
+- **禁止** `#ifdef DIFFBUILD` 双分支、inline asm、naked 函数、DAT_ const externs
+- 跨模块单例地址：typed C++ global（`extern Foo g_FooObj;`）+ `generate_objdiff_objs.py`
+  的 `SYMBOL_MAP` 把 C++ mangled 名映射回 orig DAT_ 地址（objdiff 端恢复匹配）
+- raw 绝对地址仅限**单例对象 + rdata 字面量字符串**（orig 唯一形式）
+- objdiff match% 通过**合法 codegen 技巧**（`#pragma var_order`、raw-offset field access、
+  memset/memcpy intrinsics、去局部缓存、early-return 控制流）恢复，不靠代码分裂
 
 ## 关键参考文件
 - `PROGRESS.md` — 详细进度、每模块 match%、技术发现（**必读**）

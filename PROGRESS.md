@@ -1,8 +1,89 @@
 # TH07-RE 反编译重建进度
 
-最后更新：2026-06-17
+最后更新：2026-06-17 (polish session)
 
-## ★Session 2026-06-17 (续): Supervisor asm 精修 avg 68%→78%★
+## ★Session 2026-06-17 (polish): 消除 objdiff 作弊 + 统一构建★
+
+用户反馈：项目充斥"objdiff 特化作弊"代码（`#ifdef DIFFBUILD` 双路径、naked
+asm、DAT_ externs），无法真正运行。本 session 系统清理，统一为单一 C++ 代码路径。
+
+### 决策（用户确认）
+1. **Scope**: Cleanup + build link（skeleton exe；大函数 RE 留后续 session）
+2. **地址风格**: raw `(*(T*)0xADDR)` → typed C++ globals，objdiff 端用
+   `generate_objdiff_objs.py` 的 `SYMBOL_MAP` 恢复 DAT_ 名
+3. **Recovery toolkit**: clean C++ + MSVC pragmas（`#pragma var_order`、
+   raw-offset field access、intrinsics）。**禁止** inline asm / naked / DAT_ externs / `#ifdef DIFFBUILD` 分裂
+
+### 清理成果
+
+| 阶段 | 内容 | objdiff 影响 |
+|---|---|---|
+| **Phase 1** | 删除 4 处 `#ifdef DIFFBUILD` 分裂（Player.cpp ×3，AnmManager.cpp ×1）| Player 91.05→89.00%（-2.05，预算内）；AnmManager 不变 |
+| **Phase 2** | DAT_ const externs → `extern "C" const f32` + SYMBOL_MAP（EffectManager 3 个）| EffectManager 84.15→84.18%（**+0.03**）|
+| **Phase 3** | 删除全部 inline asm：ZunMath.hpp ×4（无 caller，dead code），ScreenEffect.cpp CalcFlickerFade ×1 | ScreenEffect 89.64→89.89%（**+0.25**，CalcFlickerFade 75.35→78.61 **+3.26**）|
+| **Phase 4** | SYMBOL_MAP 扩展（g_EffectConst256/60/240 → DAT_00498a98/a48/b50）| 见 Phase 2 |
+| **Phase 5a** | build.py 默认 target `th06e.exe` → `th07e.exe`（th06 残留）| N/A（构建配置）|
+| **Phase 5b** | implemented.csv 502 处 `th06::` → `th07::`（th06-RE 残留）| N/A（解锁 generate_stubs.py）|
+| **Phase 5c** | **Supervisor::AddedCallback 正确实现**（FUN_00438986，1115 字节，boot-critical D3D+texture 初始化）| Supervisor 13→14 函数（AddedCallback 0→59.56%）|
+| **Phase 5d** | 13 个缺失模块 + main.cpp + pbg3/pbg4 stubs（让 normal build 编译通过）| N/A（新文件，不影响 objdiff）|
+
+### 总体 objdiff match%（净化前后对比）
+
+| 指标 | Before | After | Δ |
+|---|---|---|---|
+| 模块平均（simple avg）| 75.91% | 75.81% | -0.10 |
+| 实现函数总数 | 227 | **228** | **+1**（Supervisor::AddedCallback）|
+| `#ifdef DIFFBUILD` 分裂数 | 4 | **0** | -4 |
+| inline asm 块数 | 5 | **0** | -5 |
+| DAT_ const extern 数 | 4 | **0** | -4 |
+
+### Phase 5g 状态：normal build 链接仍失败（183 unresolved symbols）
+
+清理后 normal build **编译全部通过**（所有 .cpp 含 main.cpp + 13 stubs +
+pbg3/pbg4 stubs 都能编译），但**链接失败**：183 个跨模块符号 unresolved。
+这些是已实现模块引用但**尚未逆向**的函数/全局（如 `Player::OnUpdate`、
+`GameManager::AddedCallback`、`GameManagerScore::AddScore`、`g_Pbg4Dict` 等）。
+
+根因：项目设计本就**不打算链接成可运行 exe**——objdiff build 每模块独立编译，
+跨模块引用靠 `#ifdef DIFFBUILD` 在 objdiff 路径隐藏。统一后这些引用暴露。
+
+**剩余工作**（未来 session）：
+1. 实现 Player::OnUpdate/OnDrawHighPrio（Player.cpp 缺这两个大函数）
+2. 实现 GameManagerScore 子对象方法（AddScore/IncreaseSubrank/...）
+3. 定义数据全局（g_Pbg4Dict/g_Pbg4Nodes/g_ScoreSubObj 等）在 owning 模块
+4. 或扩展 generate_stubs.py 自动为 mapping.csv 中所有未实现符号生成 stub
+
+### 新增/修改文件
+
+**修改（清理）**：
+- `src/Player.cpp` — 删除 3 处 `#ifdef DIFFBUILD`，统一为 extern-object 路径
+- `src/AnmManager.cpp` — 删除 `#ifndef DIFFBUILD` g_TextureFormatD3D8Mapping 分裂
+- `src/EffectManager.cpp` — DAT_ const externs → `extern "C" const f32`
+- `src/ScreenEffect.cpp` — 删除 CalcFlickerFade inline asm + 未用 g_const255 extern
+- `src/ZunMath.hpp` — 4 个 asm 函数 → 纯 C++（无 caller，dead code）
+- `src/Supervisor.cpp` — AddedCallback 正确实现（1115B boot-critical）
+- `src/BulletData.cpp` — `nullptr` → `0`（MSVC 7.0 不支持 C++11）
+- `src/GameManager.hpp` — 删除与 EffectManager.hpp 冲突的 `void *g_EffectManager`
+- `scripts/build.py` — th06e→th07e target（3 处）
+- `scripts/generate_objdiff_objs.py` — SYMBOL_MAP +3 EffectConst 条目
+- `scripts/generate_stubs.py` — 跳过 implemented.csv 中不在 mapping.csv 的条目
+- `config/implemented.csv` — 502 处 th06:: → th07::
+
+**新增（stub + boot skeleton）**：
+- `src/main.cpp` — WinMain skeleton（调 RegisterChain + msg pump）
+- `src/{Stage,EclManager,EnemyEclInstr,Ending,EnemyManager,BulletManager,Gui,TextHelper,GameWindow,MainMenu,MusicRoom,ResultScreen}.{cpp,hpp}` — 13 个缺失模块最小 stub
+- `src/pbg3/{FileAbstraction,IPbg3Parser,Pbg3Archive,Pbg3Parser}.hpp` — th06 残留 include 的空 stub
+- `src/pbg4/{IPbg4Parser,Pbg4Archive,FileAbstraction}.cpp` — 空 TU 让 configure.py 链接
+- `src/ChainPriorities.hpp`, `src/ReplayData.hpp` — th07.hpp 需要的缺失 header
+- `resources/th07.rc`, `resources/placeholder.ico` — 链接需要的资源
+
+---
+
+## ★Session 2026-06-17 (续): Supervisor asm 精修 avg 68%→78%★ [SUPERSEDED by polish session above]
+
+> **注**：以下 asm-based 数字描述的是 Supervisor 纯 C++ 重写**之前**的状态。
+> 本 session 的 polish（删除全部 asm）后，实际 match% 见上表。保留此节
+> 供历史 codegen 技巧参考，但 asm/naked/DAT_ 手法现已**禁止使用**。
 
 本 session 用有限 inline asm（`#ifndef DIFFBUILD` asm / `#else` C++，不影响 Android port）
 推进 Supervisor 多个低匹配函数。avg 从 68.19% 推进到 **78.04%**，多个函数大幅提升。
