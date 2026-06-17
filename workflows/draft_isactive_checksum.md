@@ -1,5 +1,13 @@
 # GameManager::IsGameActive @ 0x42ad66 + CalculateChecksum @ 0x42d7be + helper FUN_0042d75a
 
+> ⚠️ **[DRAFT — pre-2026-06-17-polish; SUPERSEDED guidance]**
+>
+> 本文件写于 objdiff 字节匹配优先的时代。文中 raw-address / DAT_ 模式
+> 已被 2026-06-17 polish session 废弃。实现时请遵循 `AGENTS.md` §2
+> "诚实重建（单一代码路径）"原则：typed C++ global + SYMBOL_MAP，
+> 禁止 inline asm / naked / 函数级 `#ifdef DIFFBUILD` 分裂。
+> 保留本文件仅供历史溯源与 ghidra 逆向数据参考。
+
 Reverse-engineering + complete C++ draft for the two small anti-tamper / liveness
 functions plus the byte-sum helper they share. Output is byte-accurate to the
 Ghidra disassembly; the C++ below is written to reproduce MSVC 7.0 codegen under

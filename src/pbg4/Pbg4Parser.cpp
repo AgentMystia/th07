@@ -14,8 +14,13 @@
 
 namespace th07
 {
-extern "C" u8 g_Pbg4Dict[0x2000];        // DAT_004b7e40
-extern "C" u8 g_Pbg4Nodes[0x2001 * 0xc]; // DAT_0049fe30
+// LZSS static data tables. These are orig .bss/.data blobs (not "constant
+// slots" used for objdiff reloc hacking). They are declared extern here
+// because the owning TU (the full Pbg4 archive codec) is not yet reversed;
+// the linker provides zero-filled storage via the normal-build stub until
+// the real definitions land. See AGENTS.md §2 for the distinction.
+extern "C" u8 g_Pbg4Dict[0x2000];        // DAT_004b7e40 (LZSS dictionary)
+extern "C" u8 g_Pbg4Nodes[0x2001 * 0xc]; // DAT_0049fe30 (LZSS node table)
 
 struct Pbg4Parser
 {
@@ -75,7 +80,7 @@ void __fastcall Pbg4Parser_AdvanceNode(i32 idx)
 #pragma optimize("s", on)
 
 // Pbg4Parser::SetIndex (FUN_0045f270): set current index + init node entry.
-extern "C" i32 g_Pbg4CurIndex; // DAT_004b7e38
+extern "C" i32 g_Pbg4CurIndex; // DAT_004b7e38 (LZSS current index; orig .data)
 void __fastcall Pbg4Parser_SetIndex(i32 idx)
 {
     g_Pbg4CurIndex = idx;

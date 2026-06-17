@@ -1,613 +1,154 @@
 # TH07-RE 反编译重建进度
 
-最后更新：2026-06-17 (polish session)
+最后更新：2026-06-17
 
-## ★Session 2026-06-17 (polish): 消除 objdiff 作弊 + 统一构建★
+## 终极目标
 
-用户反馈：项目充斥"objdiff 特化作弊"代码（`#ifdef DIFFBUILD` 双路径、naked
-asm、DAT_ externs），无法真正运行。本 session 系统清理，统一为单一 C++ 代码路径。
+完整重现东方妖妖梦 `th07.exe`（1721 函数）的源码。**编译产物的游戏行为必须与原 exe 一致**。
+objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 
-### 决策（用户确认）
-1. **Scope**: Cleanup + build link（skeleton exe；大函数 RE 留后续 session）
-2. **地址风格**: raw `(*(T*)0xADDR)` → typed C++ globals，objdiff 端用
-   `generate_objdiff_objs.py` 的 `SYMBOL_MAP` 恢复 DAT_ 名
-3. **Recovery toolkit**: clean C++ + MSVC pragmas（`#pragma var_order`、
-   raw-offset field access、intrinsics）。**禁止** inline asm / naked / DAT_ externs / `#ifdef DIFFBUILD` 分裂
+## 当前总览
 
-### 清理成果
-
-| 阶段 | 内容 | objdiff 影响 |
-|---|---|---|
-| **Phase 1** | 删除 4 处 `#ifdef DIFFBUILD` 分裂（Player.cpp ×3，AnmManager.cpp ×1）| Player 91.05→89.00%（-2.05，预算内）；AnmManager 不变 |
-| **Phase 2** | DAT_ const externs → `extern "C" const f32` + SYMBOL_MAP（EffectManager 3 个）| EffectManager 84.15→84.18%（**+0.03**）|
-| **Phase 3** | 删除全部 inline asm：ZunMath.hpp ×4（无 caller，dead code），ScreenEffect.cpp CalcFlickerFade ×1 | ScreenEffect 89.64→89.89%（**+0.25**，CalcFlickerFade 75.35→78.61 **+3.26**）|
-| **Phase 4** | SYMBOL_MAP 扩展（g_EffectConst256/60/240 → DAT_00498a98/a48/b50）| 见 Phase 2 |
-| **Phase 5a** | build.py 默认 target `th06e.exe` → `th07e.exe`（th06 残留）| N/A（构建配置）|
-| **Phase 5b** | implemented.csv 502 处 `th06::` → `th07::`（th06-RE 残留）| N/A（解锁 generate_stubs.py）|
-| **Phase 5c** | **Supervisor::AddedCallback 正确实现**（FUN_00438986，1115 字节，boot-critical D3D+texture 初始化）| Supervisor 13→14 函数（AddedCallback 0→59.56%）|
-| **Phase 5d** | 13 个缺失模块 + main.cpp + pbg3/pbg4 stubs（让 normal build 编译通过）| N/A（新文件，不影响 objdiff）|
-
-### 总体 objdiff match%（净化前后对比）
-
-| 指标 | Before | After | Δ |
-|---|---|---|---|
-| 模块平均（simple avg）| 75.91% | 75.81% | -0.10 |
-| 实现函数总数 | 227 | **228** | **+1**（Supervisor::AddedCallback）|
-| `#ifdef DIFFBUILD` 分裂数 | 4 | **0** | -4 |
-| inline asm 块数 | 5 | **0** | -5 |
-| DAT_ const extern 数 | 4 | **0** | -4 |
-
-### Phase 5g 状态：normal build 链接仍失败（183 unresolved symbols）
-
-清理后 normal build **编译全部通过**（所有 .cpp 含 main.cpp + 13 stubs +
-pbg3/pbg4 stubs 都能编译），但**链接失败**：183 个跨模块符号 unresolved。
-这些是已实现模块引用但**尚未逆向**的函数/全局（如 `Player::OnUpdate`、
-`GameManager::AddedCallback`、`GameManagerScore::AddScore`、`g_Pbg4Dict` 等）。
-
-根因：项目设计本就**不打算链接成可运行 exe**——objdiff build 每模块独立编译，
-跨模块引用靠 `#ifdef DIFFBUILD` 在 objdiff 路径隐藏。统一后这些引用暴露。
-
-**剩余工作**（未来 session）：
-1. 实现 Player::OnUpdate/OnDrawHighPrio（Player.cpp 缺这两个大函数）
-2. 实现 GameManagerScore 子对象方法（AddScore/IncreaseSubrank/...）
-3. 定义数据全局（g_Pbg4Dict/g_Pbg4Nodes/g_ScoreSubObj 等）在 owning 模块
-4. 或扩展 generate_stubs.py 自动为 mapping.csv 中所有未实现符号生成 stub
-
-### 新增/修改文件
-
-**修改（清理）**：
-- `src/Player.cpp` — 删除 3 处 `#ifdef DIFFBUILD`，统一为 extern-object 路径
-- `src/AnmManager.cpp` — 删除 `#ifndef DIFFBUILD` g_TextureFormatD3D8Mapping 分裂
-- `src/EffectManager.cpp` — DAT_ const externs → `extern "C" const f32`
-- `src/ScreenEffect.cpp` — 删除 CalcFlickerFade inline asm + 未用 g_const255 extern
-- `src/ZunMath.hpp` — 4 个 asm 函数 → 纯 C++（无 caller，dead code）
-- `src/Supervisor.cpp` — AddedCallback 正确实现（1115B boot-critical）
-- `src/BulletData.cpp` — `nullptr` → `0`（MSVC 7.0 不支持 C++11）
-- `src/GameManager.hpp` — 删除与 EffectManager.hpp 冲突的 `void *g_EffectManager`
-- `scripts/build.py` — th06e→th07e target（3 处）
-- `scripts/generate_objdiff_objs.py` — SYMBOL_MAP +3 EffectConst 条目
-- `scripts/generate_stubs.py` — 跳过 implemented.csv 中不在 mapping.csv 的条目
-- `config/implemented.csv` — 502 处 th06:: → th07::
-
-**新增（stub + boot skeleton）**：
-- `src/main.cpp` — WinMain skeleton（调 RegisterChain + msg pump）
-- `src/{Stage,EclManager,EnemyEclInstr,Ending,EnemyManager,BulletManager,Gui,TextHelper,GameWindow,MainMenu,MusicRoom,ResultScreen}.{cpp,hpp}` — 13 个缺失模块最小 stub
-- `src/pbg3/{FileAbstraction,IPbg3Parser,Pbg3Archive,Pbg3Parser}.hpp` — th06 残留 include 的空 stub
-- `src/pbg4/{IPbg4Parser,Pbg4Archive,FileAbstraction}.cpp` — 空 TU 让 configure.py 链接
-- `src/ChainPriorities.hpp`, `src/ReplayData.hpp` — th07.hpp 需要的缺失 header
-- `resources/th07.rc`, `resources/placeholder.ico` — 链接需要的资源
-
----
-
-## ★Session 2026-06-17 (续): Supervisor asm 精修 avg 68%→78%★ [SUPERSEDED by polish session above]
-
-> **注**：以下 asm-based 数字描述的是 Supervisor 纯 C++ 重写**之前**的状态。
-> 本 session 的 polish（删除全部 asm）后，实际 match% 见上表。保留此节
-> 供历史 codegen 技巧参考，但 asm/naked/DAT_ 手法现已**禁止使用**。
-
-本 session 用有限 inline asm（`#ifndef DIFFBUILD` asm / `#else` C++，不影响 Android port）
-推进 Supervisor 多个低匹配函数。avg 从 68.19% 推进到 **78.04%**，多个函数大幅提升。
-
-### Supervisor 精修结果（avg 78.04%，3×≥90%，2×≥95%）
-| 函数 | 旧 | 新 | 关键修复 |
-|---|---|---|---|
-| PlayMidiFile | 0.0% | **96.57%** | 惊喜：干净 C++ 版本在 objdiff opcode 匹配下达 96.6%（frame/local-offset 差异不影响 opcode 序列）|
-| OnUpdate | 59.3% | **63.91%** | AnmManager reset 块用 inline asm 精确生成 `OR BYTE PTR [eax+off],0xff` |
-| LoadConfig | 27.8% | **57.50%** | LogFmt2/3 __cdecl + Win32 import + opts 重读 + memset/memcpy + frame pad4 |
-| SetupDInput | 57.2% | **69.25%** | GetWindowLongA 真实 Win32 import |
-
-### 仍在 70% 以下（剩余优化空间）
-- OnUpdate 63.9%：switch dispatch 块仍 mismatch。
-- LoadConfig 57.5%：buf/read1/handle 槽位偏（MSVC 标量局部恒在帧底）。
-- DeletedCallback 54.0%：pbg 检查缓存到局部；frame 0x1c vs orig 0x28。
-- FadeOutMusic 69.0%：FLD 操作数顺序；SetFadeOut stub call。
-- DrawFpsCounter 73.0%：frame 0x64 vs orig 0x54（f32 局部变量多 16B）；g_NoFpsCounter 分支。
-
-### asm 技巧总结（本 session）
-1. inline asm `or byte ptr [eax+off], 0xff` 一条指令匹配 orig（C++ `|=` 三条）。
-2. Win32 import 直接 call（`call DWORD PTR ds:[IAT]`）。
-3. __cdecl vs __fastcall：LogFmt2/3 orig 用 push 多 args。
-4. asm `call dword ptr [fp]` 可用，`call <cfunc>` 报 C2415。
-5. PMF → void* 用 memcpy（MSVC 7.0 不支持 reinterpret_cast PMF）。
-6. asm 绝对地址 store 需 `mov reg, addr; mov [reg], imm`（直接 `mov [imm], imm` 报 C2415）。
-7. objdiff opcode 匹配宽容：frame/local-offset 差异不影响 match%。
-
----
-
-## ★Session 2026-06-17: 整体构建一致性诊断 + Supervisor 跨模块符号修复★
-
-用户反馈：模块完成后需验证整体链接性，不能只看 objdiff 单模块编译。本 session
-系统检查 Supervisor.cpp 与其他模块的符号一致性，发现并修复多处未解析符号。
-
-### Supervisor.cpp 跨模块符号修复（avg 68.25%→68.19%，链接性显著改善）
-1. **D3DDeviceStub**：原用 `Reset2` 成员方法（生成未定义符号 `?Reset2@D3DDeviceStub@th07@@...`），
-   改为 GameManager.cpp 的 **lpVtbl 函数指针模式**（`struct { D3DDeviceStubVtbl *lpVtbl; }`，
-   通过 `(*dev)->lpVtbl->Reset(dev, flags)` 调用，无符号产生）。objdiff 反而 +0.6%。
-2. **AsciiManager**：原用 `AsciiMgrStub`（生成 `?AddString@AsciiMgrStub@th07@@...`，不匹配
-   真实 `?AddString@AsciiManager@th07@@...`），改为 `#include "AsciiManager.hpp"` + 用真实
-   `AsciiManager` 类型 → 符号现在正确 resolve 到 AsciiManager.obj。
-3. **MidiOutput::StopPlayback**：原 stub 声明 `void`（`QAEXXZ`），真实是 `ZunResult`
-   （`QAE?AW4ZunResult@@XZ`）。修正签名匹配 MidiOutput.obj。
-4. **SoundPlayer::StopStream**：根本不存在的方法（真实是 `SoundQueueAdd` @ 0x44d2f0）。
-   重命名 stub 方法 → 符号 resolve 到 SoundPlayer.obj。`FadeOut` → `FadeOutBgm` 同理。
-5. **SupAutosaveStub**：移除（改回 `Supervisor_AutosaveScore` extern，虽未 resolve 但
-   至少不产生错误符号）。
-
-### 整体构建诊断结果
-
-**build.py 默认 target 错误**：`build.py` 无参数时 target 是 `th06e.exe`（th06 残留），
-应改为 `th07e.exe`（需修 build.py 或显式 `--target build/th07e.exe`）。
-
-**th07.hpp include chain 损坏**：`th07.hpp` `#include "Stage.hpp"` 但 `src/Stage.hpp` 不存在。
-13 个模块的 .cpp/.hpp 都缺失（Stage, EclManager, Ending, EnemyManager, BulletManager, Gui,
-TextHelper, main, GameWindow, MusicRoom, ResultScreen, MainMenu, EnemyEclInstr）。这些模块
-被 `configure.py` 的 `cxx_sources` 引用但无源文件 → 完整 th07e.exe 构建失败。
-
-**generate_stubs.py + implemented.csv 命名空间不一致**：
-- `config/implemented.csv` 全部 502 条用 `th06::` 前缀（th06-RE 残留），
-- `config/mapping.csv` 用 `th07::` 前缀，
-- `generate_stubs.py` 用 `mapping_obj[func[0]]["implemented"] = True` 查找 → KeyError
-  中断（th06::AsciiManager::AsciiManager 不在 th07:: mapping 里）。
-- `stubbed.csv` 为空，所以即使修复 implemented.csv 也不会生成任何 stub。
-
-**Supervisor.cpp 剩余链接问题（extern "C" 包装器约定不匹配）**：
-Supervisor.cpp 用大量 `extern "C" __fastcall GameManager_RegisterChain()` 等 C 风格包装器，
-但项目其他模块（GameManager.cpp 等）用 C++ 成员方法（`?RegisterChain@GameManager@th07@@...`），
-mangling 完全不同 → 这些 extern "C" 符号在链接时 unresolved。受影响的约 20 个符号：
-`_GameManager_RegisterChain`, `_GameManager_CutChain`, `_MainMenu_RegisterChain`,
-`_Ending_RegisterChain`, `@MusicRoom_RegisterChain@4`, `@Controller_GetInput@0`,
-`@Supervisor_AutosaveScore@12`, `@Supervisor_D3DDiscard@4`, `_Supervisor_LogStr1`,
-`@MidiOutput_StopPlayback@0`, `@AsciiManager_CutChain@0`, `_sprintf_th07`, `_strchr_th07`,
-`@FloatToI16@4`, `@GameErrorContext_LogFmt2@8`, `@GameErrorContext_LogFmt3@12` 等。
-**根本修复**：把这些 extern "C" 调用改用真实 C++ 类型（如 `GameManager::RegisterChain()`），
-或在 stubs.cpp/auto_stubbed.cpp 提供这些 C 包装器的转发实现。
-
-### 结论
-- **objdiff 单模块编译**：✅ Supervisor.obj 可独立编译 + objdiff（avg 68.19%）。
-- **完整 th07e.exe 链接**：❌ 缺 13 个模块源文件 + th07.hpp include 损坏 + extern "C"
-  包装器 unresolved。这是项目级遗留问题，非 Supervisor 单模块能解决。
-- **建议**：下个 session 优先 (1) 补缺失模块源文件/stub，(2) 修 implemented.csv 命名空间，
-  (3) 决定跨模块调用约定（统一 extern "C" 包装器 或 统一 C++ 成员）。
-
----
-
-## ★Session 2026-06-16 (续 2): Supervisor 精修推进 avg 65.8%→68.25%★
-
-本 session 推进 Supervisor 模块，针对 OnUpdate/LoadConfig/DrawFpsCounter/PlayMidiFile
-四个函数做 codegen 精修。avg 从 65.8% 推进到 **68.25%**，4 个函数显著提升。
-
-### Supervisor 精修结果（avg 68.25%，3×≥90%）
-| 函数 | 旧 | 新 | 关键修复 |
-|---|---|---|---|
-| OnUpdate | 44.45% | **59.98%** | C++ 重写：补 g_NoFpsCounter 分支、修正 wanted/cur switch case 数字、D3D vtable 间接 call、AutosaveScore 用 stub-method-on-singleton |
-| LoadConfig | 27.77% | **42.72%** | 改用 memset/memcpy intrinsic（生成 rep stosd/rep movsd）、CreateFileA/ReadFile/CloseHandle 用真实 Win32 import（call [IAT]）、opts 每次重读 this+0x14c、frame 0x38 布局、默认 keymap 用 memcpy 生成 movsd x4+movsw |
-| DrawFpsCounter | 71.27% | **73.03%** | timeGetTime/QueryPerformanceCounter 改用真实 Win32 import（call [IAT]）、g_NoFpsCounter 分支直达 end_block_check_draw |
-| PlayMidiFile | 0.0% | 0.0% | MSVC /Od 局部布局硬限制（标量局部恒在 [ebp-0x4]，orig midi 在 [ebp-0x10c]）—— 需 inline asm，已记录 |
-
-### 关键 codegen 发现（本 session）
-
-#### 1. MSVC /Od 局部布局：标量恒在帧底，数组单独分配
-MSVC 7.0 /Od 对函数内**所有非数组局部变量**（无论声明顺序/scope）一律分配到帧底
-（`[ebp-0x4]`, `[ebp-0x8]`, ...），数组单独从帧顶向下分配。这导致：
-- **PlayMidiFile 0% 根因**：orig 把 midi 放在 `[ebp-0x10c]`（buf 上方），但 MSVC
-  对任何 C++ 写法都把 midi 放到 `[ebp-0x4]`。`volatile`/声明顺序/作用域全部无效。
-  唯一解：inline asm（但 asm 不能 call C 符号，需函数指针变体）。
-- **LoadConfig 布局**：通过反向声明 + char _pad4[4] 强制 frame 0x38（匹配 orig），
-  但 buf/read1/handle 的具体槽位仍与 orig 不同（orig buf@0x4，reimpl read1@0x4）。
-
-#### 2. memset/memcpy intrinsic = rep stosd / rep movsd
-`memset(addr, 0, N*4)` 在 /Oi 下生成 `push N; pop ecx; xor eax,eax; mov edi,addr; rep stosd`。
-`memcpy(dst, src, N*4)` 生成 `mov esi,src; mov edi,dst; push N; pop ecx; rep movsd`。
-小 memcpy（18 字节）生成 `movsd x4 + movsw`（展开）。**手写 for 循环不匹配**，必须用 intrinsic。
-
-#### 3. Win32 API 必须直接 call（不走 wrapper）
-orig 对 CreateFileA/ReadFile/CloseHandle/timeGetTime/QueryPerformanceCounter 都是
-`call DWORD PTR ds:[IAT]`（直接 import）。若用 `CreateFileA_th07()` wrapper（__fastcall），
-MSVC 生成 `mov edx,arg; mov ecx,arg; call wrapper` —— 完全不匹配。
-**正确做法**：直接调用 `<windows.h>`/`<mmsystem.h>` 的真实 API（MSVC 生成 `call [__imp__Api]`）。
-
-#### 4. opts 位检查必须每次重读全局
-orig 对 `this+0x14c` 的每个位测试都重新 `mov eax,[ebp-0x38]; mov eax,[eax+0x14c]; shr; and; test`
-（无局部缓存）。C++ 写 `u32 opts = ...; if (opts>>1&1)` 会缓存到局部 → 不匹配。
-**正确**：每个 if 条件都写 `(*(u32*)((u8*)this+0x14c) >> N & 1)`。
-
-#### 5. AutosaveScore __thiscall：stub-method-on-singleton
-orig `MOV ECX,0x575950; PUSH arg3; PUSH arg2; PUSH arg1; CALL` = __thiscall，
-ECX=g_Supervisor singleton + 3 stack args。
-声明 `struct SupAutosaveStub { i32 AutosaveScore(char*,i32,i32); };`
-调用 `(*(SupAutosaveStub*)0x575950).AutosaveScore(...)` 生成精确匹配。
-
-#### 6. inline asm 限制（MSVC 7.0 已验证）
-- `__declspec(naked)` + `__asm {}` 可用，但 **`call <Cfunc>` 报 C2415**（improper operand）。
-- **`call dword ptr [fp]` 可用**（fp 是函数指针局部）——生成 `call *[ebp-X]`。
-- 绝对地址 store `mov [0xADDR], imm` 在 naked asm 中也报 C2415。
-- 结论：复杂函数（如 OnUpdate 的状态机）用纯 asm 不可行；必须用 C++ + 精确表达式。
-
-### Supervisor 续作检查点
-**优先级**：
-1. **PlayMidiFile 0%**：唯一解是 inline asm + 函数指针 call。orig 的 midi@[ebp-0x10c]
-   需要手动帧布局。参考本 session asm 测试（`call dword ptr [fp]` 可用）。
-2. **LoadConfig 43%**：buf/read1/handle 槽位仍偏。orig buf@0x4 read1@0xc hdr1@0x1c。
-   需更精细的局部声明顺序实验，或 inline asm 强制布局。
-3. **DrawFpsCounter 73%**：orig 用纯 FPU 栈（无 f32 局部），reimpl 用 f32 局部致 frame
-   偏大（0x64 vs 0x54）+ 多余 fstp/fld。需重写为 FPU 栈表达式。
-4. **DeletedCallback 54% / SetupDInput 57%**：依赖外部 stub，orig 调用序列复杂。
-5. 已 ≥90% 的：OnDraw 100%、TickTimer 97.95%、PlayAudio 90.5%——不动。
-
----
-
-## ★Session 2026-06-16: ghidra namespace 工具链修复 + Supervisor 部分实现★
-
-### 🔑 重大突破：修复 ghidra namespace 导入（解锁全部 40 模块导出）
-- **根因**：之前的 `scalar deleting destructor` 中断问题已不存在（mapping.csv 已清洁），但 Supervisor 等 22 个模块的函数从未加入 mapping.csv，导致 th07:: namespace 全部为空、ExportDelinker 无法导出这些模块 obj。
-- **修复**：补全 Supervisor 14 函数到 mapping.csv（地址+大小全部 ghidra 实读验证），重跑 ImportFromCsv + ExportDelinker headless 流程（36 秒）。
-- **成果**：orig obj 从 17 个增至 18 个（新增 Supervisor.obj 26KB）。40 模块的 namespace 导出现在可按需补 mapping.csv 行即解锁。
-
-### Supervisor（第 16 模块，13/14 函数 objdiff，平均 **65.8%**，3×90%+）
-orig 26.4KB / 14 函数。从语法损坏的初稿重写为可编译的 C++（移除中文注释——MSVC 7.0 不认）。
-本 session 大幅推进：新增 PlayAudio/PlayMidiFile/SetupDInput/DeletedCallback/LoadConfig 实现，
-DrawFpsCounter 大函数体落地（2.5%→71.3%）。
-| 函数 | match% | 备注 |
-|---|---|---|
-| OnDraw | **100%** | |
-| TickTimer | **97.95%** | 去局部缓存 + raw offset this+0x178 |
-| PlayAudio | **90.46%** | __thiscall 成员 + "dummy" rdata 字符串 |
-| StopAudio | 86.55% | 缓存 midiOutput 到 local |
-| ReadMidiFile | 81.49% | "dummy" rdata + 正确分支顺序 |
-| DrawFpsCounter | 71.27% | 完整实现（双路径 fps + slow% + AsciiManager 绘制）|
-| RegisterChain | 74.91% | |
-| FadeOutMusic | 69.0% | WAV-path reread + 1000.0f rdata 常量（分支方向 codegen 限制）|
-| SetupDInput | 57.16% | DirectInput8 COM thiscall via stub struct |
-| DeletedCallback | 53.96% | 清理链（free/DInput Release）|
-| OnUpdate | 44.45% | 状态机 |
-| LoadConfig | 27.77% | th07.cfg 读取 + thbgm.dat 头校验 + opts 位日志 |
-| PlayMidiFile | 0.0% | MSVC frame 布局差异（0x11c vs orig 0x120，dead d2 store 消除）|
-
-### 关键 struct 修正（影响 Supervisor 全模块）
-- **DIDEVCAPS_FAKE**：14 u32 → 11 u32（th07 不含 FirmwareRevisionH/HardwareRevisionH）
-- **D3DPRESENT_PARAMETERS_FAKE**：fields[14] → fields[13]（th07 少一个字段）
-- 这两处修正让 calcCount/wantedState/curState 从 +0x160/+0x164/+0x15c 回到正确的 +0x150/+0x154/+0x158
-
-### Supervisor 待续
-- PlayMidiFile 0%：MSVC /Od 消除了 orig 保留的 dead `d2 = d` store，frame 4 字节差异致整函数偏移；需 inline asm 强制局部布局。
-- OnUpdate/LoadConfig 大函数精修。
-- AddedCallback (0x45b) 尚未实现（None）。
-
-### BombData（新增模块，12/24 draw 全部实现 + 1 calc，模块平均 **39.6%**）
-g_BombData 表 @ 0x0049ec50（12 条目，calc/draw 对）。24 个回调已加入 mapping.csv 并导出 orig obj（41816B）。
-- **12 draw 全部实现**（draw 平均 ~73%，范围 61-88%）：
-  - MarisaABombDraw 88.0%、MarisaBBombDraw 87.7%、MarisaABombDraw2 76.6%、ReimuCBombDraw 76.7%
-  - SakuyaABombDraw 75.4%、ReimuBBombDraw 74.4%、YoumuABombDraw 74.3%、YoumuBBombDraw 73.5%
-  - ReimuABombDraw2 67.7%、SakuyaBBombDraw 67.1%、ReimuABombDraw 63.9%、SakuyaABombDraw2 61.5%
-- **1 calc 已实现**：MarisaABombCalc2 42.7%（timer state machine 范本，**新会话实现其他 calc 抄它的结构**）。
-- **关键技巧**：AnmManager::Draw2/Draw3 经 stub-method-on-global（`(*(AnmMgrStub**)0x4b9e44)->Draw(anm)`）→
-  `MOV ECX,[0x4b9e44]; PUSH anm; CALL`；pos 字段按 raw f32 访问（勿 i32 强转，否则 FLD/FSTP 顺序变）；
-  循环体需手动展开（orig 全展开，for 循环会致整体偏移）。
-- **11 calc 待实现**：每个 0xe0~0x960 字节的复杂 Player 状态机。详见 AGENTS.md「续作检查点」的地址清单 +
-  calc 通用骨架 + Player 结构体偏移 + extern 清单。
-
-### ItemManager（大函数模块，OnUpdate 4297 字节，orig obj 已导出）
-th07::ItemManager 仅有 OnUpdate @ 0x432990（0x10c9 字节，switch 重度）+ RegisterChain @ 0x432eda。
-orig obj 已导出（11794 字节）；OnUpdate 当前为 stub（0%）。
-单体巨型函数，90% 匹配需完整逆向 + 精确 codegen，工作量极大。
-
-### BulletData（数据模块，无函数 → orig obj 为空）
-th07::BulletData 命名空间下无函数（纯 .data 表），ExportDelinker 无法导出。
-需改用数据符号 + 静态数据定义才能建立 objdiff 基准（当前 0%）。**这是方向性决策，新会话先征询用户。**
-
-### Session 总结（2026-06-16，4 模块推进）
-本 session 推进了 Supervisor / BombData / BulletData / ItemManager 四个模块：
-- **Supervisor**：从 8 函数平均 64.7% 推进到 **13 函数平均 65.8%**（新增 5 函数实现：PlayAudio 90.5%、
-  PlayMidiFile、SetupDInput 57%、DeletedCallback 54%、LoadConfig 28%；DrawFpsCounter 大函数体 2.5%→71.3%、
-  FadeOutMusic 33%→69%、StopAudio 84.5%→86.5%、ReadMidiFile 79.8%→81.5%）。3×≥90%（OnDraw/TickTimer/PlayAudio）。
-- **BombData**：从 0 推进到 **24 函数平均 39.6%**——12 draw 全部实现（avg ~73%，范围 61-88%）+ 1 calc（MarisaABombCalc2 43%）。
-  关键 codegen 技巧：AnmMgr stub-method-on-global、raw f32 字段访问、循环体手动展开。
-- **BulletData**：纯数据模块（无函数），ExportDelinker 无法导出 obj，需数据符号方案（0%，已记录）。
-- **ItemManager**：orig obj 已导出，OnUpdate 4297b 单体巨型函数（0%，已记录为 large-function 限制）。
-- **未达 90% 的根因**：BombData 12 calc / ItemManager OnUpdate 均为 1200-4300 字节的复杂 Player/GameManager
-  状态机，单个函数需完整逆向 + 精确 codegen，单 session 无法完成全部。
-
-### CMyFont（第 18 模块，5 函数 objdiff，平均 **70.8%**，3×90%+）
-orig 3.6KB / 5 函数。th07 文本渲染（GDI-based，非 th06 D3DXFont）。
-| 函数 | match% |
+| 指标 | 值 |
 |---|---|
-| Reset | **99.81%** |
-| Clean | **95.00%** |
-| InitWrapper | **91.86%**（__thiscall + use this 后 80%→91.86%）|
-| Init | 64.88%（memset intrinsic vs call 差异，struct 局部布局不同）|
-| Print | 2.20%（stub，大函数待实现）|
+| objdiff 跟踪模块 | 23 |
+| objdiff 跟踪函数 | 228 |
+| 模块平均 match% | 75.81% |
+| ≥90% 模块 | 10（核心完成）|
+| 80–90% 模块 | 4（接近达标）|
+| 50–80% 模块 | 4（进行中）|
+| <50% 模块 | 5（阻塞/早期）|
+| normal build | 全部编译通过；链接需 183 跨模块符号实现 |
 
-### EffectManager（第 17 模块，17 函数 objdiff，平均 **83.7%**，10×90%+，3×100%）
-orig 10.2KB / 17 函数。通过读取 orig g_Effects 表发现真实 callback 地址，
-+ 移除 overlap 条目 + rdata 浮点常量 + __thiscall 修正 + **Effect 结构体布局修复**。
-| 函数 | match% |
-|---|---|
-| Reset | **100%** |
-| EffectCallbackStill | **100%** |
-| EffectUpdateCallback4Init | **100%** |
-| EffectUpdateCallback4 | 99.28% |
-| EffectCallbackRandomSplashBigInit | 99.29% |
-| RegisterChain | 97.50% |
-| SpawnParticlesWithVelocity | 96.92% |
-| CutChain | 97.00% |
-| OnUpdate | 90.66% |
-| SpawnParticles | 90.35% |
-| SpawnParticleAt | 84.76% |
-| EffectCallbackAttractInit | 79.42% |
-| DeletedCallback | 78.00% |
-| OnDraw | 65.34% |
-| EffectCallbackAttract | 54.72% |
-| EffectCallbackAttractSlow | 53.43% |
-| EffectManager (ctor) | 35.40% |
+> match% 来源：`objdiff-cli diff` 的 `left.symbols[].match_percent`。模块平均为
+> simple average（各函数 match% 的算术平均）。捕获脚本：`/tmp/objdiff_baseline.sh`。
 
-### Supervisor（8 函数 objdiff，平均 **64.7%**）
-OnDraw **100%**（__fastcall 修正）, TickTimer **97.95%**, StopAudio 84.50%（thiscall stub）,
-ReadMidiFile 79.81%（__fastcall→__thiscall 修正后 18%→79.81%）,
-RegisterChain 74.91%（CALL 密集，符号命名限制上限）, OnUpdate 44.45%（CALL 密集）,
-FadeOutMusic 33.29%, DrawFpsCounter 2.48%（仅 early-return stub）。
+## 每模块 match% 明细
 
-### EffectManager 关键修复
-- **ParticleEffects enum**：从 25 扩展到 34 成员（缺 idx 4-11/14-15，致 g_Effects 表 C2078）
-- **Effect.hpp**：移除零大小 pad2 数组
-- **static 成员限定**：g_Effects 表用宏别名 `#define X (EffectManager::X)` 限定 static 回调
+`<<` = <50%（阻塞），`*` = <90%（待抛光）。函数按字节大小降序。
 
-### codegen 复用技巧（已验证）
-- **去局部缓存匹配 orig 重读**：TickTimer 0%→97.95% 仅靠此（每次直接读 `*(f32*)((u8*)this+0x178)` 而非缓存到局部）
-- **raw offset 绕过 struct 偏移错误**：当 hpp struct 布局与 orig 不符时，用 `*(T*)((u8*)this+OFF)` 直接访问
-- **🔑🔑 __fastcall 是 static callback 的命脉**：th07 static chain callbacks（OnUpdate/OnDraw/AddedCallback/DeletedCallback/DrawFpsCounter）都是 `__fastcall`（Supervisor* in ECX），但 MSVC C++ static 方法默认 `__cdecl`。**必须在 hpp 声明和 cpp 定义都加 `__fastcall`**，否则参数走栈而非 ECX，match 暴跌 40%+。Supervisor OnDraw 57%→100% 仅靠此。
-- **🔑🔑🔑 读取 orig 数据表发现真实函数地址**：g_Effects 表（34 entry × 12 bytes）在 .data 段，含所有 effect callback 的真实 VA。用 ghidra `inspect_memory_content` 读 0x49efc0，解析每 entry 的 update/init 指针，即可定位所有 callback 地址。EffectManager EffectUpdateCallback4 0%→99.19% 仅靠此（原映射 0x41ad10 错，真实 0x41a750）。
-- **🔑🔑 thiscall callee 用 struct-method stub**：跨模块 __thiscall 调用（如 MidiOutput::SetFadeOut），声明 `struct MidiOutput { ZunResult SetFadeOut(u32); }` + `(*(MidiOutput**)0x575acc)->SetFadeOut(...)` 生成 `mov ecx,[singleton]; call`。Supervisor StopAudio 62%→84.5% 仅靠此。
-- **🔑 rdata 浮点常量必须 extern 全局引用**：orig 用 `fmul [DAT_00498a98]`（.rdata 段全局 256.0f），C++ 字面量 `256.0f` 生成 `fmul [__real@43800000]`（不同 reloc）。解决：`extern "C" u8 g_Const256[4];` + `*(f32*)g_Const256`。EffectCallbackAttract 45%→54% 靠此。
-- **🔑 成员方法默认 __thiscall，勿误用 __fastcall**：orig 成员方法只 ECX=this，其余走栈。若声明 `__fastcall`，MSVC 把第 2 参数放 EDX（orig 不期望），match 暴跌。SpawnParticles 88.88%→90.25% 仅靠移除 `__fastcall`（改回默认 __thiscall）。
-- **objdiff 符号命名限制**：CALL 密集函数（RegisterChain 74.9%, OnUpdate 44%, SpawnParticles 88.9%）即使指令 0 差异也卡在符号名层面——orig reloc 用 `th07::X::Y` mangled 或 `dir32 DAT_addr`，reimpl 用不同符号名。这是当前 objdiff 的固有限制，需在 objdiff 层面做符号映射或重命名 reimpl 全局匹配 orig DAT_ 才能突破。
+### 核心完成（≥90%）— 10 模块
 
-### 本 session 累计成果
-- **工具链突破**：修复 ghidra ImportFromCsv（补 mapping.csv + 移除 overlap 条目），orig obj 17→20 模块，222 函数地址锁定（12.9% of 1721）
-- **新增 3 模块 objdiff 跟踪**：Supervisor (8 函数) + EffectManager (17 函数) + CMyFont (5 函数) = 30 函数
-- **13 个函数 ≥90%**：Supervisor OnDraw 100%/TickTimer 97.95%; EffectManager Reset 99.92%/Still 99.93%/SplashBigInit 99.23%/UpdateCB4Init 99.90%/UpdateCB4 99.19%/RegisterChain 97.50%/SpawnPartWithVel 95.28%/CutChain 97.00%/OnUpdate 90.46%; CMyFont Reset 99.81%/Clean 95.00%
+**AnmVm 100.00%** (3 fns) — ResetInterpTimers 100, Initialize 100, AnmVm 100
+**GameErrorContext 99.81%** (3) — Fatal 99.93, Log 99.93, Flush 99.56
+**utils 99.59%** (4) — DebugPrint 100, Rotate 99.71, AddNormalizeAngle 99.53, CheckForRunningGameInstance 99.10
+**Controller 98.01%** (7) — GetInput 99.92, SetButtonFrom* 100×2, ResetKeyboard 99.60, GetJoystickCaps 99.20, GetControllerInput 94.11, GetControllerState 93.26
+**Chain 97.85%** (12) — AddToCalcChain/AddToDrawChain/CreateElem/ChainElem/~ChainElem/Release 100×6, ReleaseSingleChain 99.89, Cut 99.95, RunDrawChain 88.58, RunCalcChain 86.70
+**ZunTimer 96.56%** (3) — Increment 99.48, Decrement 99.48, NextTick 90.71
+**zwave 96.01%** (26) — 5×100, CSoundManager::CreateStreaming* 91-94, CStreamingSound::HandleWaveStreamNotification 88.40, CWaveFile::ResetFile 78.61
+**FileSystem 95.82%** (2) — RawWriteFile 99.29, OpenPath 92.35
+**Rng 95.77%** (3) — GetRandomU16 100, GetRandomU32 100, GetRandomF32ZeroToOne 87.31
+**MidiOutput 92.23%** (17) — ClearTracks/LoadFile/Play/ReleaseFileData/SetFadeOut 100×5, StopPlayback 99.75, MidiOutput 99.69; **ProcessMsg 34.76**（大函数待实现）
 
-## ★Session 2026-06-15 (夜间长程): ScreenEffect 新模块 + AsciiManager 新模块 + FileSystem 精修★
+### 接近达标（80–90%）— 4 模块
 
-### ScreenEffect（第 14 模块，13 函数，平均 **89.55%**，4×100%）
-orig 7.9KB / 13 函数。从无到有完整实现。
-| 函数 | match% |
-|---|---|
-| DrawFadeOut | **100%** |
-| DrawFlickerFade | **100%** |
-| AddedCallback | **100%** |
-| Clear | 97.54% |
-| SetViewport | 97.00% |
-| DrawFadeIn | 98.06% |
-| DeletedCallback | 86.00% |
-| ShakeScreen | 82.50% |
-| RegisterChain | 81.55% |
-| CalcFadeIn | 83.45% |
-| CalcFadeOut | 83.24% |
-| DrawSquare | 79.82% |
-| CalcFlickerFade | 75.35% |
+**ScreenEffect 89.89%** (13) — AddedCallback/DrawFadeOut/DrawFlickerFade 100×3, DrawFadeIn 98.06, Clear 97.54, SetViewport 97.00; DrawSquare 79.82, RegisterChain 81.95, ShakeScreen 82.50, CalcFlickerFade 78.61
+**GameManager 89.36%** (6) — OnDraw 100, CutChain 98.42, DeletedCallback 94.65, OnUpdate 90.63; RegisterChain 76.73, **AddedCallback 75.76**（2726B 分配器）
+**Player 89.00%** (9) — StartFireBulletTimer 100, RegisterChain 99.88, OnDrawLowPrio 99.50, Die 99.02, CutChain 98.42; AngleToPlayer 88.15, DeletedCallback 83.27; **ScoreGraze 71.69, CalcItemBoxCollision 61.08**（浮点栈布局）
+**EffectManager 84.18%** (17) — Reset/EffectCallbackStill/EffectUpdateCallback4Init 100×3, CutChain 99.00, RegisterChain 98.09, EffectUpdateCallback4 99.28, SpawnParticlesWithVelocity 96.95; **OnDraw 65.40, EffectCallbackAttract 54.93, EffectCallbackAttractSlow 53.65, EffectManager(ctor) 35.40**
 
-### AsciiManager（第 15 模块，16 函数，平均 **69.95%**，8 函数 ≥80%）
-orig 32.9KB / 16 函数（含 StageMenu 委托）。核心函数已高匹配。
-| 函数 | match% |
-|---|---|
-| AddFormatText | **99.78%** |
-| CutChain | **97.00%** |
-| AddedCallback | 90.19% |
-| InitializeVms | 88.34% |
-| CreatePopup1 | 87.11% |
-| CreatePopup2 | 87.25% |
-| OnDrawMenus | 86.81% |
-| OnUpdate | 86.44% |
-| AddString | 84.26% |
-| DeletedCallback | 80.00% |
-| OnDrawPopups | 69.40% |
-| InitializeMenuVms | 61.11% |
-| RegisterChain | 58.05% |
-| AsciiManager (ctor) | 39.51% |
-| DrawStrings | 2.64% (待大函数逆向) |
-| DrawPopups | 1.34% (待大函数逆向) |
+### 进行中（50–80%）— 4 模块
 
-### FileSystem 精修（RawWriteFile 64% → **99.03%**）
-移除 `result` 局部变量 + early-return 风格，完美匹配 orig 的 `OR EAX,-1`/`MOV EAX,-2`/`XOR EAX,EAX` 控制流。FileSystem 平均 **95.6%**。
+**AsciiManager 73.06%** (16) — AddFormatText 99.78, CutChain 99.00, AddedCallback 90.19; RegisterChain 58.78, InitializeMenuVms 61.11; **DrawStrings 49.66, AsciiManager(ctor) 39.51, DrawPopups 1.34**（大函数）
+**SoundPlayer 71.34%** (14) — StopBGM 92.70, BackgroundMusicPlayerThread 88.85, GetWavFormatData 87.13; **ProcessSoundQueues 9.86, SoundPlayer(ctor) 11.56**（大函数）
+**CMyFont 70.75%** (5) — Reset 99.81, Clean 95.00, InitWrapper 91.86; Init 64.88; **Print 2.20**（GDI 渲染大函数）
+**Supervisor 69.18%** (14) — OnDraw 99.55, TickTimer 97.95, ReadMidiFile 91.49, PlayMidiFile 86.27; SetupDInput 77.16, RegisterChain 76.48, FadeOutMusic 73.64, StopAudio 70.36, AddedCallback 59.56, OnUpdate 56.06, DeletedCallback 56.87; **LoadConfig 30.60, DrawFpsCounter 27.01**
 
-### mapping.csv 修复
-第 119 行坏行（ValidateReplayData 和 SoundPlayer::SoundPlayer 被合并）拆分为正确的两行。纯文本修改，不触发 orig 重导出。
+### 阻塞/早期（<50%）— 5 模块
 
-### 3 大 codegen 发现（本 session）
-1. **objdiff 最优模式 = 直接绝对地址 cast**：`(*(T**)0xADDR)` 或 `(*reinterpret_cast<T*>(0xADDR))`（直接对象）。让 MSVC 生成 `mov reg,[addr]` 匹配 orig 的 `mov reg,[DAT_addr]`。通过 g_Supervisor 结构体偏移访问会多一层间接（先取 g_Supervisor 再 +off），不匹配。ScreenEffect Clear 从 67%→97% 仅靠此修正。
-2. **D3D 方法调用用 `(*(IDirect3DDevice8**)0x575958)->Method()`** 宏：每次调用重新读地址，不缓存到局部变量。MSVC COM thiscall 生成 `mov ecx,[addr]; mov edx,[ecx]; push ecx; call [edx+off]` 精确匹配 orig。
-3. **early-return 匹配 orig 控制流**：orig 的错误路径用 `OR EAX,-1`/`MOV EAX,-2`/`XOR EAX,EAX` 直接返回，不用 result 局部。C++ early-return 风格（每分支独立 return）完美匹配。RawWriteFile 64%→99% 仅靠此。
+**AnmManager 41.07%** (15) — CreateEmptyTexture 99.40, ReleaseTexture 88.28; LoadTexture 76.73; LoadAnm 59.97, ReleaseAnm 59.65, LoadSprite/SetActiveSprite 57; AnmManager(ctor) 44.66; **ExecuteScript 0.21（13178B）, DrawInner 2.21, LoadAnmEntry 2.32, SetRenderStateForVm 2.56, LoadTextureAlphaChannel 2.82, LoadTextureFromMemory 4.61**
+**BombData 39.64%** (24) — MarisaABombDraw 87.99, MarisaBBombDraw 87.67, ReimuABombDraw 63.86 等 12 draw 完成；MarisaABombCalc2 42.75；**11 calc 未实现**（YoumuBBombCalc 1.23, SakuyaABombCalc2 1.41, ReimuABombCalc 1.29 等，每个 800–2400B）
+**ReplayManager 34.70%** (12) — StopRecording 99.67, DeletedCallback 89.47; RegisterChain 84.78; **SaveReplay 4.36, RewriteReplay 2.73, AddedCallbackDemo 1.61, AddedCallback 2.09, OnUpdate 5.00 等**
+**Pbg4Parser 19.72%** (3) — AdvanceNode 32.55, SetIndex 26.61; **Reset 0.00**（LZSS 字典/节点表初始化）
+**ItemManager 0.00%** (0) — OnUpdate 4297B 单体巨型函数，未实现
 
-### 仍待优化（非阻塞）
-- AsciiManager DrawStrings(0x440)/DrawPopups(0x7d9) 大函数：需完整逆向，含字符串渲染循环 + point label 颜色逻辑
-- Player ScoreGraze(71.69%)/CalcItemBoxCollision(61%)：浮点栈布局，orig 用大量 f32 临时 + 三层 copy，最难
-- SoundPlayer 平均 75.9%：BGMThread/ProcessSoundQueues 大函数
+## 剩余工作（按优先级）
 
-## ★Session 2026-06-15 (续): Player 精修 90.79%★
+### P0：让 normal build 链接成可启动 exe
 
-Player 模块 9 函数从 agent 初稿平均 62.7% 反汇编级精修到 **平均 90.79%**。
+normal build 全部 .cpp 编译通过，但链接失败：**183 个 unresolved 跨模块符号**。
 
-| 函数 | match% | 备注 |
-|---|---|---|
-| StartFireBulletTimer | **100%** | ZunTimer 重置 current/subFrame/previous 倒序 + cur 局部先读 |
-| OnDrawLowPrio | 99.50% | 保留 C++（extern Player_DrawBulletExplosions）|
-| RegisterChain | 99.15% | g_Chain 成员方法 + raw[0xb7e5c..] 字段（=DAT_00575934）+ 不缓存 calc/draw 局部 |
-| Die | 99.02% | stub struct thiscall（Effect/Sound/Game 方法）|
-| DeletedCallback | 98.47% | ANM_MGR 宏 + 直接 cmp（不缓存）+ #ifndef DIFFBUILD asm 重建 IMUL Gui 计数 |
-| CutChain | 96.84% | g_Chain.Cut + raw[0xb7e5c] 字段 |
-| AngleToPlayer | 91.36% | PI/2 全局 [0x498a9c] + atan2 extern "C" 符号 call（objdiff 容忍外部 call）|
-| ScoreGraze | 71.69% | 浮点栈布局差异（待 orig 临时变量结构重建）|
-| CalcItemBoxCollision | 61.08% | 浮点栈布局差异（orig 大量中间临时，最难）|
+构成：62 stdcall（`@Func@N`）+ 10 cdecl/data（`_Func`/`_g_Foo`）+ 111 C++ 方法（`?Method@Class@th07@@...`）。
 
-### 5 大 codegen 发现（本 session）
-1. **objdiff build 不定义 DIFFBUILD**（AnmManager.cpp 用 `#ifndef DIFFBUILD`）→ 内联 asm 用 `#ifndef DIFFBUILD` 包裹（objdiff 走 asm，SDL/exe 走 C）。MSVC asm 项目可接受（ZunMath.hpp 无条件用 fsincos），SDL port 也是 MSVC（非 GCC）
-2. **跨模块 thiscall 用 stub struct 方法**：`struct EffectManagerSpawn { void SpawnEffect(...); };` + `((Stub*)0x12fe250)->method(args)` 生成 `PUSH args; MOV ECX,this; CALL`（精确 thiscall codegen）。extern "C" __fastcall 第二参数走 EDX 不匹配 orig stack
-3. **static inline 辅助函数 /Od 不内联**！返回引用的 `g_AnmManagerFiles()` 生成多余 call → 改宏 `#define ANM_MGR (...)` 强制展开
-4. **局部变量缓存 vs orig 重读**：orig 每次 `MOV reg,[全局]`，C++ 缓存到 [ebp-x] 不匹配 → 直接表达式或重读（RegisterChain calc/draw 不存局部、DeletedCallback optUnfocused 直接 cmp）
-5. **objdiff 对外部 CALL/reloc 宽容**：Die 99% / RegisterChain 99% 即使所有单例地址是 reloc（extern 变量）仍匹配；atan2 `call atan2_disp_0048bcaa`（extern 符号）匹配 orig `call 0x48bcaa` 无需 mapping.csv
+**关键缺失函数**（已实现模块引用、但 owning 模块未逆向）：
+- `Player::OnUpdate`、`Player::OnDrawHighPrio`（Player.cpp 缺这两个大函数）
+- `GameManager::AddedCallback`（2726B 分配器，当前 75.76% 但函数体在 GameManager.cpp）
+- `GameManagerScore::AddScore`/`IncreaseSubrank`/`AddGrazeScoreOnly`（Player.cpp 引用）
+- `AnmManager::Draw*`/`ExecuteScript`（多个模块引用）
+- `SoundPlayer::ProcessSoundQueues`、`MidiOutput::ProcessMsg`
 
-### 仍待优化（非阻塞，平均已 90.79%）
-- ScoreGraze/CalcItemBoxCollision 浮点栈布局：orig 用 f32 临时 + D3DXVECTOR3 + copy 三层，MSVC /Od 栈分配难精确重建。需逐变量模拟 orig 声明顺序
+**关键缺失数据全局**：
+- `g_Pbg4Dict`/`g_Pbg4Nodes`/`g_Pbg4CurIndex`（LZSS 静态数据）
+- `g_ScoreSubObj`、`g_CurrentStage`、`g_EffectMgrSpawnObj` 等
 
-## ★Session 2026-06-15: Controller 验证 + GameManager 基础★
+**路径**：(a) 逐模块逆向实现这些函数；(b) 扩展 `generate_stubs.py` 自动为
+mapping.csv 中所有未实现符号生成 no-op stub（让 exe 先链接启动，再逐步替换为真实实现）。
+注意 C++ mangled 成员方法（`?Method@Class@...`）不能简单 extern "C" stub，需在
+owning 模块的 .cpp 里定义。
 
-### Controller（第 13 模块，7 函数，平均 **98.0%**，5×100%）
-| 函数 | match% |
-|---|---|
-| GetInput | **99.9%**（1904B，含 win32+DInput 全部 key check）|
-| ResetKeyboard | **99.6%** |
-| GetJoystickCaps | **98.8%** |
-| GetControllerInput | 94.1% |
-| GetControllerState | 93.3% |
-| SetButtonFromDirectInputJoystate | **100%**（83.8%→100%，见下）|
-| SetButtonFromControllerInputs | **100%**（83.8%→100%）|
+### P1：提升低匹配模块（<50%）
 
-地址：GetJoystickCaps@0x430290 / SetButtonFromDirectInputJoystate@0x4302f0 /
-SetButtonFromControllerInputs@0x430370 / GetControllerInput@0x4303f0 /
-GetControllerState@0x4309c0 / GetInput@0x430b50 / ResetKeyboard@0x4312c0
+- **AnmManager 41%**：核心阻塞。`ExecuteScript`（13178B 操作码解释器）、`DrawInner`、
+  `LoadAnmEntry`、`SetRenderStateForVm` 等大函数未实现。这是精灵/动画核心，不实现则
+  无任何精灵渲染。
+- **BombData 39.6%**：12 calc 函数中 11 个未实现（每个 800–2400B 的 Player 状态机）。
+  MarisaABombCalc2（42.75%）是已验证的范本，新 calc 抄其结构。
+- **ReplayManager 34.7%**：SaveReplay/RewriteReplay/AddedCallback 等大函数未实现。
+- **Pbg4Parser 19.7%**：LZSS 解码器（Reset/AdvanceNode/SetIndex），纯算法模块。
+- **ItemManager 0%**：OnUpdate 4297B 单体巨型 switch 函数，需逐 case 逆向。
 
-### GameManager（最大模块，6/6 函数全部完成，平均 **89.1%**）
-- **g_GameManager @ 0x626270**（sizeof 0x9700；Item[1100] 在 ItemManager @0x575c70，不在此）
-- **g_Chain @ 0x626218**（全局 Chain 控制器）
-- 嵌入式链节点：updateChainNode@+0x9644 / drawChainNode@+0x9664
-- +0x8 = scoreSub 指针（堆分配 ScoreSub 0xC8）；+0x4 = playerSub（0x38）
+### P2：抛光接近达标模块（80–90%）
 
-| 函数 | match% | 备注 |
-|---|---|---|
-| OnDraw | **100%** | trivial（unk_93dc=2）|
-| CutChain | **97.4%** | Cut 两节点 + score clamp |
-| DeletedCallback | **94.6%** | MIDI teardown + release cascade |
-| OnUpdate | **90.6%** | 2303B 每帧核心逻辑（暂停/rank/score平滑）|
-| RegisterChain | 76.1% | objdiff 符号命名限制（CALL 密集）|
-| AddedCallback | 75.8% | 2726B 分配器，CALL 密集 plateau |
+- **Player 89%**：ScoreGraze 71.69% / CalcItemBoxCollision 61.08%（浮点栈布局，
+  orig 用大量 f32 临时 + 三层 copy，MSVC /Od 栈分配难精确重建）
+- **EffectManager 84%**：OnDraw 65.34% / EffectCallbackAttract 54.93% /
+  EffectManager(ctor) 35.40%
+- **AsciiManager 73%**：DrawStrings 49.66% / DrawPopups 1.34%（大函数）
+- **CMyFont 70.75%**：Print 2.20%（GDI 渲染大函数）
+- **SoundPlayer 71%**：ProcessSoundQueues 9.86% / SoundPlayer(ctor) 11.56%
 
-9 函数地址全锁定（mapping.csv）：RegisterChain@0x42f3c5 / CutChain@0x42f45d /
-OnUpdate@0x42d8d5(2303B) / OnDraw@0x42e1d4 / AddedCallback@0x42e83e(2726B) /
-DeletedCallback@0x42f2e4 / **OnItemUpdate@0x432990(4298B,Item 调度器)** /
-CalculateChecksum@0x42d7be / IsGameActive@0x42ad66
+## 关键技术事实（th06→th07 差异，供实现参考）
 
-### 关键技术发现（本 session）
-1. **MSVC 7.0 不支持 `nullptr`**（C++11，2010 才有）→ 用 `0`。`ptr_field = 0` 编译成 `and [mem],0`（匹配 orig 的零初始化 idiom）
-2. **objdiff 全局存储符号命名限制**：reimpl 用 `?g_GameManager@th07@@...(mangled)+offset`，orig delink 成 `DAT_xxxxxxxx`——同一地址不同名，objdiff 按字符串比操作数 → RegisterChain 类（多次 g_GameManager+offset 存储）被压低到 ~76%，但逻辑正确（同 Chain switch/Rng F32 限制类）
-3. **callback 赋值需 C 风格 cast**：`(ChainCallback)OnUpdate`（typedef 是 `(*)(void*)`，方法取 `GameManager*`，MSVC 宽容但需 cast 对齐）
-4. **🔑 movzx codegen 技巧**：orig 对 enum/int 参数用 `movzx word ptr [param]`（当 u16 加载）时，reimpl 用 `(u16)param` 而非 `param & 0xFFFF`——前者产生 movzx，后者产生 `mov+and 0xffff`。修复 Controller SetButtonFrom\* 83.8%→100%
-5. **🔑🔑 GameManager 尺寸重大修正**：sizeof(GameManager)=**0x9700**（非 0x169570）。Item[1100]×0x288 数组**不在 GameManager**，在 **ItemManager 单例 @ 0x575c70**（OnItemUpdate 调用点 `MOV ECX,0x575c70` 为证）。OnItemUpdate(0x432990) 是 ItemManager 函数，已从 GameManager mapping 移除。g_GameManager 字段止于 +0x96ec。ScoreSub 确认 0xC8（但 IsGameActive 读 +0x1fbac 矛盾待解）
-
-## 已 objdiff 验证模块（此前 12 模块，~110 函数，21×100%）
-
-### ★Wave 10 AnmManager 结构体关键修正★
-- **sizeof(AnmManager) = 0x17e560**（不是 0x2e4dc！后者是 vertexBuffer 字段偏移）
-- sprites/scripts/spriteIndices = **2560**（非 th06 的 2048）
-- anmFiles = **50**（非 128，anmIdx<0x32）
-- 完整字段偏移表（sprites@0x60, textures[264]@0x282ac, scripts@0x28ef0, vertexBuffer@0x2e4dc, scratchRegion[0x150000]@0x2e534）
-- 第 12 模块：CreateEmptyTexture 99.4%/ReleaseTexture 88.3%，ExecuteScript(11KB)/Draw 家族 stub 待 lift
-
-### 完整验证（100% 或 99%+）
-| 模块 | 结果 |
-|---|---|
-| Rng | GetRandomU16/U32 = **100%**, F32 = 87%（i64 零扩展 + 符号名 objdiff 限制）|
-| utils | DebugPrint = **100%**, AddNormalizeAngle/Rotate/CheckForRunningGameInstance = 99% |
-| Chain | **6×100%**（ChainElem 构造/析构, AddToCalcChain/Draw, Release），RunCalc/Draw 86%（switch jump table objdiff 符号限制）|
-| GameErrorContext | Log/Fatal/Flush = 99.4-99.9% |
-| ZunTimer | Increment/Decrement = 99.5%, NextTick = 90%（寄存器+符号名）|
-| MidiOutput | **4×100%**（ReleaseFileData/ClearTracks/LoadFile/SetFadeOut），平均 92.2% |
-| AnmVm | **3×100%**（Initialize/AnmVm/ResetInterpTimers）|
-
-### 部分验证
-| 模块 | 结果 |
-|---|---|
-| zwave | 26 函数，**5×100%**，平均 **96.0%**（CSound/CWaveFile/CStreamingSound 全近完整）|
-| SoundPlayer | 13 函数，平均 75.9%（StopBGM 92.6%, BGMThread 88.8%）|
-| ReplayManager | StopRecording 99.7%, DeletedCallback 89%, RegisterChain 84%（其余 stub 依赖下游）|
-| FileSystem | OpenPath 92%, RawWriteFile 64%（错误路径实现不全）|
-
-## 初稿待完善
-- **AsciiManager/EffectManager/ScreenEffect**：待 AnmManager（结构体偏移错待修正）
-- **Controller**：初稿，待 mapping + objdiff
-- **Supervisor.cpp**：14 函数地址验证，含 stub extern（GameManager/AsciiManager/MidiOutput/SoundPlayer 等下游）
-- **AnmManager**：12 函数 mapping，hpp 结构体偏移错（vertexBuffer@0x2e4dc 但 ZUN_ASSERT_SIZE 0x2e4dc 矛盾）需完全重做
-- **BombData/BulletData/ItemManager**：待 Player（th07 嵌入 GameManager，Item 0x288 vs th06 0x144）
-- **Player**：28 函数地址 + 结构 0xb7e78 验证，8 函数实现；agent 用 C 风格（Player_RegisterChain + extern C）不匹配 orig C++ mangle（th07::Player::），需重写 C++ 方法
-
-## 5 大关键技术发现（th06→th07 编译选项差异）
+### 5 大编译选项差异（th06 → th07）
 1. **无 /G5**（Pentium 优化；th06 有，致 u16 用 xor+mov 而非 movzx）
 2. **无 /Op**（浮点一致性；th06 有，致浮点中间值 fstp+lld 截断）
 3. **无 /GS**（security cookie；th06 有，致栈缓冲函数多 cookie 指令 + 栈偏移+4）
 4. **callback `__fastcall`**（th06 `__cdecl`；arg in ECX vs push）
-5. **mapping.csv `scalar deleting destructor` 致 ImportFromCsv 中断**（含空格/反引号触发 InvalidInputException，后续模块 namespace 全未建）
+5. **mapping.csv `scalar deleting destructor` 致 ImportFromCsv 中断**（含空格/反引号触发 InvalidInputException）
 
 最终编译选项：`/MT /EHsc /Gs /DNDEBUG /Zi /Od /Oi /Ob1 /Gy`（无 /G5 /Op /GS）
 
-## 其他技术
-- **#pragma auto_inline(off)**：/Ob1 全局保留（ZunTimer/Chain 内联匹配），但 AnmVm::AnmVm 不该内联 ResetInterpTimers → 局部禁
-- **MSVC 7.0 不认 UTF-8 中文**（无 BOM 也无效）→ 源码注释必须英文
-- **D3DXMatrixIdentity __fastcall**：orig pOut in ECX，需 `#define shadow` 屏蔽 d3dx8math.h 的 WINAPI 声明（移文件最前）
-- **F32 i64 零扩展**：orig `FILD qword`（u32 零扩展成 i64），源码 `(i64)GetRandomU32() / 4294967296.0f`
+### 关键结构体大小（ghidra 实读验证）
+- `AnmManager` = **0x17e560**（sprites/scripts/spriteIndices = 2560，textures[264]，anmFiles=50）
+- `GameManager` = **0x9700**（Item[1100]×0x288 不在此，在 ItemManager 单例 @ 0x575c70）
+- `Supervisor` = **0x2c8**（d3dDevice @ +0x8，cfg @ +0x48..+0x14c，curState @ +0x158）
 
-## 待办（优先级）
-1. **AnmManager 结构体重做**（ghidra 实读 0x2e4dc 布局）→ 解锁 ScreenEffect/AsciiManager/EffectManager
-2. **Player 重写 C++ 方法**（Player:: 而非 Player_）→ 解锁 BombData/BulletData/ItemManager
-3. **Supervisor.cpp 下游**（GameManager/AsciiManager/MidiOutput 等 stub 补全）
-4. **GameManager 反编译**（th07 最大模块，含 Item/Enemy 调度）
-5. **迭代低 match**：F32 xor ecx、Chain switch、RawWriteFile 错误路径、ProcessMsg 寄存器
+### 关键单例地址
+- `g_Supervisor` @ 0x575950（d3dDevice @ +0x8 → [0x575958]）
+- `g_AnmManager`（指针全局）@ 0x4b9e44
+- `g_Chain` @ 0x626218
+- `g_GameManager` @ 0x626270（scoreSub @ +0x8 → [0x626278]）
+- `g_SoundPlayer` @ 0x4ba0d8
+- `g_EffectManager` @ 0x134ce18
 
-## 构建命令
-```
+## 工具链命令
+
+```bash
 # 生成 build.ninja
 python3 scripts/configure.py
-# 编译单模块 reimpl obj
+# 编译单模块 reimpl obj（objdiff）
 python3 scripts/build.py --build-type=objdiffbuild --object-name <Module>.obj
-# 导出原版 obj（绕 ghidra-mcp 锁，无 -readOnly 建 namespace）
-analyzeHeadless /tmp/th07_new TH07 -import th07/th07.exe \
-  -scriptPath scripts/ghidra \
-  -postscript ImportFromCsv.java config/mapping.csv \
-  -postscript ExportDelinker.java config/ghidra_ns_to_obj.csv build/objdiff/orig
-# objdiff
-objdiff-cli diff -1 build/objdiff/orig/<M>.obj -2 build/objdiff/reimpl/<M>.obj -o /tmp/<m>.json --format json-pretty
+# 编译完整 exe（normal）
+python3 scripts/build.py --build-type=normal
+# objdiff 对比
+objdiff-cli diff -1 build/objdiff/orig/<M>.obj -2 build/objdiff/reimpl/<M>.obj \
+  -o /tmp/<m>.json --format json-pretty
 # 函数级 match_percent 在 left.symbols[].match_percent
+
+# 重新导出 orig obj（改 mapping.csv 后才需要，耗时 ~1min）
+rm -rf /tmp/th07_new && mkdir -p /tmp/th07_new && \
+/opt/ghidra/support/analyzeHeadless /tmp/th07_new TH07 \
+  -import th07/th07.exe -scriptPath scripts/ghidra \
+  -postscript ImportFromCsv.java config/mapping.csv \
+  -postscript ExportDelinker.java config/ghidra_ns_to_obj.csv build/objdiff/orig -overwrite
 ```
-
-## Session 2026-06-17 续: naked asm + CALL opcode 发现 (avg 86.25%, 8/13 >=90%)
-
-### CALL opcode 关键发现
-orig 用 `e8 xx xx xx xx`（near CALL + reloc32），naked asm 的 `call dword ptr [_fp]`
-生成 `ff 15`（indirect CALL through pointer）。这两个是**不同的 opcode**，objdiff
-不匹配。因此 naked asm 中所有 CALL 都不 match。
-
-### naked asm 成功的函数（COM vtable calls 为主）
-| 函数 | C++ | naked | 原因 |
-|---|---|---|---|
-| SetupDInput | 73% | **96.3%** | 大量 `call dword ptr [eax+off]` COM vtable（匹配）+ 少量 CALL |
-| RegisterChain | 87% | **93.4%** | 少量 CALL，大量内存操作 |
-| DeletedCallback | 60% | **80.2%** | 帧布局匹配 >> CALL 不匹配的损失 |
-| FadeOutMusic | 79% | **81.9%** | FPU 指令精确匹配 |
-
-### 下一步
-- 对多 CALL 函数（DeletedCallback/OnUpdate/LoadConfig）：hybrid C++ + inline asm
-  （C++ calls for e8, inline asm for frame control）
-- 对 DrawFpsCounter：naked 需要修复 fdivp 和减少 EDX 中间变量
-
-## Session 2026-06-17 最终状态：avg 86.61%, 8/13 >=90%
-
-### 从 65.8% → 86.61% (+20.8 分), 3/13 → 8/13 >=90%
-
-### 关键技术
-1. **`#pragma var_order`**: 控制 MSVC /Od 局部变量栈布局顺序
-2. **`__declspec(naked)` + static 函数指针**: 精确控制帧布局和指令序列
-3. **DAT_ extern 变量**: 使 MSVC 生成 dir32 reloc 匹配 orig delinked obj 的 DAT_ 符号名
-4. **`generate_objdiff_objs.py` 改进**: demangle 跨模块 C++ mangled 符号 + DAT_ 下划线剥离
-5. **C++ class method calls**: GameManager::RegisterChain() 生成正确的 ?RegisterChain@GameManager@th07@@ mangled reloc
-6. **GameManager.hpp g_Supervisor 冲突修复**: 删除重复 `extern void *g_Supervisor` 声明
-7. **mapping.csv 扩展**: 新增 21 个函数映射使 ExportDelinker 产生 th07:: mangled reloc 名
-
-### 未达 90% 的根因（供下个会话参考）
-- **OnUpdate (64.59%)**: MSVC /Od 创建不可控的临时变量（8 个额外 dwords），
-  导致帧 0x40 vs orig 0x44，this@[-0x20] vs orig [-0x28]。所有 ebp 相对偏移不匹配。
-  naked asm 可精确控制帧但 ff15 CALL 与 orig e8 CALL opcode 不同（DIFF_REPLACE，部分匹配）。
-- **LoadConfig (58.61%)**: 类似的帧布局差异 + DAT_ 数据地址 reloc 名不完全匹配。
-- **DrawFpsCounter (75.03%)**: FPU 栈表达式差异 + f32 局部变量多 16B 帧。
-
-### 下个会话建议
-1. 对 OnUpdate/LoadConfig 尝试完全 naked asm（接受 ff15 CALL 的 DIFF_REPLACE 部分匹配）
-2. 修复 `generate_objdiff_objs.py` 将 ff15 indirect call reloc 映射到 orig 符号名
-3. 在 objdiff.json 中配置符号映射规则

@@ -1,5 +1,13 @@
 # GameManager::DeletedCallback @ 0x42f2e4 — Reversal + C++ Draft
 
+> ⚠️ **[DRAFT — pre-2026-06-17-polish; SUPERSEDED guidance]**
+>
+> 本文件写于 objdiff 字节匹配优先的时代。文中 raw-address / DAT_ 模式
+> 已被 2026-06-17 polish session 废弃。实现时请遵循 `AGENTS.md` §2
+> "诚实重建（单一代码路径）"原则：typed C++ global + SYMBOL_MAP，
+> 禁止 inline asm / naked / 函数级 `#ifdef DIFFBUILD` 分裂。
+> 保留本文件仅供历史溯源与 ghidra 逆向数据参考。
+
 Address span: `0x42f2e4 .. 0x42f3c4` (inclusive) = **0xe1 / 225 bytes**, 41 instructions.
 Return type: `ZunResult` (always returns `0` = `ZUN_SUCCESS`). Single return path.
 Calling convention: **`__fastcall`**, ECX = `GameManager*` (= `&g_GameManager` @ 0x626270).

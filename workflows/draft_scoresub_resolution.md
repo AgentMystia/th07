@@ -1,5 +1,13 @@
 # ScoreSub +0x1fbac Contradiction — RESOLUTION
 
+> ⚠️ **[DRAFT — pre-2026-06-17-polish; SUPERSEDED guidance]**
+>
+> 本文件写于 objdiff 字节匹配优先的时代。文中 raw-address / DAT_ 模式
+> 已被 2026-06-17 polish session 废弃。实现时请遵循 `AGENTS.md` §2
+> "诚实重建（单一代码路径）"原则：typed C++ global + SYMBOL_MAP，
+> 禁止 inline asm / naked / 函数级 `#ifdef DIFFBUILD` 分裂。
+> 保留本文件仅供历史溯源与 ghidra 逆向数据参考。
+
 ## TL;DR / VERDICT
 
 **The contradiction was a false alarm caused by a wrong `this` assumption.**

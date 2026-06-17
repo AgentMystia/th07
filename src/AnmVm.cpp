@@ -154,7 +154,8 @@ AnmVm *AnmVm::ResetInterpTimers()
 //   3. this->activeSpriteIndex = -1        (MOV word [this+0x1d4], 0xffff)
 //
 // The timer writes from step 1 are immediately overwritten by the memset in
-// step 2; preserving this apparent redundancy is required for objdiff.
+// step 2; preserving this apparent redundancy is required to match orig's
+// write sequence (the orig binary really does write then memset).
 //
 // The binary's prologue reserves 0x24 bytes of frame and spills `this` to
 // [EBP-0x24]. The compiler does this even though only one local is live, so

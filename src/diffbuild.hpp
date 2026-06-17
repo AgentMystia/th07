@@ -1,8 +1,13 @@
 // Helpers to improve the diff quality of DIFFBUILDs.
 //
 // A DIFFBUILD is a build of the project made not to be run, but to be diffed
-// against the original TH06 to find inaccuracies in our reimplementation. To
+// against the original TH07 to find inaccuracies in our reimplementation. To
 // make a DIFFBUILD, one must call the makefile with DIFFBUILD=1
+//
+// NOTE: These macros only affect GLOBAL VARIABLE DEFINITIONS (diffbuild emits
+// extern "C" references to the orig exe's globals; normal build emits real
+// definitions). They do NOT split function code paths. See AGENTS.md §2 for
+// the honesty rules this project follows.
 //
 // This helper provides two macros: DIFFABLE_EXTERN and DIFFABLE_STATIC. All
 // static variables should be defined and declared through those macros. So for
