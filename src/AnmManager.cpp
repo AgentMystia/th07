@@ -115,6 +115,16 @@ extern "C" i32 __fastcall D3DXLoadSurfaceFromMemory_462aa6(void *dstSurface, voi
                                                            void *dstRect, void *srcMemory,
                                                            void *srcPalette, void *srcRect,
                                                            i32 filter, u32 colorKey);
+// LoadTextureAlphaChannel (FUN_0044dbe0): D3DXCreateTextureFromFileInMemoryEx
+// wrapper (FUN_00462cf4). __cdecl; mirrors D3DX's 15-arg form but with the
+// pool/filter args pre-baked by the wrapper. Orig signature:
+//   int cdecl(device, fileData, fileSize, width, height, mipLevels, usage,
+//             format, pool, filter, mipFilter, colorKey, srcInfo, palette,
+//             &texture)
+extern "C" i32 __cdecl D3DXCreateTextureFromFileInMemoryEx_Wrapper_462cf4(
+    void *device, void *fileData, u32 fileSize, u32 width, u32 height, u32 mipLevels, u32 usage,
+    u32 format, u32 pool, u32 filter, u32 mipFilter, u32 colorKey, void *srcInfo, void *palette,
+    IDirect3DTexture8 **ppTexture);
 
 namespace th07
 {
@@ -260,29 +270,139 @@ ZunResult AnmManager::LoadTexture(i32 textureIdx, char *textureName, i32 texture
 // ============================================================================
 // LoadTextureAlphaChannel  (FUN_0044dbe0)
 //
-// Loads a separate alpha-channel mask and ORs it into the texture at
-// textures[textureIdx]. Three pixel formats are handled (A8R8G8B8 / A1R5G5B5
-// / A4R4G4B4). Not yet lifted; the body manipulates D3DLOCKED_RECT pitch /
-// bits via vtable calls at +0x38/+0x40/+0x44 of the texture and scratch
-// texture objects.
+// Verified body, lifted from the disassembly. Loads a separate alpha-channel
+// mask image and ORs it into the alpha bits of textures[textureIdx]. Only
+// proceeds for three destination formats:
+//   D3DFMT_A8R8G8B8 (0x15): copy the mask's red byte into each dest pixel's
+//                            alpha byte (dest+3 = src red).
+//   D3DFMT_A1R5G5B5 (0x19): dest bit 15 = (src blue & 0x1f) >> 4 & 1.
+//   D3DFMT_A4R4G4B4 (0x1a): dest bits 12..15 = src low nibble.
+// The mask is loaded via D3DXCreateTextureFromFileInMemoryEx wrapper
+// (FUN_00462cf4); both surfaces are locked row-by-row for the bit-blit.
 // ============================================================================
-#pragma var_order(local_28, iVar1, local_24, local_30, local_38, local_34, local_40, local_3c, \
-                  local_48, local_44, local_50, local_54, local_58, local_5c, local_60, local_64, \
-                  local_68, local_6c, local_70, local_74, local_8, local_c, local_fc, local_10)
+#pragma var_order(this_save, maskImageData, alphaTexture, dstLockedRect, srcLockedRect, \
+                  dstSurfaceDesc, dstRowBytes, dstBitsBase, srcRowBytes, srcBitsBase, \
+                  rowIdx, colIdx, dstRowPtr, srcRowPtr)
 ZunResult AnmManager::LoadTextureAlphaChannel(i32 textureIdx, char *textureName, i32 textureFormat,
                                               D3DCOLOR colorKey)
 {
-    // TODO: lift body from FUN_0044dbe0. The function:
-    //   1. opens `textureName` via FileSystem::OpenPath,
-    //   2. queries the existing texture's level-0 desc (vtable +0x38) to
-    //      learn its format,
-    //   3. only proceeds for A8R8G8B8 (0x15) / A4R4G4B4 (0x1a) / A1R5G5B5 (0x19),
-    //   4. creates a scratch texture, locks both, copies the mask into the
-    //      alpha channel of the destination, and releases.
-    (void)textureIdx;
-    (void)textureName;
-    (void)textureFormat;
-    (void)colorKey;
+    AnmManager *this_save;
+    void *maskImageData;
+    IDirect3DTexture8 *alphaTexture;
+    D3DLOCKED_RECT dstLockedRect;
+    D3DLOCKED_RECT srcLockedRect;
+    D3DSURFACE_DESC dstSurfaceDesc;
+    u32 dstRowBytes;
+    void *dstBitsBase;
+    u32 srcRowBytes;
+    void *srcBitsBase;
+    u32 rowIdx;
+    u32 colIdx;
+    u8 *dstRowPtr;
+    u8 *srcRowPtr;
+
+    this_save = this;
+    alphaTexture = NULL;
+
+    maskImageData = FileSystem::OpenPath(textureName, 0);
+    if (maskImageData == NULL)
+    {
+        return ZUN_ERROR;
+    }
+
+    // Query the destination texture's level-0 format.
+    this_save->textures[textureIdx]->GetLevelDesc(0, &dstSurfaceDesc);
+    if (dstSurfaceDesc.Format != D3DFMT_A8R8G8B8 &&
+        dstSurfaceDesc.Format != D3DFMT_A4R4G4B4 &&
+        dstSurfaceDesc.Format != D3DFMT_A1R5G5B5)
+    {
+        g_GameErrorContext.Log("error : \203C\203\201\201[\203W\202\252\203\277\202\360\216"
+                               "\235\202\301\202\304\202\242\202\334\202\271\202\361\015\012");
+        goto cleanup_and_fail;
+    }
+
+    // Load the alpha mask as a scratch texture.
+    if (D3DXCreateTextureFromFileInMemoryEx_Wrapper_462cf4(
+            (IDirect3DDevice8 *)g_SupervisorD3dDevice_575958, maskImageData, g_LastFileSize, 0, 0, 0,
+            0, dstSurfaceDesc.Format, 2, 3, (u32)-1, colorKey, 0, 0, &alphaTexture) != 0)
+    {
+        goto cleanup_and_fail;
+    }
+    // Lock both textures' level-0 surfaces (rect=NULL, flags=0 / 0x8000 readonly).
+    if (this_save->textures[textureIdx]->LockRect(0, &dstLockedRect, NULL, 0) != 0)
+    {
+        goto cleanup_and_fail;
+    }
+    if (alphaTexture->LockRect(0, &srcLockedRect, NULL, D3DLOCK_READONLY) != 0)
+    {
+        goto cleanup_and_fail;
+    }
+
+    if (dstSurfaceDesc.Format == D3DFMT_A8R8G8B8)
+    {
+        // 32-bit ARGB: copy the mask's red byte (src byte 0) into the dest
+        // alpha byte (dest byte 3) for each pixel.
+        for (rowIdx = 0; rowIdx < dstSurfaceDesc.Height; rowIdx++)
+        {
+            dstRowPtr = (u8 *)dstLockedRect.pBits + rowIdx * dstLockedRect.Pitch;
+            srcRowPtr = (u8 *)srcLockedRect.pBits + rowIdx * srcLockedRect.Pitch;
+            for (colIdx = 0; colIdx < dstSurfaceDesc.Width; colIdx++)
+            {
+                dstRowPtr[3] = *srcRowPtr;
+                srcRowPtr += 4;
+                dstRowPtr += 4;
+            }
+        }
+    }
+    else if (dstSurfaceDesc.Format == D3DFMT_A1R5G5B5)
+    {
+        // 16-bit 1-5-5-5: dest bit 15 = (src 5-5-5 blue & 0x1f) >> 4 & 1.
+        for (rowIdx = 0; rowIdx < dstSurfaceDesc.Height; rowIdx++)
+        {
+            u16 *dstRow16 = (u16 *)((u8 *)dstLockedRect.pBits + rowIdx * dstLockedRect.Pitch);
+            u16 *srcRow16 = (u16 *)((u8 *)srcLockedRect.pBits + rowIdx * srcLockedRect.Pitch);
+            for (colIdx = 0; colIdx < dstSurfaceDesc.Width; colIdx++)
+            {
+                *dstRow16 = (*dstRow16 & 0x7fff) |
+                            (u16)((((i32)(*srcRow16 & 0x1f) >> 4) & 1) << 0xf);
+                srcRow16++;
+                dstRow16++;
+            }
+        }
+    }
+    else /* D3DFMT_A4R4G4B4 */
+    {
+        // 16-bit 4-4-4-4: dest bits 12..15 = src low nibble.
+        for (rowIdx = 0; rowIdx < dstSurfaceDesc.Height; rowIdx++)
+        {
+            u16 *dstRow16 = (u16 *)((u8 *)dstLockedRect.pBits + rowIdx * dstLockedRect.Pitch);
+            u16 *srcRow16 = (u16 *)((u8 *)srcLockedRect.pBits + rowIdx * srcLockedRect.Pitch);
+            for (colIdx = 0; colIdx < dstSurfaceDesc.Width; colIdx++)
+            {
+                *dstRow16 = (*dstRow16 & 0x0fff) | (u16)((*srcRow16 & 0xf) << 0xc);
+                srcRow16++;
+                dstRow16++;
+            }
+        }
+    }
+
+    alphaTexture->UnlockRect(0);
+    this_save->textures[textureIdx]->UnlockRect(0);
+    if (alphaTexture != NULL)
+    {
+        alphaTexture->Release();
+        alphaTexture = NULL;
+    }
+    free(maskImageData);
+    return ZUN_SUCCESS;
+
+cleanup_and_fail:
+    if (alphaTexture != NULL)
+    {
+        alphaTexture->Release();
+        alphaTexture = NULL;
+    }
+    free(maskImageData);
     return ZUN_ERROR;
 }
 

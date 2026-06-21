@@ -231,4 +231,27 @@ int __fastcall D3DXLoadSurfaceFromMemory_462aa6(void *dstSurface, void *palette,
     (void)srcRect; (void)filter; (void)colorKey;
     return -1;
 }
+
+// LoadTextureAlphaChannel (FUN_0044dbe0): D3DXCreateTextureFromFileInMemoryEx
+// wrapper (FUN_00462cf4). __cdecl; 15 args all on the stack. Normal-build
+// stub returns error.
+extern "C"
+{
+int __cdecl D3DXCreateTextureFromFileInMemoryEx_Wrapper_462cf4(void *device, void *fileData,
+                                                                unsigned int fileSize,
+                                                                unsigned int width,
+                                                                unsigned int height,
+                                                                unsigned int mipLevels,
+                                                                unsigned int usage, unsigned int format,
+                                                                unsigned int pool, unsigned int filter,
+                                                                unsigned int mipFilter,
+                                                                unsigned int colorKey, void *srcInfo,
+                                                                void *palette, void **ppTexture)
+{
+    (void)device; (void)fileData; (void)fileSize; (void)width; (void)height; (void)mipLevels;
+    (void)usage; (void)format; (void)pool; (void)filter; (void)mipFilter; (void)colorKey;
+    (void)srcInfo; (void)palette; (void)ppTexture;
+    return -1;
+}
+}
 }

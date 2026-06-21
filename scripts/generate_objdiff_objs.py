@@ -265,6 +265,9 @@ SYMBOL_MAP = {
     # bytes cleaned up by the callee.
     b"@D3DXCreateTextureFromSurface_46298a@24": b"FUN_0046298A",
     b"@D3DXLoadSurfaceFromMemory_462aa6@24": b"FUN_00462AA6",
+    # LoadTextureAlphaChannel (FUN_0044dbe0): D3DXCreateTextureFromFileInMemoryEx
+    # wrapper (FUN_00462cf4). __cdecl -> bare _Name symbol.
+    b"_D3DXCreateTextureFromFileInMemoryEx_Wrapper_462cf4": b"FUN_00462CF4",
     # Cross-module function callees from SetRenderStateForVm (FUN_ anchors).
     # MSVC __fastcall emits @Name@N; demangle_msvc leaves the leading @ as-is
     # (it only handles _-prefixed stdcall and ?-prefixed C++), so the keys
