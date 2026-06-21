@@ -30,6 +30,9 @@ extern "C" u8 g_SupervisorCameraStub_1347b00 = 0;
 extern "C" u32 g_SupervisorG0x575a9c = 0;
 // D3D device pointer slot (orig 0x575958). Set by Supervisor at boot.
 extern "C" void *g_SupervisorD3dDevice_575958 = 0;
+// DrawPrimitiveUP vertex buffer for the software (no-vertex-buffer) path
+// (orig 0x4ba078). 4 * VertexTex1Xyzrwh = 0x60 bytes; initialised at startup.
+extern "C" u8 g_DrawPrimUpVerts_4ba078[0x60] = {0};
 
 extern "C" const f32 g_AsciiC0x498a50 = 0.0f;
 extern "C" const f32 g_AsciiC0x498a80 = 0.0f;

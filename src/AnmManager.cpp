@@ -88,6 +88,16 @@ extern "C" u8 g_SupervisorCameraStub_1347b00;
 extern "C" void __fastcall AnmManager_FlushVertexBuffer_44f5c0(void *anmMgr);
 extern "C" void __fastcall Supervisor_Setup3DCamera_408180(void *cameraStub);
 extern "C" void __fastcall Supervisor_Setup2DCamera_4082b0(void *cameraStub);
+// DrawInner (FUN_00450520) matrix helpers (D3DX math): build a rotation
+// matrix from a single angle (Z/X/Y variants) and multiply two matrices.
+// Each takes (D3DXMATRIX *out, float angle) or (out, a, b). Orig FUN_anchors.
+extern "C" void __fastcall D3DXMatrixRotationZ_461b85(D3DXMATRIX *out, f32 angle);
+extern "C" void __fastcall D3DXMatrixRotationX_461bff(D3DXMATRIX *out, f32 angle);
+extern "C" void __fastcall D3DXMatrixRotationY_461c7a(D3DXMATRIX *out, f32 angle);
+extern "C" void __fastcall D3DXMatrixMultiply_461aa2(D3DXMATRIX *out, D3DXMATRIX *a, D3DXMATRIX *b);
+// DrawPrimitiveUP vertex buffer (orig 0x4ba078). 4 * VertexTex1Xyzrwh = 0x60
+// bytes; DrawPrimitiveUP reads it with stride 0x18.
+extern "C" u8 g_DrawPrimUpVerts_4ba078[0x60];
 
 namespace th07
 {
@@ -799,12 +809,164 @@ ZunResult AnmManager::DrawNoRotation(AnmVm *vm)
     return ZUN_ERROR;
 }
 
-ZunResult AnmManager::DrawInner(AnmVm *vm, i32 roundPixels)
+ZunResult AnmManager::DrawInner(AnmVm *vm)
 {
-    // TODO: lift body from FUN_00450520.
-    (void)vm;
-    (void)roundPixels;
-    return ZUN_ERROR;
+    D3DXMATRIX worldMatrix;
+    D3DXMATRIX rotMatrix;
+    D3DXMATRIX texMatrix;
+    f32 positionX;
+    f32 positionY;
+    f32 rotAbsX;
+    f32 rotAbsY;
+
+    // ---- early bail: VM must be visible, in-scope, and have a colour ------
+    if ((*(u32 *)((u8 *)vm + 0x1c0) & 1) == 0)
+    {
+        return (ZunResult)-1;
+    }
+    if ((*(u32 *)((u8 *)vm + 0x1c0) >> 1 & 1) == 0)
+    {
+        return (ZunResult)-1;
+    }
+    if (*((u8 *)vm + 0x1bb) == 0)
+    {
+        return (ZunResult)-1;
+    }
+
+    // Flush any pending vertex-buffer draw before touching device state.
+    if (this->vertexBufferDirty != 0)
+    {
+        AnmManager_FlushVertexBuffer_44f5c0(this);
+    }
+
+    // ---- optional rotation update (flag 15 clear, flag 3 or 2 set) -------
+    if ((*(u32 *)((u8 *)vm + 0x1c0) >> 0xf & 1) == 0 &&
+        ((*(u32 *)((u8 *)vm + 0x1c0) >> 3 & 1) != 0 ||
+         (*(u32 *)((u8 *)vm + 0x1c0) >> 2 & 1) != 0))
+    {
+        // Copy vm+0xf8 (16 dwords) into vm+0x138, then bake the per-axis
+        // scale into the diagonal.
+        memcpy((u8 *)vm + 0x138, (u8 *)vm + 0xf8, 0x40);
+        *(f32 *)((u8 *)vm + 0x138) = *(f32 *)((u8 *)vm + 0x138) * vm->scaleX;
+        *(f32 *)((u8 *)vm + 0x14c) = *(f32 *)((u8 *)vm + 0x14c) * vm->scaleY;
+        *(u32 *)((u8 *)vm + 0x1c0) = *(u32 *)((u8 *)vm + 0x1c0) & ~0x8;
+
+        // For each non-zero rotation axis, rotate the matrix and re-multiply.
+        if (vm->rotation.x != 0.0f)
+        {
+            D3DXMatrixRotationZ_461b85(&rotMatrix, vm->rotation.x);
+            D3DXMatrixMultiply_461aa2((D3DXMATRIX *)((u8 *)vm + 0x138),
+                                      (D3DXMATRIX *)((u8 *)vm + 0x138), &rotMatrix);
+        }
+        if (vm->rotation.y != 0.0f)
+        {
+            D3DXMatrixRotationX_461bff(&rotMatrix, vm->rotation.y);
+            D3DXMatrixMultiply_461aa2((D3DXMATRIX *)((u8 *)vm + 0x138),
+                                      (D3DXMATRIX *)((u8 *)vm + 0x138), &rotMatrix);
+        }
+        if (vm->rotation.z != 0.0f)
+        {
+            D3DXMatrixRotationY_461c7a(&rotMatrix, vm->rotation.z);
+            D3DXMatrixMultiply_461aa2((D3DXMATRIX *)((u8 *)vm + 0x138),
+                                      (D3DXMATRIX *)((u8 *)vm + 0x138), &rotMatrix);
+        }
+        *(u32 *)((u8 *)vm + 0x1c0) = *(u32 *)((u8 *)vm + 0x1c0) & ~0x4;
+    }
+
+    // Snapshot the per-VM world matrix (vm+0x138) for SetTransform.
+    memcpy(&worldMatrix, (u8 *)vm + 0x138, 0x40);
+
+    // ---- compute the on-screen position -----------------------------------
+    if ((*(u32 *)((u8 *)vm + 0x1c0) >> 0xa & 1) != 0)
+    {
+        rotAbsX = (vm->sprite->widthPx * vm->scaleX) / 2.0f;
+        if (rotAbsX < 0) rotAbsX = -rotAbsX;
+        positionX = rotAbsX + *(f32 *)((u8 *)vm + 0x1c8);
+    }
+    else
+    {
+        positionX = *(f32 *)((u8 *)vm + 0x1c8);
+    }
+    if ((*(u32 *)((u8 *)vm + 0x1c0) >> 0xa & 2) != 0)
+    {
+        rotAbsY = (vm->sprite->heightPx * vm->scaleY) / 2.0f;
+        if (rotAbsY < 0) rotAbsY = -rotAbsY;
+        positionY = rotAbsY + *(f32 *)((u8 *)vm + 0x1cc);
+    }
+    else
+    {
+        positionY = *(f32 *)((u8 *)vm + 0x1cc);
+    }
+    // Add the per-AnmManager frame offset (stored at this+0x18 / +0x1c).
+    positionX = positionX + *(f32 *)((u8 *)this + 0x18);
+    positionY = positionY + *(f32 *)((u8 *)this + 0x1c);
+
+    // Apply blend / colour / Z render state for this VM.
+    this->SetRenderStateForVm(vm);
+
+    // ---- bind the world transform -----------------------------------------
+    ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+        ->SetTransform(D3DTS_WORLD, &worldMatrix);
+
+    // ---- rebind texture + uv-scroll transform when the sprite changes ----
+    if (this->cachedSpritePtr_2e4d8 != *(f32 *)((u8 *)vm + 0x1e4))
+    {
+        this->cachedSpritePtr_2e4d8 = *(f32 *)((u8 *)vm + 0x1e4);
+
+        // Snapshot the per-VM texture matrix (vm+0x178) and bake in the
+        // current uv scroll position.
+        memcpy(&texMatrix, (u8 *)vm + 0x178, 0x40);
+        texMatrix.m[2][0] = vm->sprite->uvStartX + vm->uvScrollPos.x;
+        texMatrix.m[2][1] = vm->sprite->uvStartY + vm->uvScrollPos.y;
+        ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+            ->SetTransform(D3DTS_TEXTURE0, &texMatrix);
+
+        // Rebind the actual texture surface if it changed.
+        if (this->currentTexture !=
+            this->textures[vm->sprite->sourceFileIndex])
+        {
+            this->currentTexture = this->textures[vm->sprite->sourceFileIndex];
+            ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                ->SetTexture(0, this->currentTexture);
+        }
+    }
+
+    // ---- (re)install the vertex shader on transition ----------------------
+    if (this->currentVertexShader != 2)
+    {
+        if ((g_SupervisorG0x575a9c >> 1 & 1) == 0)
+        {
+            ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                ->SetVertexShader(D3DFVF_TEX1 | D3DFVF_XYZ);
+            ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                ->SetStreamSource(0, this->vertexBuffer, sizeof(RenderVertexInfo));
+        }
+        else
+        {
+            ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                ->SetVertexShader(D3DFVF_TEX1 | D3DFVF_DIFFUSE | D3DFVF_XYZ);
+        }
+        ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+            ->SetTextureStageState(0, D3DTSS_TEXTURETRANSFORMFLAGS, D3DTTFF_COUNT3);
+        ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+            ->SetTextureStageState(0, D3DTSS_TEXCOORDINDEX, D3DTTFF_COUNT3);
+        this->currentVertexShader = 2;
+    }
+
+    // ---- issue the draw call ----------------------------------------------
+    if ((g_SupervisorG0x575a9c >> 1 & 1) == 0)
+    {
+        ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+            ->DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 2);
+    }
+    else
+    {
+        ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+            ->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, g_DrawPrimUpVerts_4ba078,
+                              sizeof(VertexTex1DiffuseXyz));
+    }
+
+    return ZUN_SUCCESS;
 }
 
 ZunResult AnmManager::DrawFacingCamera(AnmVm *vm)

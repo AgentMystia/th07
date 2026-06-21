@@ -271,7 +271,7 @@ struct AnmManager
     ZunResult Draw2(AnmVm *vm);
     ZunResult Draw3(AnmVm *vm);
     ZunResult DrawNoRotation(AnmVm *vm);
-    ZunResult DrawInner(AnmVm *vm, i32 roundPixels);
+    ZunResult DrawInner(AnmVm *vm);
     ZunResult DrawFacingCamera(AnmVm *vm);
     void TranslateRotation(VertexTex1Xyzrwh *out, f32 x, f32 y, f32 sine, f32 cosine,
                            f32 xOffset, f32 yOffset);

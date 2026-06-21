@@ -191,4 +191,24 @@ void __fastcall Supervisor_Setup2DCamera_4082b0(void *cameraStub)
 {
     (void)cameraStub;
 }
+
+// D3DX matrix helpers called by AnmManager::DrawInner (FUN_00450520). Orig
+// FUN_00461b85 / 00461bff / 00461c7a / 00461aa2. Real bodies live in the
+// d3dx8 math library; stubbed as no-ops here (normal-build only).
+void __fastcall D3DXMatrixRotationZ_461b85(void *out, float angle)
+{
+    (void)out; (void)angle;
+}
+void __fastcall D3DXMatrixRotationX_461bff(void *out, float angle)
+{
+    (void)out; (void)angle;
+}
+void __fastcall D3DXMatrixRotationY_461c7a(void *out, float angle)
+{
+    (void)out; (void)angle;
+}
+void __fastcall D3DXMatrixMultiply_461aa2(void *out, void *a, void *b)
+{
+    (void)out; (void)a; (void)b;
+}
 }

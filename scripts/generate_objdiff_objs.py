@@ -250,6 +250,13 @@ SYMBOL_MAP = {
     b"_g_SupervisorG0x575a9c": b"DAT_00575A9C",
     # D3D device pointer slot (orig 0x575958), read absolutely by SetRenderStateForVm.
     b"_g_SupervisorD3dDevice_575958": b"DAT_00575958",
+    # DrawPrimitiveUP vertex buffer for the no-vertex-buffer path (orig 0x4ba078).
+    b"_g_DrawPrimUpVerts_4ba078": b"DAT_004BA078",
+    # D3DX matrix helpers called by DrawInner (FUN_ anchors).
+    b"@D3DXMatrixRotationZ_461b85@8": b"FUN_00461B85",
+    b"@D3DXMatrixRotationX_461bff@8": b"FUN_00461BFF",
+    b"@D3DXMatrixRotationY_461c7a@8": b"FUN_00461C7A",
+    b"@D3DXMatrixMultiply_461aa2@12": b"FUN_00461AA2",
     # Cross-module function callees from SetRenderStateForVm (FUN_ anchors).
     # MSVC __fastcall emits @Name@N; demangle_msvc leaves the leading @ as-is
     # (it only handles _-prefixed stdcall and ?-prefixed C++), so the keys
