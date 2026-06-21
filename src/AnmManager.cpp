@@ -446,57 +446,182 @@ ZunResult AnmManager::LoadAnm(i32 anmIdx, char *path, i32 spriteIdxOffset)
 // ============================================================================
 // LoadAnmEntry  (FUN_0044e070) -- internal helper
 //
-// Verified body. For a single AnmRawEntry: validates version==2 and anmIdx<50,
-// releases any prior entry, loads the texture (via LoadTexture,
-// CreateEmptyTexture, LoadTextureFromMemory, or LoadTextureAlphaChannel as
-// appropriate), records the blob pointer in imageDataArray, sets the texture's
-// colorKey / mipmap / level-0 desc, then walks spriteOffsets[] registering
-// each sprite via LoadSprite and walks scripts[] registering each script
-// pointer into scripts[idx] / spriteIndices[idx].
+// Verified body, lifted instruction-by-instruction from the disassembly.
+// For a single AnmRawEntry: validates version==2 and anmIdx<50, releases any
+// prior entry, loads the texture (via LoadTexture, CreateEmptyTexture,
+// LoadTextureFromMemory, or LoadTextureAlphaChannel as appropriate), records
+// the blob pointer in imageDataArray, applies the texture's priority / preload
+// and queries its level-0 surface desc (to learn the real texture pixel
+// dimensions), then walks spriteOffsets[] registering each sprite via
+// LoadSprite (precomputing the per-sprite texture-space rect from the texture
+// desc's Width/Height and the entry's declared width/height), and walks
+// scripts[] registering each script pointer into scripts[idx] /
+// spriteIndices[idx]. Returns (maxRegisteredId + 1); -1 on any failure.
 // ============================================================================
-#pragma var_order(local_8, local_c, local_10, local_18, local_30, local_34, local_38, local_3c, \
-                  local_44, local_48, local_4c, local_50, local_54, local_58, local_5c, local_60, \
-                  local_64, local_68, local_6c, local_70, local_74, local_78, local_7c, local_2c)
+#pragma var_order(iVar_maxId, surfaceDesc, textureName, spriteDesc, \
+                  loopIdx, descTableCursor, localSprite, invWidth, invHeight)
 i32 AnmManager::LoadAnmEntry(i32 anmIdx, AnmRawEntry *entry, i32 spriteIdxOffset, i32 isFirst)
 {
-    // TODO: lift body from FUN_0044e070 (~0x460 bytes). The verified control
-    // flow (already cross-checked against the disassembly) is:
-    //   - if entry == NULL -> log + return -1
-    //   - if anmIdx >= 0x32 -> log + return -1
-    //   - ReleaseAnm(anmIdx)
-    //   - if entry->version != 2 -> log + return -1
-    //   - entry->textureIdx = anmIdx; entry->freeIfSet = param_5
-    //   - if entry->hasData == 0:
-    //       name = (char*)entry + entry->nameOffset
-    //       if name[0] == '@': CreateEmptyTexture(...)
-    //       else: LoadTexture(...); on failure log + return -1
-    //       if entry->mipmapNameOffset != 0:
-    //           LoadTextureAlphaChannel(...); on failure log + return -1
-    //     else:
-    //       LoadTextureFromMemory(entry->textureIdx, entry + entry->textureOffset,
-    //                             entry->format)
-    //   - imageDataArray[anmIdx] = entry + entry->nameOffset
-    //   - textures[anmIdx]->SetColorKey/GenerateMipMaps/GetLevelDesc(...)
-    //   - entry->spriteIdxOffset = spriteIdxOffset
-    //   - for i in [0, entry->numSprites):
-    //       sprite = (AnmRawSprite*)(entry + entry->spriteOffsets[i])
-    //       if sprite->id + spriteIdxOffset >= 0xa00 -> log + return -1
-    //       track max sprite->id
-    //       LoadSprite(sprite->id + spriteIdxOffset, &local_sprite)
-    //   - for i in [0, entry->numScripts):
-    //       script = (AnmRawScript*)(entry + scripts_offset[i])
-    //       if script->id + spriteIdxOffset >= 0xa00 -> log + return -1
-    //       track max script->id
-    //       scripts[script->id + spriteIdxOffset] = entry + script->firstInstruction
-    //       spriteIndices[script->id + spriteIdxOffset] = spriteIdxOffset
-    //   - anmFiles[anmIdx].entry = entry
-    //   - anmFiles[anmIdx].spriteIdxOffset = spriteIdxOffset
-    //   - return max_id + 1
-    (void)anmIdx;
-    (void)entry;
-    (void)spriteIdxOffset;
-    (void)isFirst;
-    return -1;
+    i32 iVar_maxId;
+    D3DSURFACE_DESC surfaceDesc;
+    char *textureName;
+    AnmRawSprite *spriteDesc;
+    i32 loopIdx;
+    u32 *descTableCursor;
+    AnmLoadedSprite localSprite;
+    f32 invWidth;
+    f32 invHeight;
+
+    iVar_maxId = 0;
+
+    if (entry == NULL)
+    {
+        g_GameErrorContext.Log("\203A\203j\203\201\202\252\223\307\202\335\215\236\202\337\202\334\202\271"
+                               "\202\361\201B\203f\201[\203^\202\252\216\270\202\355\202\352\202\304\202\351"
+                               "\202\251\211\363\202\352\202\304\202\242\202\334\202\267\015\012");
+        return -1;
+    }
+
+    if (anmIdx >= 0x32)
+    {
+        g_GameErrorContext.Log("\203e\203N\203X\203`\203\203\212i\224[\220\346\202\252\221\253"
+                               "\202\350\202\334\202\271\202\361\015\012");
+        return -1;
+    }
+
+    this->ReleaseAnm(anmIdx);
+
+    if (entry->version != 2)
+    {
+        g_GameErrorContext.Log("\203A\203j\203\201\202\314\203o\201[\203W\203\207\203\223\202\252"
+                               "\210\341\202\242\202\334\202\267\015\012");
+        return -1;
+    }
+
+    entry->textureIdx = (u32)anmIdx;
+    entry->freeIfSet = (u8)isFirst;
+
+    if (entry->hasData == 0)
+    {
+        textureName = (char *)((u8 *)entry + entry->nameOffset);
+        if (textureName[0] == '@')
+        {
+            this->CreateEmptyTexture((i32)entry->textureIdx, (u32)entry->width, (u32)entry->height,
+                                     (i32)entry->format);
+        }
+        else
+        {
+            if (this->LoadTexture((i32)entry->textureIdx, textureName, (i32)entry->format,
+                                  entry->colorKey) != 0)
+            {
+                g_GameErrorContext.Log("\203e\203N\203X\203`\203\203 %s \202\252\223\307\202\335\215"
+                                       "\236\202\337\202\334\202\271\202\361\201B\203f\201[\203^\202\252"
+                                       "\216\270\202\355\202\352\202\304\202\351\202\251\211\363\202\352"
+                                       "\202\304\202\242\202\334\202\267\015\012", textureName);
+                return -1;
+            }
+        }
+
+        if (entry->mipmapNameOffset != 0)
+        {
+            textureName = (char *)((u8 *)entry + entry->mipmapNameOffset);
+            if (this->LoadTextureAlphaChannel((i32)entry->textureIdx, textureName, (i32)entry->format,
+                                              entry->colorKey) != 0)
+            {
+                g_GameErrorContext.Log("\203e\203N\203X\203`\203\203 %s \202\252\223\307\202\335\215"
+                                       "\236\202\337\202\334\202\271\202\361\201B\203f\201[\203^\202\256"
+                                       "\216\270\202\355\202\352\202\304\202\351\202\251\211\363\202\352"
+                                       "\202\304\202\242\202\334\202\267\015\012", textureName);
+                return -1;
+            }
+        }
+    }
+    else
+    {
+        if (this->LoadTextureFromMemory((i32)entry->textureIdx,
+                                        (void *)((u8 *)entry + entry->textureOffset),
+                                        (i32)entry->format) != 0)
+        {
+            g_GameErrorContext.Log("\203e\203N\203X\203`\203\203\202\252\223\307\202\335\215\236\202"
+                                   "\337\202\334\202\271\202\361\201B\203f\201[\203^\202\252\216\270\202"
+                                   "\355\202\352\202\304\202\351\202\251");
+            return -1;
+        }
+    }
+
+    // Record the source blob (entry + nameOffset) so ReleaseAnm can free it.
+    this->imageDataArray[anmIdx] = (void *)((u8 *)entry + entry->nameOffset);
+
+    // Apply texture priority (entry->unk1), preload to GPU, and query the
+    // level-0 surface desc to learn the real texture pixel dimensions.
+    this->textures[anmIdx]->SetPriority(entry->unk1);
+    this->textures[anmIdx]->PreLoad();
+    this->textures[anmIdx]->GetLevelDesc(0, &surfaceDesc);
+
+    entry->spriteIdxOffset = (u32)spriteIdxOffset;
+
+    // First descriptor table lives at entry + 0x40; each entry is a u32 byte
+    // offset into the blob pointing at an AnmRawSprite.
+    descTableCursor = (u32 *)((u8 *)entry + 0x40);
+    for (loopIdx = 0; loopIdx < entry->numSprites; loopIdx++)
+    {
+        spriteDesc = (AnmRawSprite *)((u8 *)entry + *descTableCursor);
+
+        // Precompute the texture-space rect into a local AnmLoadedSprite.
+        localSprite.sourceFileIndex = (i32)entry->textureIdx;
+        invWidth = (f32)surfaceDesc.Width / (f32)entry->width;
+        invHeight = (f32)surfaceDesc.Height / (f32)entry->height;
+        localSprite.startPixelInclusiveX = invWidth * spriteDesc->offset.x;
+        localSprite.startPixelInclusiveY = invHeight * spriteDesc->offset.y;
+        localSprite.endPixelInclusiveX = (spriteDesc->offset.x + spriteDesc->size.x) * invWidth;
+        localSprite.endPixelInclusiveY = (spriteDesc->offset.y + spriteDesc->size.y) * invHeight;
+        localSprite.textureWidth = (f32)surfaceDesc.Width;
+        localSprite.textureHeight = (f32)surfaceDesc.Height;
+
+        if (iVar_maxId < (i32)spriteDesc->id)
+        {
+            iVar_maxId = (i32)spriteDesc->id;
+        }
+
+        if ((i32)spriteDesc->id + spriteIdxOffset >= 0xa00)
+        {
+            g_GameErrorContext.Log("\203X\203v\203\211\203C\203g\202\252\212i\224[\202\305\202\253"
+                                   "\202\334\202\271\202\361\201B\203e\201[\203u\203\213\202\252\225s"
+                                   "\221\253\202\265\202\304\202\242\202\334\202\267");
+            return -1;
+        }
+
+        this->LoadSprite(spriteDesc->id + (u32)spriteIdxOffset, &localSprite);
+        descTableCursor++;
+    }
+
+    // Script descriptors follow the sprite descriptors in the same table; each
+    // is an AnmRawScript { u32 id; AnmRawInstr *firstInstruction; } (stride 8).
+    for (loopIdx = 0; loopIdx < entry->numScripts; loopIdx++)
+    {
+        if ((i32)*descTableCursor + spriteIdxOffset >= 0xa00)
+        {
+            g_GameErrorContext.Log("\203A\203j\203\201\202\252\212i\224[\202\305\202\253\202\334\202"
+                                   "\271\202\361\201B\203e\201[\203u\203\213\202\252\225s\221\253\202"
+                                   "\265\202\304\202\242\202\334\202\267");
+            return -1;
+        }
+
+        if (iVar_maxId < (i32)*descTableCursor)
+        {
+            iVar_maxId = (i32)*descTableCursor;
+        }
+
+        this->scripts[*descTableCursor + (u32)spriteIdxOffset] =
+            (AnmRawInstr *)((u8 *)entry + descTableCursor[1]);
+        this->spriteIndices[*descTableCursor + (u32)spriteIdxOffset] = spriteIdxOffset;
+        descTableCursor += 2;
+    }
+
+    this->anmFiles[anmIdx].entry = entry;
+    this->anmFiles[anmIdx].spriteIdxOffset = spriteIdxOffset;
+
+    return iVar_maxId + 1;
 }
 
 // ============================================================================
