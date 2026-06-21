@@ -108,8 +108,19 @@ SYMBOL_MAP = {
     b"_g_GuiCounter2": b"DAT_013542ec",
     b"_g_GuiCounterSlots": b"DAT_0134db5a",
     b"_g_PlayerConst1p0": b"DAT_00498a54",
-    b"_g_PlayerConst0p99": b"DAT_00498a70",
+    b"_g_PlayerConst2p0": b"DAT_00498a70",  # orig 2.0f (was mis-guessed 0.99f)
     b"_g_PlayerConstHalfPi": b"DAT_00498a9c",
+    # Player rdata game-data constants (semantic names, values verified
+    # against th07.exe .rdata).
+    b"_g_PlayerBombRegionActivateThreshold": b"DAT_00498a4c",
+    b"_g_PlayerHalfExtentScale": b"DAT_00498a50",
+    b"_g_PlayerBulletVelDivisor": b"DAT_00498a7c",
+    b"_g_PlayerDyingScaleSlope": b"DAT_00498a8c",
+    b"_g_PlayerBorderXThreshold": b"DAT_00498ac0",
+    b"_g_PlayerBorderYThreshold": b"DAT_00498afc",
+    b"_g_PlayerStateDurationDivisor": b"DAT_00498b00",
+    b"_g_PlayerSpawnYOffset": b"DAT_00498b08",
+    b"_g_PlayerBorderSpriteScale": b"DAT_00498b5c",
     # Supervisor.cpp rdata float constants + game-state globals (Part C.1).
     b"_g_SupervisorC0x498a48": b"DAT_00498A48",
     b"_g_SupervisorC0x498a4c": b"DAT_00498A4C",

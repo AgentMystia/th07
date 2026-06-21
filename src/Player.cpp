@@ -55,23 +55,25 @@ extern "C" u8 g_GuiCounterSlots[0x24c * 4]; // DAT_0134db5a base, stride 0x24c
 
 // rdata float constants -> named const f32 (EffectManager.cpp pattern), so MSVC
 // emits fld/fmul DWORD PTR [glob] matching orig's memory operand form.
-extern "C" const f32 g_PlayerConst1p0 = 1.0f;          // DAT_00498a54
-extern "C" const f32 g_PlayerConst0p99 = 0.99f;        // DAT_00498a70 (0x3F7D70A4)
-extern "C" const f32 g_PlayerConstHalfPi = 1.5707963267948966f; // DAT_00498a9c (PI/2)
+// Values verified against th07.exe .rdata (see SYMBOL_MAP in
+// scripts/generate_objdiff_objs.py for the address mapping).
+extern "C" const f32 g_PlayerConst1p0 = 1.0f;                         // DAT_00498a54
+extern "C" const f32 g_PlayerConst2p0 = 2.0f;                         // DAT_00498a70 (half-extent divisor: arcadeRegionW/2 centers the player, hitboxSize/gmFloats[3] = radius)
+extern "C" const f32 g_PlayerConstHalfPi = 1.5707963267948966f;       // DAT_00498a9c (PI/2)
 
 // rdata floats referenced by the missing Player functions. These originate in
 // the .rdata section and are defined here as const f32 so MSVC emits the same
-// `fld/fmul/fdiv DWORD PTR [glob]` form the orig binary uses.
-extern "C" const f32 g_PlayerC0x498a4c = 0.0f;        // DAT_00498a4c (compared <= in CalcDamage)
-extern "C" const f32 g_PlayerC0x498a50 = 2.0f;        // DAT_00498a50 (size scale in CalcDamage)
-extern "C" const f32 g_PlayerC0x498a70_2 = 0.99f;     // DAT_00498a70 (divide base)
-extern "C" const f32 g_PlayerC0x498a7c = 8.0f;        // DAT_00498a7c (velocity scale)
-extern "C" const f32 g_PlayerC0x498a8c = 0.0f;        // DAT_00498a8c (calc-bomb interp)
-extern "C" const f32 g_PlayerC0x498ac0 = 480.0f;      // DAT_00498ac0 (EndBorder position threshold)
-extern "C" const f32 g_PlayerC0x498afc = 480.0f;      // DAT_00498afc (EndBorder y threshold)
-extern "C" const f32 g_PlayerC0x498b00 = 30.0f;       // DAT_00498b00 (state-bomb duration divisor)
-extern "C" const f32 g_PlayerC0x498b08 = 32.0f;       // DAT_00498b08 (AddedCallback y offset)
-extern "C" const f32 g_PlayerC0x498b5c = 0.5f;        // DAT_00498b5c (StartBorder sprite scale)
+// `fld/fmul/fdiv DWORD PTR [glob]` form the orig binary uses. Values verified
+// against th07.exe .rdata (each DAT_ address read directly).
+extern "C" const f32 g_PlayerBombRegionActivateThreshold = 0.0f;      // DAT_00498a4c (bombRegions.sizeX > this to activate; 0 == any non-zero)
+extern "C" const f32 g_PlayerHalfExtentScale = 0.5f;                  // DAT_00498a50 (AABB half-side scale in CalcDamageToEnemy: collideSize * 0.5)
+extern "C" const f32 g_PlayerBulletVelDivisor = 8.0f;                 // DAT_00498a7c (collideVel /= 8 on hit)
+extern "C" const f32 g_PlayerDyingScaleSlope = 3.0f;                  // DAT_00498a8c (death anim: scale = 3.0*t + 1.0)
+extern "C" const f32 g_PlayerBorderXThreshold = 160.0f;               // DAT_00498ac0 (EndBorder: option-scratch trigger x position)
+extern "C" const f32 g_PlayerBorderYThreshold = 400.0f;               // DAT_00498afc (EndBorder: option-scratch trigger y position)
+extern "C" const f32 g_PlayerStateDurationDivisor = 30.0f;            // DAT_00498b00 (dying/spawning anim progress divisor: 30 frames)
+extern "C" const f32 g_PlayerSpawnYOffset = 64.0f;                    // DAT_00498b08 (AddedCallback: spawn y = arcadeRegionH - 64)
+extern "C" const f32 g_PlayerBorderSpriteScale = -1.0f;               // DAT_00498b5c (StartBorder: effect sprite scale factor)
 // game-state globals read directly by AddedCallback / HandleBombInput / etc.
 // All defined by their owning modules; here only declared.
 extern "C" u8 g_GameMgr_character;        // DAT_0062f645 (0=Reimu,1=Marisa,2=Sakuya)
@@ -374,7 +376,7 @@ i32 Player::CalcItemBoxCollision(D3DXVECTOR3 *center, D3DXVECTOR3 *size)
         return 0;
     }
 
-    f32 scale = g_PlayerConst1p0 / g_PlayerConst0p99;
+    f32 scale = g_PlayerConst1p0 / g_PlayerConst2p0;
     D3DXVECTOR3 half;
     half.z = size->z * scale;
     half.y = size->y * scale;
@@ -437,7 +439,7 @@ void Player::ScoreGraze(D3DXVECTOR3 *center)
     sum.y = pc->y + center->y;
     sum.x = pc->x + center->x;
 
-    f32 scale = g_PlayerConst1p0 / g_PlayerConst0p99;
+    f32 scale = g_PlayerConst1p0 / g_PlayerConst2p0;
     D3DXVECTOR3 particlePos;
     particlePos.z = sum.z * scale;
     particlePos.y = sum.y * scale;
@@ -742,10 +744,10 @@ i32 __fastcall Player::HandleState_Dying(Player *p)
         // invulnerabilityTimer (0..30 frame window).
         f32 t = ((f32)p->invulnerabilityTimer.current +
                  p->invulnerabilityTimer.subFrame) /
-                g_PlayerC0x498b00;
+                g_PlayerStateDurationDivisor;
         u8 *spriteBytes = reinterpret_cast<u8 *>(&p->playerSprite);
         *reinterpret_cast<f32 *>(spriteBytes + 0x1c) =
-            g_PlayerC0x498a8c * t + g_PlayerConst1p0;
+            g_PlayerDyingScaleSlope * t + g_PlayerConst1p0;
         *reinterpret_cast<f32 *>(spriteBytes + 0x18) =
             g_PlayerConst1p0 - g_PlayerConst1p0 * t;
         i32 k = utils_GetArcadeRegionMaxX();
@@ -759,8 +761,8 @@ i32 __fastcall Player::HandleState_Dying(Player *p)
         {
             // Death animation finished: respawn or trigger game-over.
             p->playerState = PLAYER_STATE_SPAWNING;
-            p->positionCenter.x = g_GameMgr_arcadeRegionW / g_PlayerConst0p99;
-            p->positionCenter.y = g_GameMgr_arcadeRegionH - g_PlayerC0x498b08;
+            p->positionCenter.x = g_GameMgr_arcadeRegionW / g_PlayerConst2p0;
+            p->positionCenter.y = g_GameMgr_arcadeRegionH - g_PlayerSpawnYOffset;
             p->positionCenter.z = 0.2f;
             p->invulnerabilityTimer.current = 0;
             p->invulnerabilityTimer.subFrame = 0;
@@ -853,10 +855,10 @@ void __fastcall Player::HandleState_Spawning(Player *p)
     f32 t = g_PlayerConst1p0 -
             ((f32)p->invulnerabilityTimer.current +
              p->invulnerabilityTimer.subFrame) /
-                g_PlayerC0x498b00;
+                g_PlayerStateDurationDivisor;
     u8 *spriteBytes = reinterpret_cast<u8 *>(&p->playerSprite);
     *reinterpret_cast<f32 *>(spriteBytes + 0x1c) =
-        g_PlayerConst0p99 * t + g_PlayerConst1p0;
+        g_PlayerConst2p0 * t + g_PlayerConst1p0;
     *reinterpret_cast<f32 *>(spriteBytes + 0x18) =
         g_PlayerConst1p0 - g_PlayerConst1p0 * t;
     *reinterpret_cast<u32 *>(spriteBytes + 0x1c0) =
@@ -1028,7 +1030,7 @@ void __fastcall Player::ResetOptionScratch(Player *p)
     p->optionScratch_2438 = (i32)0xc479c000;
     p->optionScratch_243c = 0;
     p->optionScratch_2440 = 0;
-    if (p->positionCenter.y < g_PlayerC0x498afc)
+    if (p->positionCenter.y < g_PlayerBorderYThreshold)
     {
         if (g_GuiCounter2 == 2)
         {
@@ -1036,9 +1038,9 @@ void __fastcall Player::ResetOptionScratch(Player *p)
             g_GuiCounter2 = 3;
         }
     }
-    else if (g_GuiCounter2 == 2 || g_PlayerC0x498ac0 <= p->positionCenter.x)
+    else if (g_GuiCounter2 == 2 || g_PlayerBorderXThreshold <= p->positionCenter.x)
     {
-        if (g_GuiCounter2 == 2 && g_PlayerC0x498ac0 < p->positionCenter.x)
+        if (g_GuiCounter2 == 2 && g_PlayerBorderXThreshold < p->positionCenter.x)
         {
             g_GuiCounter1 = 3;
             g_GuiCounter2 = 3;
@@ -1111,7 +1113,7 @@ void __fastcall Player::StartSupernaturalBorder(Player *p)
             *reinterpret_cast<f32 *>(effB + 0x224) = 0.25f;
             *reinterpret_cast<i32 *>(effB + 0xc8) = p->invulnerabilityTimer.current;
             *reinterpret_cast<f32 *>(effB + 0x14) =
-                *reinterpret_cast<f32 *>(effB + 0x14) * g_PlayerC0x498b5c;
+                *reinterpret_cast<f32 *>(effB + 0x14) * g_PlayerBorderSpriteScale;
             p->spellcardEffectDying = eff;
             Supervisor_SetAnmFlag(0, 2);
             GameManager_SetStageState(0x20, 0);
@@ -1240,8 +1242,8 @@ ZunResult __fastcall Player::AddedCallback(Player *p)
     ANM_MGR->SetAndExecuteScript(&p->playerSprite,
                                  *reinterpret_cast<AnmRawInstr **>(anmMgrB + 0x29ef0));
     // Center the player, set z depth for player + orbs.
-    p->positionCenter.x = g_GameMgr_arcadeRegionW / g_PlayerConst0p99;
-    p->positionCenter.y = g_GameMgr_arcadeRegionH - g_PlayerC0x498b08;
+    p->positionCenter.x = g_GameMgr_arcadeRegionW / g_PlayerConst2p0;
+    p->positionCenter.y = g_GameMgr_arcadeRegionH - g_PlayerSpawnYOffset;
     p->positionCenter.z = 0.49f;
     p->orbsPosition[0].z = 0.49f;
     p->orbsPosition[1].z = 0.49f;
@@ -1252,10 +1254,10 @@ ZunResult __fastcall Player::AddedCallback(Player *p)
     }
     // Set hitbox sizes (orig reads from GameManager @ +0xc / +0x10).
     f32 *gmFloats = reinterpret_cast<f32 *>(&g_GameManagerScoreObj);
-    p->hitboxSize.x = gmFloats[3] / g_PlayerConst0p99;
+    p->hitboxSize.x = gmFloats[3] / g_PlayerConst2p0;
     p->hitboxSize.y = p->hitboxSize.x;
     p->hitboxSize.z = 5.0f;
-    p->grabItemSize.x = gmFloats[4] / g_PlayerConst0p99;
+    p->grabItemSize.x = gmFloats[4] / g_PlayerConst2p0;
     p->grabItemSize.y = p->grabItemSize.x;
     p->grabItemSize.z = 5.0f;
     p->grazeSizeX = 20.0f;
@@ -1667,10 +1669,10 @@ i32 Player::CalcDamageToEnemy(D3DXVECTOR3 *enemyPos, D3DXVECTOR3 *enemySize,
     {
         return 0;
     }
-    f32 enemyMinX = enemyPos->x - enemySize->x * g_PlayerC0x498a50;
-    f32 enemyMinY = enemyPos->y - enemySize->y * g_PlayerC0x498a50;
-    f32 enemyMaxX = enemySize->x * g_PlayerC0x498a50 + enemyPos->x;
-    f32 enemyMaxY = enemySize->y * g_PlayerC0x498a50 + enemyPos->y;
+    f32 enemyMinX = enemyPos->x - enemySize->x * g_PlayerHalfExtentScale;
+    f32 enemyMinY = enemyPos->y - enemySize->y * g_PlayerHalfExtentScale;
+    f32 enemyMaxX = enemySize->x * g_PlayerHalfExtentScale + enemyPos->x;
+    f32 enemyMaxY = enemySize->y * g_PlayerHalfExtentScale + enemyPos->y;
     i32 totalDamage = 0;
     if (hitWithBomb != 0)
     {
@@ -1683,10 +1685,10 @@ i32 Player::CalcDamageToEnemy(D3DXVECTOR3 *enemyPos, D3DXVECTOR3 *enemySize,
         if (b->bulletState != 0 &&
             (b->bulletState == BULLET_STATE_FIRED || b->bulletType == 3))
         {
-            f32 bMaxX = b->collideSize.x * g_PlayerC0x498a50 + b->position.x;
-            f32 bMaxY = b->collideSize.y * g_PlayerC0x498a50 + b->position.y;
-            f32 bMinX = b->position.x - b->collideSize.x * g_PlayerC0x498a50;
-            f32 bMinY = b->position.y - b->collideSize.y * g_PlayerC0x498a50;
+            f32 bMaxX = b->collideSize.x * g_PlayerHalfExtentScale + b->position.x;
+            f32 bMaxY = b->collideSize.y * g_PlayerHalfExtentScale + b->position.y;
+            f32 bMinX = b->position.x - b->collideSize.x * g_PlayerHalfExtentScale;
+            f32 bMinY = b->position.y - b->collideSize.y * g_PlayerHalfExtentScale;
             if (bMaxY >= enemyMinY && bMaxX >= enemyMinX &&
                 enemyMaxY >= bMinY && enemyMaxX >= bMinX)
             {
@@ -1730,8 +1732,8 @@ i32 Player::CalcDamageToEnemy(D3DXVECTOR3 *enemyPos, D3DXVECTOR3 *enemySize,
                         b->bulletState = BULLET_STATE_COLLIDED;
                         if (b->bulletType != 3)
                         {
-                            b->collideVel.x /= g_PlayerC0x498a7c;
-                            b->collideVel.y /= g_PlayerC0x498a7c;
+                            b->collideVel.x /= g_PlayerBulletVelDivisor;
+                            b->collideVel.y /= g_PlayerBulletVelDivisor;
                         }
                     }
                 }
@@ -1741,10 +1743,10 @@ i32 Player::CalcDamageToEnemy(D3DXVECTOR3 *enemyPos, D3DXVECTOR3 *enemySize,
     // Bomb-region damage.
     for (i32 i = 0; i < 0x70; i++)
     {
-        if (this->bombRegions[i].sizeX > g_PlayerC0x498a4c ||
-            this->bombRegions[i].sizeX == g_PlayerC0x498a4c)
+        if (this->bombRegions[i].sizeX > g_PlayerBombRegionActivateThreshold ||
+            this->bombRegions[i].sizeX == g_PlayerBombRegionActivateThreshold)
         {
-            f32 scale = g_PlayerConst1p0 / g_PlayerConst0p99;
+            f32 scale = g_PlayerConst1p0 / g_PlayerConst2p0;
             f32 brMinX = this->bombRegions[i].position.x - scale * this->bombRegions[i].sizeX;
             f32 brMinY = this->bombRegions[i].position.y - scale * this->bombRegions[i].sizeX;
             f32 brMaxX = scale * this->bombRegions[i].sizeX + this->bombRegions[i].position.x;
