@@ -1,6 +1,6 @@
 # TH07-RE 反编译重建进度
 
-最后更新：2026-06-18
+最后更新：2026-06-21
 
 ## 终极目标
 
@@ -13,14 +13,15 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 |---|---|
 | objdiff 跟踪模块 | 22 |
 | objdiff 跟踪函数 | 228 |
-| 模块平均 match%（per-module 算术平均）| 79.39% |
-| 函数加权 match% | 75.57% |
+| 模块平均 match%（per-module 算术平均）| ~80.2%（2026-06-21 AnmManager 41→58% 后估算；下次全量重测基线待更新）|
+| 函数加权 match% | ~76.4%（同上估算）|
 | ≥90% 模块 | 11（核心完成）|
 | 80–90% 模块 | 3（接近达标）|
-| 50–80% 模块 | 4（进行中）|
-| <50% 模块 | 4（阻塞/早期）|
+| 50–80% 模块 | 5（进行中；AnmManager 本轮 41→58% 升入此档）|
+| <50% 模块 | 3（阻塞/早期）|
 | **normal build** | ✅ **链接成功，产出 `build/th07e.exe`（PE32 i386 GUI）** |
 | **Player 模块** | ✅ **17 缺失函数已实现（OnUpdate/OnDrawHighPrio/AddedCallback/HandlePlayerInputs/SpawnBullets/UpdatePlayerBullets/DrawBullets/DrawBulletExplosions/CalcDamageToEnemy/CheckGraze/CalcKillBoxCollision/CalcLaserHitbox/ClearBombRegions/HandleBombInput/StartSupernaturalBorder/EndSupernaturalBorder/UpdateFireBulletsTimer）**。objdiff 26 函数跟踪（之前 9），加权 40.28%、算术 62.24% |
+| **AnmManager 模块** | 本轮（2026-06-21）LoadAnmEntry/SetRenderStateForVm/DrawInner 三大函数抬升，41.07% → **58.41%**（+17.34pp）。详见 P1.1 段 |
 | mapping.csv 函数覆盖 | 1562 行（th07.exe 全部非 thunk 函数）|
 | raw 绝对地址访问 | **0**（已全量迁移到 typed C++，对齐 th06 标准）|
 | raw[] buffer / accessor | **0**（Player/SoundPlayer 等 5 大 struct 已全命名重构）|
@@ -80,12 +81,62 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 
 ### 阻塞/早期（<50%）— 4 模块
 
-**AnmManager 41.07%** (15) — CreateEmptyTexture 99.40, ReleaseTexture 88.28; LoadTexture 76.73; LoadAnm 59.97, ReleaseAnm 59.65, LoadSprite/SetActiveSprite 57; AnmManager(ctor) 44.66; **ExecuteScript 0.21（13178B）, DrawInner 2.21, LoadAnmEntry 2.32, SetRenderStateForVm 2.56, LoadTextureAlphaChannel 2.82, LoadTextureFromMemory 4.61**
+**AnmManager 58.41%** (15) — CreateEmptyTexture 99.40, ReleaseTexture 88.28; **LoadAnmEntry 91.53, SetRenderStateForVm 91.64**（本轮抬升）；DrawInner 84.06（本轮抬升，2.21→84.06）；LoadTexture 76.73; LoadAnm 59.97, ReleaseAnm 59.65, LoadSprite/SetActiveSprite 57; AnmManager(ctor) 44.66; **ExecuteScript 0.21（13178B，P1.2 单独立项）, LoadTextureAlphaChannel 2.82, LoadTextureFromMemory 4.61**。本轮（2026-06-21）LoadAnmEntry/SetRenderStateForVm/DrawInner 三个核心大函数从 Ghidra 逐指令抬升，模块 41.07% → 58.41%（+17.34pp）
 **BombData 40.87%** (24) — MarisaABombDraw 90.92, MarisaBBombDraw 90.68 等 12 draw 完成；MarisaABombCalc2 42.75；**11 calc 未实现**（+1.23pp）
 **ReplayManager 34.70%** (12) — StopRecording 99.67, DeletedCallback 89.47; RegisterChain 84.78; **SaveReplay 4.36, RewriteReplay 2.73** 等
 **Pbg4Parser 19.72%** (3) — AdvanceNode 32.55, SetIndex 26.61; **Reset 0.00**（LZSS 字典/节点表初始化）
 
 （ItemManager 0% 未在 objdiff 跟踪列表中，属 P1 工作。）
+
+## 2026-06-21 AnmManager 核心大函数抬升（P1.1）
+
+本轮（commit 7f24a3f..de9195a）从 Ghidra 逐指令抬升 AnmManager 三个核心大函数，
+打通 ".anm 加载 → 渲染状态 → D3D 绘制" 的最小通路：
+
+| 函数 | 原地址 | 大小 | 抬升前 | 抬升后 | 状态 |
+|---|---|---|---|---|---|
+| LoadAnmEntry | 0x44e070 | 0x460 | 2.32% | **91.53%** | ✅ ≥90% |
+| SetRenderStateForVm | 0x44eae0 | 0x3e0 | 2.56% | **91.64%** | ✅ ≥90% |
+| DrawInner | 0x450520 | 0x524 | 2.21% | **84.06%** | 接近达标（栈布局待抛光） |
+
+**AnmManager 模块平均**：41.07% → **58.41%**（+17.34pp）。
+
+**新增跨模块 typed-C++ 引用**（extern "C" + SYMBOL_MAP + link_globals/link_cpp_stubs）：
+- `g_SupervisorD3dDevice_575958`（D3D 设备指针槽，orig 0x575958）
+- `g_SupervisorG0x575a9c`（cfg.opts 位域，orig 0x575a9c）
+- `g_AnmMgrColorSlot_4b9fb8..4ba0cc`（8 个软件渲染路径颜色槽）
+- `g_DrawPrimUpVerts_4ba078`（DrawPrimitiveUP 顶点缓冲）
+- `g_SupervisorCameraStub_1347b00`（相机 helper 的忽略 this）
+- `AnmManager_FlushVertexBuffer_44f5c0`（顶点缓冲刷新，in-module helper）
+- `Supervisor_Setup3DCamera_408180` / `_2DCamera_4082b0`（3D/2D 相机矩阵重装）
+- `D3DXMatrixRotationZ/X/Y_461xxx` + `D3DXMatrixMultiply_461aa2`（D3DX 矩阵数学）
+
+**验收**：每函数 `python3 scripts/build.py --build-type=objdiffbuild --object-name AnmManager.obj`
++ objdiff-cli diff 验证 match%；`build/th07e.exe` normal build 仍链接成功（135168B PE32 GUI）。
+DrawInner 84.06% 接近但未达 90%（栈帧 +0x4、寄存器分配差异），留作后续抛光。
+
+## "打开游戏显示主菜单" 长期路线图（P1.1 - P1.6）
+
+本路线图把"wine 启动 build/th07e.exe 能渲染出与原作一致的主菜单"拆成多轮，
+每轮明确函数清单 + objdiff 验收。**"主菜单可显示" 仅在 P1.6 wine 实测渲染后才宣告**。
+
+- **P1.1（本轮，2026-06-21）** ✅ AnmManager LoadAnmEntry + SetRenderStateForVm +
+  DrawInner 三个核心大函数抬升（91.53% / 91.64% / 84.06%）。
+- **P1.2（下一轮）**：ExecuteScript（FUN_00450d60, ~11KB switch 解释器，opcodes -1..0x52，
+  含变量/寄存器 ops、RNG、条件分支、5 通道 × 7 模式缓动）— 项目标注"the single largest
+  remaining task"，按 opcode 区段拆 2-3 子会话。+ DrawInner 栈布局抛光到 ≥90% +
+  剩余 Draw 变体（Draw/Draw2/Draw3/DrawNoRotation，FUN_00407900 dispatch）+
+  LoadTextureAlphaChannel/LoadTextureFromMemory。
+- **P1.3**：Supervisor 启动路径（FUN_00434020 boot loop + FUN_00434a40/a80/bd0
+  Bootstrap/CreateWindow/InitD3D + FUN_004346e0 RunSession per-frame driver）。
+  当前 main.cpp 是 skeleton，所有 Supervisor_* 都是 link_stubs.cpp no-op。
+- **P1.4**：Pbg4Parser Reset/AdvanceNode/SetIndex（LZSS 解码器，资源解包必需）+
+  FileSystem 路径整合。当前 Pbg4Parser 19.72%、Reset 0%。
+- **P1.5**：MainMenu 模块全量（0x41e4b0-0x41f6f0，13+ 函数 ~5KB，mapping.csv 仅
+  RegisterChain 一个命名）。这是标题画面的子系统（OnUpdate/OnDraw/AddedCallback），
+  加载 data/title/*.anm 并驱动 title AnmVm。
+- **P1.6（验收）**：wine 实测 build/th07e.exe 能 boot 到主菜单、与原作视觉/行为一致。
+  仅此轮达成后才宣告 "主菜单可显示"。
 
 ## 2026-06-18 typed-C++ 全项目重构（对齐 th06 严格标准）
 
@@ -135,11 +186,13 @@ normal build 全部 .cpp 编译通过，本轮将链接 unresolved 从 **311 降
 GameManager 等模块启动时填充；下一步是逐步替换 stub 为真实实现（按 P1 优先级：
 AnmManager 大函数 / BombData calc / ReplayManager / Pbg4Parser）。
 
-### P1：提升低匹配模块（<50%）
+### P1：提升低匹配模块（<50%）— 进行中
 
-- **AnmManager 41%**：核心阻塞。`ExecuteScript`（13178B 操作码解释器）、`DrawInner`、
-  `LoadAnmEntry`、`SetRenderStateForVm` 等大函数未实现。这是精灵/动画核心，不实现则
-  无任何精灵渲染。
+- **AnmManager 58.41%**（本轮 +17.34pp）：核心阻塞。本轮（2026-06-21）抬升了
+  `LoadAnmEntry`（91.53%）/ `SetRenderStateForVm`（91.64%）/ `DrawInner`（84.06%）三个
+  大函数，打通 ".anm 加载 → 渲染状态 → D3D 绘制" 最小通路。**剩余**：`ExecuteScript`
+  （13178B 操作码解释器，P1.2 单独立项）、`LoadTextureAlphaChannel`/`LoadTextureFromMemory`、
+  DrawInner 栈布局抛光到 ≥90%。详见上方 "P1.1" 段和 "打开游戏显示主菜单 长期路线图"。
 - **BombData 39.6%**：12 calc 函数中 11 个未实现（每个 800–2400B 的 Player 状态机）。
   MarisaABombCalc2（42.75%）是已验证的范本，新 calc 抄其结构。
 - **ReplayManager 34.7%**：SaveReplay/RewriteReplay/AddedCallback 等大函数未实现。
