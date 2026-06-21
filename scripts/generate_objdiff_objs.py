@@ -235,6 +235,28 @@ SYMBOL_MAP = {
     b"_g_AsciiC0x498a50": b"DAT_00498A50",
     b"_g_AsciiC0x498a80": b"DAT_00498A80",
     b"_g_EffectMgrPlayModeA": b"DAT_00575A8C",
+    # AnmManager::SetRenderStateForVm colour-slot dwords (software render path).
+    b"_g_AnmMgrColorSlot_4b9fb8": b"DAT_004B9FB8",
+    b"_g_AnmMgrColorSlot_4b9fd4": b"DAT_004B9FD4",
+    b"_g_AnmMgrColorSlot_4b9ff0": b"DAT_004B9FF0",
+    b"_g_AnmMgrColorSlot_4ba00c": b"DAT_004BA00C",
+    b"_g_AnmMgrColorSlot_4ba084": b"DAT_004BA084",
+    b"_g_AnmMgrColorSlot_4ba09c": b"DAT_004BA09C",
+    b"_g_AnmMgrColorSlot_4ba0b4": b"DAT_004BA0B4",
+    b"_g_AnmMgrColorSlot_4ba0cc": b"DAT_004BA0CC",
+    # Ignored `this` for the Setup3D/2DCamera helpers (orig 0x1347b00).
+    b"_g_SupervisorCameraStub_1347b00": b"DAT_01347B00",
+    # cfg.opts mirror read as an absolute address by SetRenderStateForVm.
+    b"_g_SupervisorG0x575a9c": b"DAT_00575A9C",
+    # D3D device pointer slot (orig 0x575958), read absolutely by SetRenderStateForVm.
+    b"_g_SupervisorD3dDevice_575958": b"DAT_00575958",
+    # Cross-module function callees from SetRenderStateForVm (FUN_ anchors).
+    # MSVC __fastcall emits @Name@N; demangle_msvc leaves the leading @ as-is
+    # (it only handles _-prefixed stdcall and ?-prefixed C++), so the keys
+    # must match the raw COFF symbol verbatim.
+    b"@AnmManager_FlushVertexBuffer_44f5c0@4": b"FUN_0044F5C0",
+    b"@Supervisor_Setup3DCamera_408180@4": b"FUN_00408180",
+    b"@Supervisor_Setup2DCamera_4082b0@4": b"FUN_004082B0",
 }
 
 def map_symbol(sym):

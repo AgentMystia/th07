@@ -12,6 +12,25 @@
 
 #include "inttypes.hpp"
 
+// AnmManager::SetRenderStateForVm colour-slot dwords (software render path
+// stamps these when GCOS_DONT_USE_VERTEX_BUF is set). Orig addresses
+// 0x4b9fb8..0x4ba0cc. Zero-init here; populated by SetRenderStateForVm.
+extern "C" u32 g_AnmMgrColorSlot_4b9fb8 = 0;
+extern "C" u32 g_AnmMgrColorSlot_4b9fd4 = 0;
+extern "C" u32 g_AnmMgrColorSlot_4b9ff0 = 0;
+extern "C" u32 g_AnmMgrColorSlot_4ba00c = 0;
+extern "C" u32 g_AnmMgrColorSlot_4ba084 = 0;
+extern "C" u32 g_AnmMgrColorSlot_4ba09c = 0;
+extern "C" u32 g_AnmMgrColorSlot_4ba0b4 = 0;
+extern "C" u32 g_AnmMgrColorSlot_4ba0cc = 0;
+// Ignored `this` passed to Supervisor_Setup3DCamera / _2DCamera (orig 0x1347b00).
+extern "C" u8 g_SupervisorCameraStub_1347b00 = 0;
+// cfg.opts bitfield mirror (orig 0x575a9c = g_Supervisor.cfg.opts). Read as
+// an absolute address by SetRenderStateForVm to match orig's addressing.
+extern "C" u32 g_SupervisorG0x575a9c = 0;
+// D3D device pointer slot (orig 0x575958). Set by Supervisor at boot.
+extern "C" void *g_SupervisorD3dDevice_575958 = 0;
+
 extern "C" const f32 g_AsciiC0x498a50 = 0.0f;
 extern "C" const f32 g_AsciiC0x498a80 = 0.0f;
 extern "C" u8 g_AsciiIsInGameMenu = 0;

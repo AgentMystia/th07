@@ -55,6 +55,40 @@ extern "C" D3DFORMAT g_TextureFormatD3D8Mapping[6] = {
     D3DFMT_UNKNOWN, D3DFMT_A8R8G8B8, D3DFMT_A1R5G5B5, D3DFMT_R5G6B5, D3DFMT_R8G8B8, D3DFMT_A4R4G4B4,
 };
 
+// ---- SetRenderStateForVm cross-module references (FUN_0044eae0).
+// These globals/helpers live outside the AnmManager module; declared here
+// with C linkage so the same call shape compiles in normal and objdiff
+// builds. Their SYMBOL_MAP entries (scripts/generate_objdiff_objs.py) map
+// each typed name back to its orig DAT_/FUN_ address for byte-true diffing.
+//   - 8 colour-slot dwords stamped on the software (no-vertex-buffer) path.
+//   - g_SupervisorG0x575a18: viewport struct (also referenced by GameManager).
+//   - g_SupervisorG0x575a9c: cfg.opts bitfield (orig reads it as an absolute
+//     0x575a9c load, not a struct-relative access, so we mirror that here).
+//   - g_SupervisorCameraStub_1347b00: ignored `this` passed to the camera
+//     helpers (they read the device via the absolute 0x575958 slot).
+//   - AnmManager_FlushVertexBuffer_44f5c0 (FUN_0044f5c0): in-module helper
+//     that drains this->vertexBufferDirty via DrawPrimitiveUP.
+//   - Supervisor_Setup3DCamera_408180 / _2DCamera_4082b0 (FUN_00408180 /
+//     FUN_004082b0): re-install the 3D / 2D view+projection matrices.
+extern "C" u32 g_AnmMgrColorSlot_4b9fb8;
+extern "C" u32 g_AnmMgrColorSlot_4b9fd4;
+extern "C" u32 g_AnmMgrColorSlot_4b9ff0;
+extern "C" u32 g_AnmMgrColorSlot_4ba00c;
+extern "C" u32 g_AnmMgrColorSlot_4ba084;
+extern "C" u32 g_AnmMgrColorSlot_4ba09c;
+extern "C" u32 g_AnmMgrColorSlot_4ba0b4;
+extern "C" u32 g_AnmMgrColorSlot_4ba0cc;
+extern "C" u32 g_SupervisorG0x575a18;
+extern "C" u32 g_SupervisorG0x575a9c;
+// D3D device pointer slot (orig 0x575958 = g_Supervisor + 8). Orig reads
+// it as an absolute [DAT_00575958] load; mirroring that avoids the
+// struct-relative [DAT_00575950+8] reloc that objdiff treats as distinct.
+extern "C" void *g_SupervisorD3dDevice_575958;
+extern "C" u8 g_SupervisorCameraStub_1347b00;
+extern "C" void __fastcall AnmManager_FlushVertexBuffer_44f5c0(void *anmMgr);
+extern "C" void __fastcall Supervisor_Setup3DCamera_408180(void *cameraStub);
+extern "C" void __fastcall Supervisor_Setup2DCamera_4082b0(void *cameraStub);
+
 namespace th07
 {
 DIFFABLE_STATIC(VertexTex1Xyzrwh, g_PrimitivesToDrawVertexBuf[4]);
@@ -782,12 +816,174 @@ ZunResult AnmManager::DrawFacingCamera(AnmVm *vm)
 // ============================================================================
 // SetRenderStateForVm  (FUN_0044eae0)
 //
-// TODO: lift body (~0x3e0 bytes). Applies the VM's color / blend / Z-write
-// state to the D3D device via g_Supervisor.d3dDevice vtable calls.
+// Verified body, lifted instruction-by-instruction from the disassembly.
+// Synchronises the D3D device's render state with the VM's flags. Three
+// independent state transitions are guarded by per-AnmManager "current*"
+// bytes so each is applied at most once per (this byte, vm flag bit) pair:
+//
+//   1. DESTBLEND (state 20): driven by vm flag bit 4. value 6 (INVSRCALPHA)
+//      when bit clear, 2 (ONE) when set.
+//   2. TEXTUREFACTOR (state 60) OR the per-VM colour-slot table (8 dwords at
+//      0x4b9fb8..0x4ba0cc): driven by vm->color / vm->unk1bc (selected by
+//      dword-flag bit 16) modulated by this+0..3 (the per-frame 0x80808080
+//      colour multiplier) when GCOS_DONT_USE_VERTEX_BUF is clear. Vertex-buf
+//      path also conditionally multiplies when this+0x4 != 0.
+//   3. ZWRITEENABLE (state 14): driven by vm flag bit 12. value 1 when set,
+//      0 when clear.
+//
+// The bit-14 (dword) transition also flushes the pending vertex buffer
+// (FUN_0044f5c0) and re-installs either the 3D or 2D camera matrices
+// (FUN_00408180 / FUN_004082b0), then re-applies the viewport.
+//
+// All globals (camera helpers, colour slots, camera stub) are declared at the
+// top of this TU; their SYMBOL_MAP entries map the typed names back to the
+// orig DAT_/FUN_ addresses for objdiff.
 // ============================================================================
+#pragma var_order(localColorDword, colorTemp_vbuf_g, colorTemp_vbuf_r, \
+                  colorTemp_vbuf_a, colorTemp_vbuf_b, colorTemp_soft_g, \
+                  colorTemp_soft_r, colorTemp_soft_a, colorTemp_soft_b, \
+                  this_save)
 void AnmManager::SetRenderStateForVm(AnmVm *vm)
 {
-    (void)vm;
+    AnmManager *this_save;
+    u32 localColorDword;
+    u32 colorTemp_vbuf_g, colorTemp_vbuf_r, colorTemp_vbuf_a, colorTemp_vbuf_b;
+    u32 colorTemp_soft_g, colorTemp_soft_r, colorTemp_soft_a, colorTemp_soft_b;
+
+    this_save = this;
+
+    // ---- (1) DESTBLEND: vm dword-flag bit 4 -> D3DRS_DESTBLEND ------------
+    // Orig re-reads the dword at vm+0x1c0 (covers the u16 flags + the next
+    // pad word) on every access; we mirror that to match the instruction
+    // sequence exactly.
+    if (this_save->currentBlendMode != ((*(u32 *)((u8 *)vm + 0x1c0) >> 0x4) & 1))
+    {
+        this_save->currentBlendMode = (u8)((*(u32 *)((u8 *)vm + 0x1c0) >> 0x4) & 1);
+        if (((*(u32 *)((u8 *)vm + 0x1c0) >> 0x4) & 1) == 0)
+        {
+            ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                ->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+        }
+        else
+        {
+            ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                ->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
+        }
+    }
+
+    // ---- (2) TEXTUREFACTOR / colour-slot table ----------------------------
+    // Pick the source colour: dword-flag bit 16 selects vm+0x1bc over
+    // vm->color (+0x1b8).
+    if ((*(u32 *)((u8 *)vm + 0x1c0) >> 0x10) & 1)
+    {
+        localColorDword = *(u32 *)((u8 *)vm + 0x1bc);
+    }
+    else
+    {
+        localColorDword = vm->color;
+    }
+
+    if ((g_SupervisorG0x575a9c >> 1 & 1) == 0)
+    {
+        // Vertex-buffer path: modulate by this+0..3 only when this+0x4 != 0,
+        // then apply via D3DRS_TEXTUREFACTOR if the cached colour changed.
+        if (*(i32 *)((u8 *)this_save + 0x4) != 0)
+        {
+            colorTemp_vbuf_g =
+                ((u32)*((u8 *)&localColorDword + 2)) * ((u32)*((u8 *)this_save + 2)) >> 7;
+            if (colorTemp_vbuf_g >= 0x100) colorTemp_vbuf_g = 0xff;
+            *((u8 *)&localColorDword + 2) = (u8)colorTemp_vbuf_g;
+            colorTemp_vbuf_r =
+                ((u32)*((u8 *)&localColorDword + 1)) * ((u32)*((u8 *)this_save + 1)) >> 7;
+            if (colorTemp_vbuf_r >= 0x100) colorTemp_vbuf_r = 0xff;
+            *((u8 *)&localColorDword + 1) = (u8)colorTemp_vbuf_r;
+            colorTemp_vbuf_a =
+                ((u32)*((u8 *)&localColorDword + 0)) * ((u32)*((u8 *)this_save + 0)) >> 7;
+            if (colorTemp_vbuf_a >= 0x100) colorTemp_vbuf_a = 0xff;
+            *((u8 *)&localColorDword + 0) = (u8)colorTemp_vbuf_a;
+            colorTemp_vbuf_b =
+                ((u32)*((u8 *)&localColorDword + 3)) * ((u32)*((u8 *)this_save + 3)) >> 7;
+            if (colorTemp_vbuf_b >= 0x100) colorTemp_vbuf_b = 0xff;
+            *((u8 *)&localColorDword + 3) = (u8)colorTemp_vbuf_b;
+        }
+        if (this_save->someCounter_2e4c8 != (i32)localColorDword)
+        {
+            this_save->someCounter_2e4c8 = (i32)localColorDword;
+            ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                ->SetRenderState(D3DRS_TEXTUREFACTOR, this_save->someCounter_2e4c8);
+        }
+    }
+    else
+    {
+        // Software path: always modulate, then stamp the 8 colour-slot dwords.
+        if (*(i32 *)((u8 *)this_save + 0x4) != 0)
+        {
+            colorTemp_soft_g =
+                ((u32)*((u8 *)&localColorDword + 2)) * ((u32)*((u8 *)this_save + 2)) >> 7;
+            if (colorTemp_soft_g >= 0x100) colorTemp_soft_g = 0xff;
+            *((u8 *)&localColorDword + 2) = (u8)colorTemp_soft_g;
+            colorTemp_soft_r =
+                ((u32)*((u8 *)&localColorDword + 1)) * ((u32)*((u8 *)this_save + 1)) >> 7;
+            if (colorTemp_soft_r >= 0x100) colorTemp_soft_r = 0xff;
+            *((u8 *)&localColorDword + 1) = (u8)colorTemp_soft_r;
+            colorTemp_soft_a =
+                ((u32)*((u8 *)&localColorDword + 0)) * ((u32)*((u8 *)this_save + 0)) >> 7;
+            if (colorTemp_soft_a >= 0x100) colorTemp_soft_a = 0xff;
+            *((u8 *)&localColorDword + 0) = (u8)colorTemp_soft_a;
+            colorTemp_soft_b =
+                ((u32)*((u8 *)&localColorDword + 3)) * ((u32)*((u8 *)this_save + 3)) >> 7;
+            if (colorTemp_soft_b >= 0x100) colorTemp_soft_b = 0xff;
+            *((u8 *)&localColorDword + 3) = (u8)colorTemp_soft_b;
+        }
+        g_AnmMgrColorSlot_4b9fb8 = localColorDword;
+        g_AnmMgrColorSlot_4b9fd4 = localColorDword;
+        g_AnmMgrColorSlot_4b9ff0 = localColorDword;
+        g_AnmMgrColorSlot_4ba00c = localColorDword;
+        g_AnmMgrColorSlot_4ba084 = localColorDword;
+        g_AnmMgrColorSlot_4ba09c = localColorDword;
+        g_AnmMgrColorSlot_4ba0b4 = localColorDword;
+        g_AnmMgrColorSlot_4ba0cc = localColorDword;
+    }
+
+    // ---- (3) ZWRITEENABLE: vm dword-flag bit 12 -> D3DRS_ZWRITEENABLE -----
+    // Skipped entirely when cfg.opts bit 6 (TURN_OFF_DEPTH_TEST) is set.
+    if ((g_SupervisorG0x575a9c >> 6 & 1) == 0)
+    {
+        if (this_save->currentZWriteDisable != ((*(u32 *)((u8 *)vm + 0x1c0) >> 0xc) & 1))
+        {
+            this_save->currentZWriteDisable = (u8)((*(u32 *)((u8 *)vm + 0x1c0) >> 0xc) & 1);
+            if (((*(u32 *)((u8 *)vm + 0x1c0) >> 0xc) & 1) == 0)
+            {
+                ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                    ->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
+            }
+            else
+            {
+                ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                    ->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+            }
+        }
+    }
+
+    // ---- (4) byte_2e4d4: vm dword-flag bit 14 -> camera + viewport --------
+    if (this_save->byte_2e4d4 != ((*(u32 *)((u8 *)vm + 0x1c0) >> 0xe) & 1))
+    {
+        AnmManager_FlushVertexBuffer_44f5c0(g_AnmManager);
+        this_save->byte_2e4d4 = (u8)((*(u32 *)((u8 *)vm + 0x1c0) >> 0xe) & 1);
+        if (((*(u32 *)((u8 *)vm + 0x1c0) >> 0xe) & 1) == 0)
+        {
+            Supervisor_Setup3DCamera_408180(&g_SupervisorCameraStub_1347b00);
+        }
+        else
+        {
+            Supervisor_Setup2DCamera_4082b0(&g_SupervisorCameraStub_1347b00);
+        }
+        ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+            ->SetViewport((D3DVIEWPORT8 *)&g_SupervisorG0x575a18);
+    }
+
+    // Per-call counter bump at +0x10 (mirrors orig's `(*(int*)(this+0x10))++`).
+    *(i32 *)((u8 *)this_save + 0x10) = *(i32 *)((u8 *)this_save + 0x10) + 1;
 }
 
 // ============================================================================
