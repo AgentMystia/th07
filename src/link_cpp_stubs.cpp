@@ -211,4 +211,24 @@ void __fastcall D3DXMatrixMultiply_461aa2(void *out, void *a, void *b)
 {
     (void)out; (void)a; (void)b;
 }
+
+// LoadTextureFromMemory (FUN_0044d9e0) surface helpers. Orig FUN_0046298a /
+// FUN_00462aa6. Real bodies live in the d3dx8 tex/surface library; stubbed
+// as error/no-op here (normal-build only).
+int __fastcall D3DXCreateTextureFromSurface_46298a(void *device, int width, int height,
+                                                    int mipLevels, int usage, int format,
+                                                    int pool, void **ppTexture)
+{
+    (void)device; (void)width; (void)height; (void)mipLevels; (void)usage;
+    (void)format; (void)pool; (void)ppTexture;
+    return -1;
+}
+int __fastcall D3DXLoadSurfaceFromMemory_462aa6(void *dstSurface, void *palette, void *dstRect,
+                                                void *srcMemory, void *srcPalette, void *srcRect,
+                                                int filter, unsigned int colorKey)
+{
+    (void)dstSurface; (void)palette; (void)dstRect; (void)srcMemory; (void)srcPalette;
+    (void)srcRect; (void)filter; (void)colorKey;
+    return -1;
+}
 }

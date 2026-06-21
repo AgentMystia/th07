@@ -98,6 +98,23 @@ extern "C" void __fastcall D3DXMatrixMultiply_461aa2(D3DXMATRIX *out, D3DXMATRIX
 // DrawPrimitiveUP vertex buffer (orig 0x4ba078). 4 * VertexTex1Xyzrwh = 0x60
 // bytes; DrawPrimitiveUP reads it with stride 0x18.
 extern "C" u8 g_DrawPrimUpVerts_4ba078[0x60];
+// LoadTextureFromMemory cross-module references:
+//   g_TextureFormatBytesPerPixel_495144: per-format bytes-per-pixel table
+//     (orig 0x495144, 6 entries indexed by the same format index as
+//     g_TextureFormatD3D8Mapping).
+//   D3DXCreateTextureFromSurface_46298a (FUN_0046298a): wraps
+//     IDirect3DDevice8::CreateTexture + D3DX surface bookkeeping.
+//   D3DXLoadSurfaceFromMemory_462aa6 (FUN_00462aa6): wraps
+//     IDirect3DSurface8::LockRect + D3DXLoadSurfaceFromMemory + UnlockRect.
+extern "C" u32 g_TextureFormatBytesPerPixel_495144[6];
+extern "C" i32 __fastcall D3DXCreateTextureFromSurface_46298a(void *device, i32 width, i32 height,
+                                                              i32 mipLevels, i32 usage,
+                                                              i32 format, i32 pool,
+                                                              void **ppTexture);
+extern "C" i32 __fastcall D3DXLoadSurfaceFromMemory_462aa6(void *dstSurface, void *palette,
+                                                           void *dstRect, void *srcMemory,
+                                                           void *srcPalette, void *srcRect,
+                                                           i32 filter, u32 colorKey);
 
 namespace th07
 {
@@ -272,17 +289,110 @@ ZunResult AnmManager::LoadTextureAlphaChannel(i32 textureIdx, char *textureName,
 // ============================================================================
 // LoadTextureFromMemory  (FUN_0044d9e0)
 //
-// Builds a D3D texture from an already-loaded in-memory descriptor (header
-// with width/height/format at +0x6/+0x8/+0xa, pixel data at +0x10). Uses the
-// D3DXCreateTexture + UpdateTexture/LoadRectFromSurface path. Not yet lifted.
+// Verified body, lifted from the disassembly. Builds a D3D texture from an
+// already-loaded in-memory descriptor:
+//   header+0x06 (i16) textureFormat index (into g_TextureFormatD3D8Mapping)
+//   header+0x08 (i16) width
+//   header+0x0a (i16) height
+//   header+0x10       pixel data
+//
+// Flow:
+//   1. ReleaseTexture(textureIdx).
+//   2. If cfg.opts bit 2 (FORCE_16BIT_COLOR_MODE): demote A8R8G8B8/UNKNOWN
+//      to A4R4G4B4 (idx 5), R8G8B8 to R5G6B5 (idx 3).
+//   3. device->CreateImageSurface(width, height, format[header->fmt], &surf).
+//   4. surf->LockRect(&lockedRect, NULL, 0).
+//   5. For each row: memcpy width*bpp[header->fmt] bytes from
+//      header+0x10 + row*width*bpp into lockedRect.pBits + row*lockedRect.Pitch.
+//   6. surf->UnlockRect().
+//   7. D3DXCreateTextureFromSurface(device, width, height, 1, 0, format[fmt],
+//      1, &textures[textureIdx]) via FUN_0046298a.
+//   8. textures[textureIdx]->GetSurfaceLevel(0, &texSurface).
+//   9. D3DXLoadSurfaceFromSurface(texSurface, NULL, NULL, surf, NULL, NULL,
+//      D3DX_FILTER_NONE, 0) via FUN_00462aa6.
+//  10. Release the temp image surface + the texture-level surface.
 // ============================================================================
-ZunResult AnmManager::LoadTextureFromMemory(i32 textureIdx, void *header, i32 textureFormat)
+#pragma var_order(header, imageSurface, lockedRect, rowIdx, dstRow, srcRow, rowBytes, texSurface)
+ZunResult AnmManager::LoadTextureFromMemory(i32 textureIdx, void *headerIn, i32 textureFormat)
 {
-    // TODO: lift body from FUN_0044d9e0.
-    (void)textureIdx;
-    (void)header;
-    (void)textureFormat;
-    return ZUN_ERROR;
+    void *header;
+    IDirect3DSurface8 *imageSurface;
+    D3DLOCKED_RECT lockedRect;
+    i32 rowIdx;
+    u8 *dstRow;
+    u8 *srcRow;
+    u32 rowBytes;
+    IDirect3DSurface8 *texSurface;
+
+    header = headerIn;
+
+    this->ReleaseTexture(textureIdx);
+
+    // 16-bit-colour downgrade (mirror LoadTexture's branch).
+    if ((g_SupervisorCfgOpts_575a9c >> GCOS_FORCE_16BIT_COLOR_MODE & 1) != 0)
+    {
+        if (g_TextureFormatD3D8Mapping[textureFormat] == D3DFMT_A8R8G8B8 ||
+            g_TextureFormatD3D8Mapping[textureFormat] == D3DFMT_UNKNOWN)
+        {
+            textureFormat = TEX_FMT_A4R4G4B4;
+        }
+        else if (g_TextureFormatD3D8Mapping[textureFormat] == D3DFMT_R8G8B8)
+        {
+            textureFormat = TEX_FMT_R5G6B5;
+        }
+    }
+
+    // Create a scratch image surface and lock it for writing.
+    ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+        ->CreateImageSurface((UINT) * (i16 *)((u8 *)header + 0x8),
+                             (UINT) * (i16 *)((u8 *)header + 0xa),
+                             g_TextureFormatD3D8Mapping[*(i16 *)((u8 *)header + 0x6)],
+                             &imageSurface);
+    imageSurface->LockRect(&lockedRect, NULL, 0);
+
+    // Copy each row, accounting for the surface's pitch (which may exceed
+    // width*bpp due to alignment) vs the source's packed layout.
+    for (rowIdx = 0; rowIdx < *(i16 *)((u8 *)header + 0xa); rowIdx++)
+    {
+        dstRow = (u8 *)lockedRect.pBits + rowIdx * lockedRect.Pitch;
+        rowBytes = (u32)(*(i16 *)((u8 *)header + 0x8)) *
+                   g_TextureFormatBytesPerPixel_495144[*(i16 *)((u8 *)header + 0x6)];
+        srcRow = (u8 *)header + 0x10 +
+                 rowIdx * (*(i16 *)((u8 *)header + 0x8)) *
+                              g_TextureFormatBytesPerPixel_495144[*(i16 *)((u8 *)header + 0x6)];
+        memcpy(dstRow, srcRow, rowBytes);
+    }
+
+    imageSurface->UnlockRect();
+
+    // Create the actual texture from the scratch surface.
+    if (D3DXCreateTextureFromSurface_46298a(
+            (IDirect3DDevice8 *)g_SupervisorD3dDevice_575958,
+            (i32) * (i16 *)((u8 *)header + 0x8), (i32) * (i16 *)((u8 *)header + 0xa), 1, 0,
+            (i32)g_TextureFormatD3D8Mapping[textureFormat], 1,
+            (void **)(this->textures + textureIdx)) != 0)
+    {
+        return ZUN_ERROR;
+    }
+
+    // Copy the scratch surface into the texture's level-0 surface.
+    this->textures[textureIdx]->GetSurfaceLevel(0, &texSurface);
+    if (D3DXLoadSurfaceFromMemory_462aa6(texSurface, 0, 0, imageSurface, 0, 0, 3, 0) != 0)
+    {
+        return ZUN_ERROR;
+    }
+
+    if (imageSurface != NULL)
+    {
+        imageSurface->Release();
+        imageSurface = NULL;
+    }
+    if (texSurface != NULL)
+    {
+        texSurface->Release();
+    }
+
+    return ZUN_SUCCESS;
 }
 
 // ============================================================================

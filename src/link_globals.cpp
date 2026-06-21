@@ -33,6 +33,17 @@ extern "C" void *g_SupervisorD3dDevice_575958 = 0;
 // DrawPrimitiveUP vertex buffer for the software (no-vertex-buffer) path
 // (orig 0x4ba078). 4 * VertexTex1Xyzrwh = 0x60 bytes; initialised at startup.
 extern "C" u8 g_DrawPrimUpVerts_4ba078[0x60] = {0};
+// Per-texture-format bytes-per-pixel table (orig 0x495144). Indexed by the
+// same format index as g_TextureFormatD3D8Mapping (UNKNOWN/A8R8G8B8/A1R5G5B5/
+// R5G6B5/R8G8B8/A4R4G4B4). Values lifted from the orig .rdata dump.
+extern "C" u32 g_TextureFormatBytesPerPixel_495144[6] = {
+    4, // UNKNOWN  (treated as 32-bit)
+    4, // A8R8G8B8 (32-bit)
+    2, // A1R5G5B5 (16-bit)
+    2, // R5G6B5   (16-bit)
+    3, // R8G8B8   (24-bit)
+    2, // A4R4G4B4 (16-bit)
+};
 
 extern "C" const f32 g_AsciiC0x498a50 = 0.0f;
 extern "C" const f32 g_AsciiC0x498a80 = 0.0f;

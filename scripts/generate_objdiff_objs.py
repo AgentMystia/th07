@@ -252,11 +252,19 @@ SYMBOL_MAP = {
     b"_g_SupervisorD3dDevice_575958": b"DAT_00575958",
     # DrawPrimitiveUP vertex buffer for the no-vertex-buffer path (orig 0x4ba078).
     b"_g_DrawPrimUpVerts_4ba078": b"DAT_004BA078",
+    # Per-texture-format bytes-per-pixel table (orig 0x495144), indexed by the
+    # same format index as g_TextureFormatD3D8Mapping.
+    b"_g_TextureFormatBytesPerPixel_495144": b"DAT_00495144",
     # D3DX matrix helpers called by DrawInner (FUN_ anchors).
     b"@D3DXMatrixRotationZ_461b85@8": b"FUN_00461B85",
     b"@D3DXMatrixRotationX_461bff@8": b"FUN_00461BFF",
     b"@D3DXMatrixRotationY_461c7a@8": b"FUN_00461C7A",
     b"@D3DXMatrixMultiply_461aa2@12": b"FUN_00461AA2",
+    # LoadTextureFromMemory (FUN_0044d9e0) d3dx8 surface helpers (FUN_ anchors).
+    # Both take 8 args; __fastcall puts 2 in ECX/EDX, leaving 6 stack args = 24
+    # bytes cleaned up by the callee.
+    b"@D3DXCreateTextureFromSurface_46298a@24": b"FUN_0046298A",
+    b"@D3DXLoadSurfaceFromMemory_462aa6@24": b"FUN_00462AA6",
     # Cross-module function callees from SetRenderStateForVm (FUN_ anchors).
     # MSVC __fastcall emits @Name@N; demangle_msvc leaves the leading @ as-is
     # (it only handles _-prefixed stdcall and ?-prefixed C++), so the keys
