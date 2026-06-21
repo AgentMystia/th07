@@ -179,15 +179,15 @@ void __fastcall AnmMgr_ExecuteScript_450d60_C(th07::AnmMgrStub *a, void *b)
 // FUN_00408180 / FUN_004082b0). No-op until their owning modules are lifted;
 // the real bodies live in AnmManager (FlushVertexBuffer) and Supervisor
 // (Setup3DCamera / Setup2DCamera). Normal-build only.
-void __fastcall AnmManager_FlushVertexBuffer_44f5c0(void *anmMgr)
+void __fastcall AnmManager_FlushVertexBuffer(void *anmMgr)
 {
     (void)anmMgr;
 }
-void __fastcall Supervisor_Setup3DCamera_408180(void *cameraStub)
+void __fastcall Supervisor_Setup3DCamera(void *cameraStub)
 {
     (void)cameraStub;
 }
-void __fastcall Supervisor_Setup2DCamera_4082b0(void *cameraStub)
+void __fastcall Supervisor_Setup2DCamera(void *cameraStub)
 {
     (void)cameraStub;
 }

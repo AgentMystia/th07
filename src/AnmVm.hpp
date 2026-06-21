@@ -126,17 +126,32 @@ struct AnmVm
     // +0xf8 world matrix (4x4). FUN_004010f0 does
     // `ECX = this+0xf8; CALL D3DXMatrixIdentity`.
     D3DXMATRIX matrix;
-    // +0x138..0x1b8 raw gap (cached sprite/uv transform + scratch fields
-    // written by AnmManager::SetActiveSprite). Owned by AnmManager.
-    u8 unk138[0x1b8 - 0x138];
+    // +0x138 scratch world-matrix copy (4x4). SetActiveSprite copies the 16
+    // dwords from +0xf8 here and then bakes the per-axis scale into the
+    // diagonal (m[0][0] *= scaleX at +0x138, m[1][1] *= scaleY at +0x14c).
+    // DrawInner snapshots this for SetTransform(D3DTS_WORLD).
+    D3DXMATRIX scratchMatrix;
+    // +0x178 texture matrix (4x4). SetActiveSprite primes m[0][0] (+0x178)
+    // and m[1][1] (+0x18c) with the per-sprite uvScale; DrawInner snapshots
+    // this for SetTransform(D3DTS_TEXTURE0) and overwrites m[2][0]/m[2][1]
+    // with the current uv scroll offset.
+    D3DXMATRIX textureMatrix;
     // +0x1b8 color (D3DCOLOR). FUN_004010f0 MOV [this+0x1b8],0xffffffff.
     ZunColor color;
-    // +0x1bc..0x1c0 raw gap so the u16 flags sits at +0x1c0.
-    u8 unk1bc[0x1c0 - 0x1bc];
+    // +0x1bc alternate colour (D3DCOLOR). Selected over `color` by
+    // dword-flags bit 16 in SetRenderStateForVm / DrawInner.
+    ZunColor altColor;
     // +0x1c0 flags (u16). FUN_004010f0 MOV word [this+0x1c0],7.
     u16 flags;
-    // +0x1c2..0x1d4 raw gap.
-    u8 unk1c2[0x1d4 - 0x1c2];
+    // +0x1c2..0x1c8 raw gap so the position offsets are 4-aligned.
+    u8 unk1c2[0x1c8 - 0x1c2];
+    // +0x1c8 positionOffsetX (f32). DrawInner adds this (plus the per-
+    // AnmManager frame offset at this+0x18) to the sprite origin.
+    f32 positionOffsetX;
+    // +0x1cc positionOffsetY (f32). DrawInner's Y counterpart.
+    f32 positionOffsetY;
+    // +0x1d0..0x1d4 raw gap.
+    u8 unk1d0[0x1d4 - 0x1d0];
     // +0x1d4 activeSpriteIndex (i16). FUN_00401170 MOV word [this+0x1d4],0xffff.
     i16 activeSpriteIndex;
     // +0x1d6 baseSpriteIndex (i16). Read by AnmManager::SetActiveSprite.

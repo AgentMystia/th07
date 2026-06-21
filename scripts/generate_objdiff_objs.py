@@ -169,7 +169,7 @@ SYMBOL_MAP = {
     b"_g_GameMgrC0x498c80": b"DAT_00498C80",
     b"_g_GameMgrG0x49fe20": b"DAT_0049FE20",
     b"_g_GameMgrG0x49fe24": b"DAT_0049FE24",
-    b"_g_SupervisorG0x575a18": b"DAT_00575A18",
+    b"_g_SupervisorViewport_575a18": b"DAT_00575A18",
     b"_g_SupervisorG0x575a1c": b"DAT_00575A1C",
     b"_g_SupervisorG0x575a20": b"DAT_00575A20",
     b"_g_SupervisorG0x575a24": b"DAT_00575A24",
@@ -247,7 +247,7 @@ SYMBOL_MAP = {
     # Ignored `this` for the Setup3D/2DCamera helpers (orig 0x1347b00).
     b"_g_SupervisorCameraStub_1347b00": b"DAT_01347B00",
     # cfg.opts mirror read as an absolute address by SetRenderStateForVm.
-    b"_g_SupervisorG0x575a9c": b"DAT_00575A9C",
+    b"_g_SupervisorCfgOpts_575a9c": b"DAT_00575A9C",
     # D3D device pointer slot (orig 0x575958), read absolutely by SetRenderStateForVm.
     b"_g_SupervisorD3dDevice_575958": b"DAT_00575958",
     # DrawPrimitiveUP vertex buffer for the no-vertex-buffer path (orig 0x4ba078).
@@ -261,9 +261,9 @@ SYMBOL_MAP = {
     # MSVC __fastcall emits @Name@N; demangle_msvc leaves the leading @ as-is
     # (it only handles _-prefixed stdcall and ?-prefixed C++), so the keys
     # must match the raw COFF symbol verbatim.
-    b"@AnmManager_FlushVertexBuffer_44f5c0@4": b"FUN_0044F5C0",
-    b"@Supervisor_Setup3DCamera_408180@4": b"FUN_00408180",
-    b"@Supervisor_Setup2DCamera_4082b0@4": b"FUN_004082B0",
+    b"@AnmManager_FlushVertexBuffer@4": b"FUN_0044F5C0",
+    b"@Supervisor_Setup3DCamera@4": b"FUN_00408180",
+    b"@Supervisor_Setup2DCamera@4": b"FUN_004082B0",
 }
 
 def map_symbol(sym):

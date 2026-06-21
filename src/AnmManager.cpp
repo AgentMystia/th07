@@ -61,14 +61,14 @@ extern "C" D3DFORMAT g_TextureFormatD3D8Mapping[6] = {
 // builds. Their SYMBOL_MAP entries (scripts/generate_objdiff_objs.py) map
 // each typed name back to its orig DAT_/FUN_ address for byte-true diffing.
 //   - 8 colour-slot dwords stamped on the software (no-vertex-buffer) path.
-//   - g_SupervisorG0x575a18: viewport struct (also referenced by GameManager).
-//   - g_SupervisorG0x575a9c: cfg.opts bitfield (orig reads it as an absolute
+//   - g_SupervisorViewport_575a18: viewport struct (also referenced by GameManager).
+//   - g_SupervisorCfgOpts_575a9c: cfg.opts bitfield (orig reads it as an absolute
 //     0x575a9c load, not a struct-relative access, so we mirror that here).
 //   - g_SupervisorCameraStub_1347b00: ignored `this` passed to the camera
 //     helpers (they read the device via the absolute 0x575958 slot).
-//   - AnmManager_FlushVertexBuffer_44f5c0 (FUN_0044f5c0): in-module helper
+//   - AnmManager_FlushVertexBuffer (FUN_0044f5c0): in-module helper
 //     that drains this->vertexBufferDirty via DrawPrimitiveUP.
-//   - Supervisor_Setup3DCamera_408180 / _2DCamera_4082b0 (FUN_00408180 /
+//   - Supervisor_Setup3DCamera / _2DCamera_4082b0 (FUN_00408180 /
 //     FUN_004082b0): re-install the 3D / 2D view+projection matrices.
 extern "C" u32 g_AnmMgrColorSlot_4b9fb8;
 extern "C" u32 g_AnmMgrColorSlot_4b9fd4;
@@ -78,16 +78,16 @@ extern "C" u32 g_AnmMgrColorSlot_4ba084;
 extern "C" u32 g_AnmMgrColorSlot_4ba09c;
 extern "C" u32 g_AnmMgrColorSlot_4ba0b4;
 extern "C" u32 g_AnmMgrColorSlot_4ba0cc;
-extern "C" u32 g_SupervisorG0x575a18;
-extern "C" u32 g_SupervisorG0x575a9c;
+extern "C" u32 g_SupervisorViewport_575a18;
+extern "C" u32 g_SupervisorCfgOpts_575a9c;
 // D3D device pointer slot (orig 0x575958 = g_Supervisor + 8). Orig reads
 // it as an absolute [DAT_00575958] load; mirroring that avoids the
 // struct-relative [DAT_00575950+8] reloc that objdiff treats as distinct.
 extern "C" void *g_SupervisorD3dDevice_575958;
 extern "C" u8 g_SupervisorCameraStub_1347b00;
-extern "C" void __fastcall AnmManager_FlushVertexBuffer_44f5c0(void *anmMgr);
-extern "C" void __fastcall Supervisor_Setup3DCamera_408180(void *cameraStub);
-extern "C" void __fastcall Supervisor_Setup2DCamera_4082b0(void *cameraStub);
+extern "C" void __fastcall AnmManager_FlushVertexBuffer(void *anmMgr);
+extern "C" void __fastcall Supervisor_Setup3DCamera(void *cameraStub);
+extern "C" void __fastcall Supervisor_Setup2DCamera(void *cameraStub);
 // DrawInner (FUN_00450520) matrix helpers (D3DX math): build a rotation
 // matrix from a single angle (Z/X/Y variants) and multiply two matrices.
 // Each takes (D3DXMATRIX *out, float angle) or (out, a, b). Orig FUN_anchors.
@@ -346,19 +346,20 @@ ZunResult AnmManager::SetActiveSprite(AnmVm *vm, u32 spriteIdx)
     vm->sprite = this->sprites + spriteIdx;
 
     D3DXMatrixIdentity(&vm->matrix);
-    D3DXMatrixIdentity((D3DXMATRIX *)((u8 *)vm + 0x138));
+    D3DXMatrixIdentity(&vm->scratchMatrix);
     vm->matrix.m[0][0] = vm->sprite->widthPx / vm->sprite->textureWidth;
     vm->matrix.m[1][1] = vm->sprite->heightPx / vm->sprite->textureHeight;
 
-    *(f32 *)((u8 *)vm + 0x178) =
+    vm->textureMatrix.m[0][0] =
         (vm->sprite->widthPx / vm->sprite->textureHeight) * vm->sprite->uvScaleX;
-    *(f32 *)((u8 *)vm + 0x18c) =
+    vm->textureMatrix.m[1][1] =
         (vm->sprite->heightPx / vm->sprite->textureWidth) * vm->sprite->uvScaleY;
 
-    // Cache the 4x4 matrix from +0xf8 into the +0x138 scratch region.
+    // Cache the 4x4 world matrix (vm->matrix) into the scratch copy
+    // (vm->scratchMatrix).
     {
-        u32 *src = (u32 *)((u8 *)vm + 0xf8);
-        u32 *dst = (u32 *)((u8 *)vm + 0x138);
+        u32 *src = (u32 *)&vm->matrix;
+        u32 *dst = (u32 *)&vm->scratchMatrix;
         i32 i;
         for (i = 0x10; i != 0; i--)
         {
@@ -809,6 +810,8 @@ ZunResult AnmManager::DrawNoRotation(AnmVm *vm)
     return ZUN_ERROR;
 }
 
+#pragma var_order(worldMatrix, rotMatrix, texMatrix, positionX, positionY, \
+                  rotAbsX, rotAbsY)
 ZunResult AnmManager::DrawInner(AnmVm *vm)
 {
     D3DXMATRIX worldMatrix;
@@ -820,15 +823,15 @@ ZunResult AnmManager::DrawInner(AnmVm *vm)
     f32 rotAbsY;
 
     // ---- early bail: VM must be visible, in-scope, and have a colour ------
-    if ((*(u32 *)((u8 *)vm + 0x1c0) & 1) == 0)
+    if (((*(u32 *)((u8 *)vm + 0x1c0)) & 1) == 0)
     {
         return (ZunResult)-1;
     }
-    if ((*(u32 *)((u8 *)vm + 0x1c0) >> 1 & 1) == 0)
+    if (((*(u32 *)((u8 *)vm + 0x1c0)) >> 1 & 1) == 0)
     {
         return (ZunResult)-1;
     }
-    if (*((u8 *)vm + 0x1bb) == 0)
+    if (*((u8 *)&vm->color + 3) == 0)
     {
         return (ZunResult)-1;
     }
@@ -836,70 +839,66 @@ ZunResult AnmManager::DrawInner(AnmVm *vm)
     // Flush any pending vertex-buffer draw before touching device state.
     if (this->vertexBufferDirty != 0)
     {
-        AnmManager_FlushVertexBuffer_44f5c0(this);
+        AnmManager_FlushVertexBuffer(this);
     }
 
     // ---- optional rotation update (flag 15 clear, flag 3 or 2 set) -------
-    if ((*(u32 *)((u8 *)vm + 0x1c0) >> 0xf & 1) == 0 &&
-        ((*(u32 *)((u8 *)vm + 0x1c0) >> 3 & 1) != 0 ||
-         (*(u32 *)((u8 *)vm + 0x1c0) >> 2 & 1) != 0))
+    if (((*(u32 *)((u8 *)vm + 0x1c0)) >> 0xf & 1) == 0 &&
+        (((*(u32 *)((u8 *)vm + 0x1c0)) >> 3 & 1) != 0 || ((*(u32 *)((u8 *)vm + 0x1c0)) >> 2 & 1) != 0))
     {
-        // Copy vm+0xf8 (16 dwords) into vm+0x138, then bake the per-axis
-        // scale into the diagonal.
-        memcpy((u8 *)vm + 0x138, (u8 *)vm + 0xf8, 0x40);
-        *(f32 *)((u8 *)vm + 0x138) = *(f32 *)((u8 *)vm + 0x138) * vm->scaleX;
-        *(f32 *)((u8 *)vm + 0x14c) = *(f32 *)((u8 *)vm + 0x14c) * vm->scaleY;
-        *(u32 *)((u8 *)vm + 0x1c0) = *(u32 *)((u8 *)vm + 0x1c0) & ~0x8;
+        // Copy the world matrix (vm->matrix) into the scratch copy
+        // (vm->scratchMatrix) and bake the per-axis scale into the diagonal.
+        memcpy(&vm->scratchMatrix, &vm->matrix, sizeof(D3DXMATRIX));
+        vm->scratchMatrix.m[0][0] = vm->scratchMatrix.m[0][0] * vm->scaleX;
+        vm->scratchMatrix.m[1][1] = vm->scratchMatrix.m[1][1] * vm->scaleY;
+        vm->flags = (u16)(vm->flags & ~0x8);
 
         // For each non-zero rotation axis, rotate the matrix and re-multiply.
         if (vm->rotation.x != 0.0f)
         {
             D3DXMatrixRotationZ_461b85(&rotMatrix, vm->rotation.x);
-            D3DXMatrixMultiply_461aa2((D3DXMATRIX *)((u8 *)vm + 0x138),
-                                      (D3DXMATRIX *)((u8 *)vm + 0x138), &rotMatrix);
+            D3DXMatrixMultiply_461aa2(&vm->scratchMatrix, &vm->scratchMatrix, &rotMatrix);
         }
         if (vm->rotation.y != 0.0f)
         {
             D3DXMatrixRotationX_461bff(&rotMatrix, vm->rotation.y);
-            D3DXMatrixMultiply_461aa2((D3DXMATRIX *)((u8 *)vm + 0x138),
-                                      (D3DXMATRIX *)((u8 *)vm + 0x138), &rotMatrix);
+            D3DXMatrixMultiply_461aa2(&vm->scratchMatrix, &vm->scratchMatrix, &rotMatrix);
         }
         if (vm->rotation.z != 0.0f)
         {
             D3DXMatrixRotationY_461c7a(&rotMatrix, vm->rotation.z);
-            D3DXMatrixMultiply_461aa2((D3DXMATRIX *)((u8 *)vm + 0x138),
-                                      (D3DXMATRIX *)((u8 *)vm + 0x138), &rotMatrix);
+            D3DXMatrixMultiply_461aa2(&vm->scratchMatrix, &vm->scratchMatrix, &rotMatrix);
         }
-        *(u32 *)((u8 *)vm + 0x1c0) = *(u32 *)((u8 *)vm + 0x1c0) & ~0x4;
+        vm->flags = (u16)(vm->flags & ~0x4);
     }
 
-    // Snapshot the per-VM world matrix (vm+0x138) for SetTransform.
-    memcpy(&worldMatrix, (u8 *)vm + 0x138, 0x40);
+    // Snapshot the per-VM scratch world matrix for SetTransform.
+    memcpy(&worldMatrix, &vm->scratchMatrix, sizeof(D3DXMATRIX));
 
     // ---- compute the on-screen position -----------------------------------
-    if ((*(u32 *)((u8 *)vm + 0x1c0) >> 0xa & 1) != 0)
+    if (((*(u32 *)((u8 *)vm + 0x1c0)) >> 0xa & 1) != 0)
     {
         rotAbsX = (vm->sprite->widthPx * vm->scaleX) / 2.0f;
         if (rotAbsX < 0) rotAbsX = -rotAbsX;
-        positionX = rotAbsX + *(f32 *)((u8 *)vm + 0x1c8);
+        positionX = rotAbsX + vm->positionOffsetX;
     }
     else
     {
-        positionX = *(f32 *)((u8 *)vm + 0x1c8);
+        positionX = vm->positionOffsetX;
     }
-    if ((*(u32 *)((u8 *)vm + 0x1c0) >> 0xa & 2) != 0)
+    if (((*(u32 *)((u8 *)vm + 0x1c0)) >> 0xa & 2) != 0)
     {
         rotAbsY = (vm->sprite->heightPx * vm->scaleY) / 2.0f;
         if (rotAbsY < 0) rotAbsY = -rotAbsY;
-        positionY = rotAbsY + *(f32 *)((u8 *)vm + 0x1cc);
+        positionY = rotAbsY + vm->positionOffsetY;
     }
     else
     {
-        positionY = *(f32 *)((u8 *)vm + 0x1cc);
+        positionY = vm->positionOffsetY;
     }
-    // Add the per-AnmManager frame offset (stored at this+0x18 / +0x1c).
-    positionX = positionX + *(f32 *)((u8 *)this + 0x18);
-    positionY = positionY + *(f32 *)((u8 *)this + 0x1c);
+    // Add the per-AnmManager frame offset.
+    positionX = positionX + this->frameOffsetX;
+    positionY = positionY + this->frameOffsetY;
 
     // Apply blend / colour / Z render state for this VM.
     this->SetRenderStateForVm(vm);
@@ -909,13 +908,16 @@ ZunResult AnmManager::DrawInner(AnmVm *vm)
         ->SetTransform(D3DTS_WORLD, &worldMatrix);
 
     // ---- rebind texture + uv-scroll transform when the sprite changes ----
-    if (this->cachedSpritePtr_2e4d8 != *(f32 *)((u8 *)vm + 0x1e4))
+    // Orig compares the cached sprite pointer (stored as f32 bits in
+    // this->cachedSpritePtr_2e4d8) against vm->sprite. We mirror the bit
+    // reinterpret so the objdiff byte-match holds.
+    if (this->cachedSpritePtr_2e4d8 != *(f32 *)&vm->sprite)
     {
-        this->cachedSpritePtr_2e4d8 = *(f32 *)((u8 *)vm + 0x1e4);
+        this->cachedSpritePtr_2e4d8 = *(f32 *)&vm->sprite;
 
-        // Snapshot the per-VM texture matrix (vm+0x178) and bake in the
-        // current uv scroll position.
-        memcpy(&texMatrix, (u8 *)vm + 0x178, 0x40);
+        // Snapshot the per-VM texture matrix and bake in the current uv
+        // scroll position.
+        memcpy(&texMatrix, &vm->textureMatrix, sizeof(D3DXMATRIX));
         texMatrix.m[2][0] = vm->sprite->uvStartX + vm->uvScrollPos.x;
         texMatrix.m[2][1] = vm->sprite->uvStartY + vm->uvScrollPos.y;
         ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
@@ -934,7 +936,7 @@ ZunResult AnmManager::DrawInner(AnmVm *vm)
     // ---- (re)install the vertex shader on transition ----------------------
     if (this->currentVertexShader != 2)
     {
-        if ((g_SupervisorG0x575a9c >> 1 & 1) == 0)
+        if ((g_SupervisorCfgOpts_575a9c >> 1 & 1) == 0)
         {
             ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
                 ->SetVertexShader(D3DFVF_TEX1 | D3DFVF_XYZ);
@@ -954,7 +956,7 @@ ZunResult AnmManager::DrawInner(AnmVm *vm)
     }
 
     // ---- issue the draw call ----------------------------------------------
-    if ((g_SupervisorG0x575a9c >> 1 & 1) == 0)
+    if ((g_SupervisorCfgOpts_575a9c >> 1 & 1) == 0)
     {
         ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
             ->DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 2);
@@ -1014,14 +1016,11 @@ void AnmManager::SetRenderStateForVm(AnmVm *vm)
 
     this_save = this;
 
-    // ---- (1) DESTBLEND: vm dword-flag bit 4 -> D3DRS_DESTBLEND ------------
-    // Orig re-reads the dword at vm+0x1c0 (covers the u16 flags + the next
-    // pad word) on every access; we mirror that to match the instruction
-    // sequence exactly.
-    if (this_save->currentBlendMode != ((*(u32 *)((u8 *)vm + 0x1c0) >> 0x4) & 1))
+    // ---- (1) DESTBLEND: vm flag bit 4 -> D3DRS_DESTBLEND ------------------
+    if (this_save->currentBlendMode != (u8)(((*(u32 *)((u8 *)vm + 0x1c0)) >> 0x4) & 1))
     {
-        this_save->currentBlendMode = (u8)((*(u32 *)((u8 *)vm + 0x1c0) >> 0x4) & 1);
-        if (((*(u32 *)((u8 *)vm + 0x1c0) >> 0x4) & 1) == 0)
+        this_save->currentBlendMode = (u8)(((*(u32 *)((u8 *)vm + 0x1c0)) >> 0x4) & 1);
+        if ((((*(u32 *)((u8 *)vm + 0x1c0)) >> 0x4) & 1) == 0)
         {
             ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
                 ->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
@@ -1034,87 +1033,93 @@ void AnmManager::SetRenderStateForVm(AnmVm *vm)
     }
 
     // ---- (2) TEXTUREFACTOR / colour-slot table ----------------------------
-    // Pick the source colour: dword-flag bit 16 selects vm+0x1bc over
-    // vm->color (+0x1b8).
+    // ---- (2) TEXTUREFACTOR / colour-slot table ----------------------------
+    // Pick the source colour: when the byte at vm+0x1c2 (the high half of
+    // the dword read at +0x1c0; bit 16) is non-zero, prefer vm->altColor
+    // (+0x1bc) over vm->color (+0x1b8).
     if ((*(u32 *)((u8 *)vm + 0x1c0) >> 0x10) & 1)
     {
-        localColorDword = *(u32 *)((u8 *)vm + 0x1bc);
+        localColorDword = vm->altColor;
     }
     else
     {
         localColorDword = vm->color;
     }
 
-    if ((g_SupervisorG0x575a9c >> 1 & 1) == 0)
     {
-        // Vertex-buffer path: modulate by this+0..3 only when this+0x4 != 0,
-        // then apply via D3DRS_TEXTUREFACTOR if the cached colour changed.
-        if (*(i32 *)((u8 *)this_save + 0x4) != 0)
+        if ((g_SupervisorCfgOpts_575a9c >> 1 & 1) == 0)
         {
-            colorTemp_vbuf_g =
-                ((u32)*((u8 *)&localColorDword + 2)) * ((u32)*((u8 *)this_save + 2)) >> 7;
-            if (colorTemp_vbuf_g >= 0x100) colorTemp_vbuf_g = 0xff;
-            *((u8 *)&localColorDword + 2) = (u8)colorTemp_vbuf_g;
-            colorTemp_vbuf_r =
-                ((u32)*((u8 *)&localColorDword + 1)) * ((u32)*((u8 *)this_save + 1)) >> 7;
-            if (colorTemp_vbuf_r >= 0x100) colorTemp_vbuf_r = 0xff;
-            *((u8 *)&localColorDword + 1) = (u8)colorTemp_vbuf_r;
-            colorTemp_vbuf_a =
-                ((u32)*((u8 *)&localColorDword + 0)) * ((u32)*((u8 *)this_save + 0)) >> 7;
-            if (colorTemp_vbuf_a >= 0x100) colorTemp_vbuf_a = 0xff;
-            *((u8 *)&localColorDword + 0) = (u8)colorTemp_vbuf_a;
-            colorTemp_vbuf_b =
-                ((u32)*((u8 *)&localColorDword + 3)) * ((u32)*((u8 *)this_save + 3)) >> 7;
-            if (colorTemp_vbuf_b >= 0x100) colorTemp_vbuf_b = 0xff;
-            *((u8 *)&localColorDword + 3) = (u8)colorTemp_vbuf_b;
+            // Vertex-buffer path: modulate by this+0..3 only when this+0x4
+            // (scriptExecCounter_4) != 0, then apply via D3DRS_TEXTUREFACTOR
+            // if the cached colour changed.
+            if (this_save->scriptExecCounter_4 != 0)
+            {
+                colorTemp_vbuf_g = ((u32)*((u8 *)&localColorDword + 2)) *
+                                   ((u32)*((u8 *)&this_save->scriptExecCounter_0 + 2)) >> 7;
+                if (colorTemp_vbuf_g >= 0x100) colorTemp_vbuf_g = 0xff;
+                *((u8 *)&localColorDword + 2) = (u8)colorTemp_vbuf_g;
+                colorTemp_vbuf_r = ((u32)*((u8 *)&localColorDword + 1)) *
+                                   ((u32)*((u8 *)&this_save->scriptExecCounter_0 + 1)) >> 7;
+                if (colorTemp_vbuf_r >= 0x100) colorTemp_vbuf_r = 0xff;
+                *((u8 *)&localColorDword + 1) = (u8)colorTemp_vbuf_r;
+                colorTemp_vbuf_a = ((u32)*((u8 *)&localColorDword + 0)) *
+                                   ((u32)*((u8 *)&this_save->scriptExecCounter_0 + 0)) >> 7;
+                if (colorTemp_vbuf_a >= 0x100) colorTemp_vbuf_a = 0xff;
+                *((u8 *)&localColorDword + 0) = (u8)colorTemp_vbuf_a;
+                colorTemp_vbuf_b = ((u32)*((u8 *)&localColorDword + 3)) *
+                                   ((u32)*((u8 *)&this_save->scriptExecCounter_0 + 3)) >> 7;
+                if (colorTemp_vbuf_b >= 0x100) colorTemp_vbuf_b = 0xff;
+                *((u8 *)&localColorDword + 3) = (u8)colorTemp_vbuf_b;
+            }
+            if (this_save->someCounter_2e4c8 != (i32)localColorDword)
+            {
+                this_save->someCounter_2e4c8 = (i32)localColorDword;
+                ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                    ->SetRenderState(D3DRS_TEXTUREFACTOR, this_save->someCounter_2e4c8);
+            }
         }
-        if (this_save->someCounter_2e4c8 != (i32)localColorDword)
+        else
         {
-            this_save->someCounter_2e4c8 = (i32)localColorDword;
-            ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
-                ->SetRenderState(D3DRS_TEXTUREFACTOR, this_save->someCounter_2e4c8);
+            // Software path: always modulate, then stamp the 8 colour-slot
+            // dwords.
+            if (this_save->scriptExecCounter_4 != 0)
+            {
+                colorTemp_soft_g = ((u32)*((u8 *)&localColorDword + 2)) *
+                                   ((u32)*((u8 *)&this_save->scriptExecCounter_0 + 2)) >> 7;
+                if (colorTemp_soft_g >= 0x100) colorTemp_soft_g = 0xff;
+                *((u8 *)&localColorDword + 2) = (u8)colorTemp_soft_g;
+                colorTemp_soft_r = ((u32)*((u8 *)&localColorDword + 1)) *
+                                   ((u32)*((u8 *)&this_save->scriptExecCounter_0 + 1)) >> 7;
+                if (colorTemp_soft_r >= 0x100) colorTemp_soft_r = 0xff;
+                *((u8 *)&localColorDword + 1) = (u8)colorTemp_soft_r;
+                colorTemp_soft_a = ((u32)*((u8 *)&localColorDword + 0)) *
+                                   ((u32)*((u8 *)&this_save->scriptExecCounter_0 + 0)) >> 7;
+                if (colorTemp_soft_a >= 0x100) colorTemp_soft_a = 0xff;
+                *((u8 *)&localColorDword + 0) = (u8)colorTemp_soft_a;
+                colorTemp_soft_b = ((u32)*((u8 *)&localColorDword + 3)) *
+                                   ((u32)*((u8 *)&this_save->scriptExecCounter_0 + 3)) >> 7;
+                if (colorTemp_soft_b >= 0x100) colorTemp_soft_b = 0xff;
+                *((u8 *)&localColorDword + 3) = (u8)colorTemp_soft_b;
+            }
+            g_AnmMgrColorSlot_4b9fb8 = localColorDword;
+            g_AnmMgrColorSlot_4b9fd4 = localColorDword;
+            g_AnmMgrColorSlot_4b9ff0 = localColorDword;
+            g_AnmMgrColorSlot_4ba00c = localColorDword;
+            g_AnmMgrColorSlot_4ba084 = localColorDword;
+            g_AnmMgrColorSlot_4ba09c = localColorDword;
+            g_AnmMgrColorSlot_4ba0b4 = localColorDword;
+            g_AnmMgrColorSlot_4ba0cc = localColorDword;
         }
-    }
-    else
-    {
-        // Software path: always modulate, then stamp the 8 colour-slot dwords.
-        if (*(i32 *)((u8 *)this_save + 0x4) != 0)
-        {
-            colorTemp_soft_g =
-                ((u32)*((u8 *)&localColorDword + 2)) * ((u32)*((u8 *)this_save + 2)) >> 7;
-            if (colorTemp_soft_g >= 0x100) colorTemp_soft_g = 0xff;
-            *((u8 *)&localColorDword + 2) = (u8)colorTemp_soft_g;
-            colorTemp_soft_r =
-                ((u32)*((u8 *)&localColorDword + 1)) * ((u32)*((u8 *)this_save + 1)) >> 7;
-            if (colorTemp_soft_r >= 0x100) colorTemp_soft_r = 0xff;
-            *((u8 *)&localColorDword + 1) = (u8)colorTemp_soft_r;
-            colorTemp_soft_a =
-                ((u32)*((u8 *)&localColorDword + 0)) * ((u32)*((u8 *)this_save + 0)) >> 7;
-            if (colorTemp_soft_a >= 0x100) colorTemp_soft_a = 0xff;
-            *((u8 *)&localColorDword + 0) = (u8)colorTemp_soft_a;
-            colorTemp_soft_b =
-                ((u32)*((u8 *)&localColorDword + 3)) * ((u32)*((u8 *)this_save + 3)) >> 7;
-            if (colorTemp_soft_b >= 0x100) colorTemp_soft_b = 0xff;
-            *((u8 *)&localColorDword + 3) = (u8)colorTemp_soft_b;
-        }
-        g_AnmMgrColorSlot_4b9fb8 = localColorDword;
-        g_AnmMgrColorSlot_4b9fd4 = localColorDword;
-        g_AnmMgrColorSlot_4b9ff0 = localColorDword;
-        g_AnmMgrColorSlot_4ba00c = localColorDword;
-        g_AnmMgrColorSlot_4ba084 = localColorDword;
-        g_AnmMgrColorSlot_4ba09c = localColorDword;
-        g_AnmMgrColorSlot_4ba0b4 = localColorDword;
-        g_AnmMgrColorSlot_4ba0cc = localColorDword;
     }
 
-    // ---- (3) ZWRITEENABLE: vm dword-flag bit 12 -> D3DRS_ZWRITEENABLE -----
+    // ---- (3) ZWRITEENABLE: vm flag bit 12 -> D3DRS_ZWRITEENABLE -----------
     // Skipped entirely when cfg.opts bit 6 (TURN_OFF_DEPTH_TEST) is set.
-    if ((g_SupervisorG0x575a9c >> 6 & 1) == 0)
+    if ((g_SupervisorCfgOpts_575a9c >> 6 & 1) == 0)
     {
-        if (this_save->currentZWriteDisable != ((*(u32 *)((u8 *)vm + 0x1c0) >> 0xc) & 1))
+        if (this_save->currentZWriteDisable != (u8)(((*(u32 *)((u8 *)vm + 0x1c0)) >> 0xc) & 1))
         {
-            this_save->currentZWriteDisable = (u8)((*(u32 *)((u8 *)vm + 0x1c0) >> 0xc) & 1);
-            if (((*(u32 *)((u8 *)vm + 0x1c0) >> 0xc) & 1) == 0)
+            this_save->currentZWriteDisable = (u8)(((*(u32 *)((u8 *)vm + 0x1c0)) >> 0xc) & 1);
+            if ((((*(u32 *)((u8 *)vm + 0x1c0)) >> 0xc) & 1) == 0)
             {
                 ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
                     ->SetRenderState(D3DRS_ZWRITEENABLE, TRUE);
@@ -1127,24 +1132,25 @@ void AnmManager::SetRenderStateForVm(AnmVm *vm)
         }
     }
 
-    // ---- (4) byte_2e4d4: vm dword-flag bit 14 -> camera + viewport --------
-    if (this_save->byte_2e4d4 != ((*(u32 *)((u8 *)vm + 0x1c0) >> 0xe) & 1))
+    // ---- (4) byte_2e4d4: vm flag bit 14 -> camera + viewport --------------
+    if (this_save->byte_2e4d4 != (u8)(((*(u32 *)((u8 *)vm + 0x1c0)) >> 0xe) & 1))
     {
-        AnmManager_FlushVertexBuffer_44f5c0(g_AnmManager);
-        this_save->byte_2e4d4 = (u8)((*(u32 *)((u8 *)vm + 0x1c0) >> 0xe) & 1);
-        if (((*(u32 *)((u8 *)vm + 0x1c0) >> 0xe) & 1) == 0)
+        AnmManager_FlushVertexBuffer(g_AnmManager);
+        this_save->byte_2e4d4 = (u8)(((*(u32 *)((u8 *)vm + 0x1c0)) >> 0xe) & 1);
+        if ((((*(u32 *)((u8 *)vm + 0x1c0)) >> 0xe) & 1) == 0)
         {
-            Supervisor_Setup3DCamera_408180(&g_SupervisorCameraStub_1347b00);
+            Supervisor_Setup3DCamera(&g_SupervisorCameraStub_1347b00);
         }
         else
         {
-            Supervisor_Setup2DCamera_4082b0(&g_SupervisorCameraStub_1347b00);
+            Supervisor_Setup2DCamera(&g_SupervisorCameraStub_1347b00);
         }
         ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
-            ->SetViewport((D3DVIEWPORT8 *)&g_SupervisorG0x575a18);
+            ->SetViewport((D3DVIEWPORT8 *)&g_SupervisorViewport_575a18);
     }
 
-    // Per-call counter bump at +0x10 (mirrors orig's `(*(int*)(this+0x10))++`).
+    // Per-call counter bump (header_10 byte at +0x10..+0x14, used by the
+    // orig as a per-SetRenderStateForVm-call draw counter).
     *(i32 *)((u8 *)this_save + 0x10) = *(i32 *)((u8 *)this_save + 0x10) + 1;
 }
 

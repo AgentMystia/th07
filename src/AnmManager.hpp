@@ -325,13 +325,27 @@ struct AnmManager
     // +0x00 counters read/bumped by ExecuteScript and SetAndExecuteScript.
     //   ExecuteScript ends with `*(int*)(this+0xc) += 1` and reads
     //   `*(int*)(this+8) == 0` as the "is script active" gate.
+    //   The 4 bytes at +0x0..+0x3 double as a packed per-frame colour
+    //   multiplier (Supervisor::OnUpdate writes 0x80808080 there every
+    //   frame; SetRenderStateForVm reads them byte-wise). Named as a union
+    //   of the i32 counter view and the 4-byte colour view below.
     i32 scriptExecCounter_0; // +0x00
     i32 scriptExecCounter_4; // +0x04
     i32 scriptExecCounter_8; // +0x08 (bumped by SetAndExecuteScript)
     i32 scriptExecCounter_c; // +0x0c (bumped at end of ExecuteScript)
 
-    // +0x10..0x60 raw gap (supervisor bookkeeping).
-    u8 header_10[0x60 - 0x10];
+    // +0x10..0x18 raw gap (supervisor bookkeeping).
+    u8 header_10[0x18 - 0x10];
+
+    // +0x18 frameOffsetX (f32). Per-frame render position offset added by
+    // DrawInner to every VM's screen position. Zeroed each frame by
+    // Supervisor::OnUpdate (`*(f32*)(g_AnmManager + 0x18) = 0.0f`).
+    f32 frameOffsetX;
+    // +0x1c frameOffsetY (f32). DrawInner's Y counterpart.
+    f32 frameOffsetY;
+
+    // +0x20..0x60 raw gap (supervisor bookkeeping).
+    u8 header_20[0x60 - 0x20];
 
     // +0x060 sprites[2560] (sizeof(AnmLoadedSprite) == 0x40; 2560*0x40 = 0x28000)
     AnmLoadedSprite sprites[2560]; // +0x060 .. +0x28060

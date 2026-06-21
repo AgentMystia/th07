@@ -27,7 +27,7 @@ extern "C" const f32 g_GameMgrC0x498c7c;
 extern "C" const f32 g_GameMgrC0x498c80;
 extern "C" u16 g_GameMgrG0x49fe20;
 extern "C" i32 g_GameMgrG0x49fe24;
-extern "C" i32 g_SupervisorG0x575a18;
+extern "C" i32 g_SupervisorViewport_575a18;
 extern "C" i32 g_SupervisorG0x575a1c;
 extern "C" i32 g_SupervisorG0x575a20;
 extern "C" i32 g_SupervisorG0x575a24;
@@ -247,7 +247,7 @@ ChainCallbackResult __fastcall GameManager::OnUpdate(GameManager *gameManager)
 
     // ---- Block 2: convert anmColorSetup[0..3] to ints (Supervisor scratch),
     //      reset two floats, mark AnmManager dirty byte ----
-    g_SupervisorG0x575a18 = RandFloatToInt_0048b8a0(g_GameManager.anmColorSetup[0]);
+    g_SupervisorViewport_575a18 = RandFloatToInt_0048b8a0(g_GameManager.anmColorSetup[0]);
     g_SupervisorG0x575a1c = RandFloatToInt_0048b8a0(g_GameManager.anmColorSetup[1]);
     g_SupervisorG0x575a20 = RandFloatToInt_0048b8a0(g_GameManager.anmColorSetup[2]);
     g_SupervisorG0x575a24 = RandFloatToInt_0048b8a0(g_GameManager.anmColorSetup[3]);

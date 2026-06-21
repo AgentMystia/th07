@@ -27,7 +27,7 @@ extern "C" u32 g_AnmMgrColorSlot_4ba0cc = 0;
 extern "C" u8 g_SupervisorCameraStub_1347b00 = 0;
 // cfg.opts bitfield mirror (orig 0x575a9c = g_Supervisor.cfg.opts). Read as
 // an absolute address by SetRenderStateForVm to match orig's addressing.
-extern "C" u32 g_SupervisorG0x575a9c = 0;
+extern "C" u32 g_SupervisorCfgOpts_575a9c = 0;
 // D3D device pointer slot (orig 0x575958). Set by Supervisor at boot.
 extern "C" void *g_SupervisorD3dDevice_575958 = 0;
 // DrawPrimitiveUP vertex buffer for the software (no-vertex-buffer) path
@@ -137,7 +137,7 @@ extern "C" i32 g_SupervisorG0x135e2a4 = 0;
 extern "C" u16 g_SupervisorG0x49fe20 = 0;
 extern "C" u32 g_SupervisorG0x4b9e64 = 0;
 extern "C" i32 g_SupervisorG0x4bdaa0 = 0;
-extern "C" i32 g_SupervisorG0x575a18 = 0;
+extern "C" i32 g_SupervisorViewport_575a18 = 0;
 extern "C" i32 g_SupervisorG0x575a1c = 0;
 extern "C" i32 g_SupervisorG0x575a20 = 0;
 extern "C" i32 g_SupervisorG0x575a24 = 0;
