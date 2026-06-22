@@ -252,7 +252,10 @@ extern "C" void __fastcall Supervisor_GameErrorLog_004315f0(void *ctx, char *msg
 extern "C" void __fastcall Supervisor_GameErrorFatal_00431730(void *ctx, char *msg); // Fatal
 extern "C" void __fastcall Supervisor_FlushGameError_00431540(i32 size); // Flush
 extern "C" void __fastcall Supervisor_SeedRngFromPerf_00435e30();      // QPC seed
-extern "C" void __fastcall Supervisor_RegisterWndProc_00434490();      // WndProc (FUN_00434490)
+// WndProc thunk: minimal DefWindowProcA forwarder so CreateWindowExA
+// succeeds. The full orig WndProc (FUN_00434490) handles WM_CLOSE/
+// WM_ACTIVATE/WM_SETCURSOR + IME; lifting it is a separate task.
+extern "C" LRESULT WINAPI Supervisor_WndProc_Thunk(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 extern "C" void __fastcall Supervisor_PreSessionInit_004345c0();        // per-frame pre-run
 extern "C" i32  __fastcall Supervisor_RunFrameOnce_0042fd60();         // chain calc/draw+present
 extern "C" void __fastcall Supervisor_DrainChain_0044c9c0();           // chain cleanup pass
@@ -478,7 +481,7 @@ ChainCallbackResult __fastcall Supervisor::OnUpdate(Supervisor *s)
             reinit_mainmenu_d3d:
                 s->curState = 1;
                 ((IDirect3DDevice8 *)g_Supervisor.d3dDevice)->ResourceManagerDiscardBytes(0);
-                if (Supervisor_D3DDiscard(0) != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
+                if (MainMenu::RegisterChain(0) != 0) return CHAIN_CALLBACK_RESULT_EXIT_GAME_SUCCESS;
                 break;
             }
             break;
@@ -1362,7 +1365,7 @@ extern "C" i32 __fastcall Supervisor_CreateWindow(void *hInstance)
 
     wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
     wc.hCursor = LoadCursorA(0, IDC_ARROW);
-    wc.lpfnWndProc = (WNDPROC)Supervisor_RegisterWndProc_00434490;
+    wc.lpfnWndProc = (WNDPROC)Supervisor_WndProc_Thunk;
     g_SupervisorExStyle_575c28 = 1;
     g_SupervisorStyle_575c2c = 0;
     wc.lpszClassName = "BASE";

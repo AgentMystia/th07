@@ -141,6 +141,9 @@ extern "C" i32 g_SupervisorG0x135dfec = 0;
 extern "C" char g_SupervisorG0x135dff0[0x80] = {0};
 extern "C" char g_SupervisorG0x135e0f0[0x80] = {0};
 extern "C" i32 g_SupervisorG0x135e1f0 = 0;
+// App mutex handle (orig DAT_0135e1f4). Created by CheckAlreadyRunning
+// (FUN_00435bd0) via CreateMutexA("Touhou YouYouMu App").
+extern "C" void *g_SupervisorAppMutex_135e1f4 = 0;
 extern "C" i32 g_SupervisorG0x135e298 = 0;
 extern "C" i32 g_SupervisorG0x135e29c = 0;
 extern "C" i32 g_SupervisorG0x135e2a0 = 0;

@@ -12,6 +12,10 @@
 
 #include "inttypes.hpp"
 
+#include <windows.h>
+
+#include "Chain.hpp"
+
 extern "C" {
     void __fastcall AnmManager_Callback_D630(i32 a0) { }
     void __fastcall AnmManager_FlushSprites(i32 a0) { }
@@ -111,15 +115,44 @@ extern "C" {
     // P1.3 boot-path helper stubs (not yet lifted; resolved by these stubs
     // for the normal build until each is reversed). FUN_ anchors preserved.
     i32  __fastcall Supervisor_LoadConfig_004398b6(char *path) { (void)path; return 0; }
-    i32  __fastcall Supervisor_CheckAlreadyRunning_00435bd0() { return -1; }
+    // CheckAlreadyRunning: orig FUN_00435bd0 creates the named mutex
+    // "Touhou YouYouMu App"; returns -1 only if it already existed
+    // (ERROR_ALREADY_EXISTS). For the normal build we replicate the happy
+    // path: create the mutex, return 0 to let the boot continue.
+    extern "C" void *g_SupervisorAppMutex_135e1f4;
+    i32  __fastcall Supervisor_CheckAlreadyRunning_00435bd0() {
+        g_SupervisorAppMutex_135e1f4 = CreateMutexA(0, 1, "Touhou YouYouMu App");
+        if (GetLastError() == 0xb7) return -1;
+        if (g_SupervisorAppMutex_135e1f4 == 0) return -1;
+        return 0;
+    }
     void __fastcall Supervisor_InitGameErrorCtx_00435ec0() { }
     void __fastcall Supervisor_GameErrorLog_004315f0(void *ctx, char *msg) { (void)ctx; (void)msg; }
     void __fastcall Supervisor_GameErrorFatal_00431730(void *ctx, char *msg) { (void)ctx; (void)msg; }
     void __fastcall Supervisor_FlushGameError_00431540(i32 size) { (void)size; }
     void __fastcall Supervisor_SeedRngFromPerf_00435e30() { }
-    void __fastcall Supervisor_RegisterWndProc_00434490() { }
+    // Supervisor_RegisterWndProc_00434490 is the game's window procedure
+    // (FUN_00434490). The orig handles WM_CLOSE/WM_QUERYENDSESSION/
+    //WM_ENDSESSION (sets exit flag), WM_ACTIVATE (tracks foreground +
+    // cursor visibility), WM_SETCURSOR, and an app-defined WM_APP+0x3c8
+    // for IME. Until the full WndProc is lifted we forward every message
+    // to DefWindowProcA -- this satisfies the requirement that a WNDCLASS
+    // lpfnWndProc returns LRESULT with stdcall calling convention. The old
+    // no-op void-returning stub crashed inside CreateWindowExA because
+    // WM_NCCREATE/WM_CREATE expect a non-zero BOOL return.
+    LRESULT WINAPI Supervisor_WndProc_Thunk(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+        return DefWindowProcA(hwnd, msg, wp, lp);
+    }
     void __fastcall Supervisor_PreSessionInit_004345c0() { }
-    i32  __fastcall Supervisor_RunFrameOnce_0042fd60() { return 0; }
+    // RunFrameOnce: orig FUN_0042fd60 is Chain::RunCalcChain (ECX=&g_Chain
+    // at the call site in RunSession @ 0x004347df). Returns the number of
+    // chain callbacks executed; 0 only when a callback returns
+    // EXIT_GAME_SUCCESS, -1 on EXIT_GAME_ERROR. The old no-op stub returned
+    // 0 unconditionally, which RunSession misread as "exit game success"
+    // and aborted the boot loop. Delegate to the real Chain method.
+    i32  __fastcall Supervisor_RunFrameOnce_0042fd60() {
+        return th07::g_Chain.RunCalcChain();
+    }
     void __fastcall Supervisor_DrainChain_0044c9c0() { }
     void __fastcall Supervisor_AnmMgrReset_0044b830() { }
     void __fastcall Supervisor_AnmMgrReleaseVm_0044d620() { }
