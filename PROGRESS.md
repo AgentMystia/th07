@@ -338,11 +338,32 @@ hand-written approximation（手写近似，控制流/字段都猜错）。
   AdvanceNode 91.90%）。从"<50% 阻塞"直升"≥90% 核心完成"。关键修复：消灭双重 wrapper
   定义、改 static __fastcall、修正 `cl_flags_pbg4` 从 /O2 回到 /Od、for 循环而非 while
   循环、SYMBOL_MAP 3 条新映射。详见上方 "P1.4" 段。
-- **P1.5（下一轮）**：MainMenu 模块全量（0x41e4b0-0x41f6f0，13+ 函数 ~5KB，mapping.csv 仅
-  RegisterChain 一个命名）。这是标题画面的子系统（OnUpdate/OnDraw/AddedCallback），
-  加载 data/title/*.anm 并驱动 title AnmVm。
-- **P1.6（验收）**：wine 实测 build/th07e.exe 能 boot 到主菜单、与原作视觉/行为一致。
-  仅此轮达成后才宣告 "主菜单可显示"。
+- **P1.5（下一轮）**：MainMenu 模块全量。**地址修正（2026-06-23 调查）**：
+  PROGRESS 之前写的 `0x41e4b0-0x41f6f0` 是 **Ending** 模块（加载
+  `data/staff01.anm` + `data/end00.end`，设 state=6），不是 MainMenu。
+  mapping.csv 把 `0x41e820` 标成 `th07::MainMenu::RegisterChain` 是**误标**
+  ——真正的 Ending::RegisterChain。真正的 MainMenu 在 `0x45bf15+`：
+  `0x45c5d0` = RegisterChain（operator_new(0xd158) + 设 chain callbacks
+  FUN_0045c4c8/FUN_0045c546）、`0x45bf15` = AddedCallback（加载
+  `data/title01.anm`、播 `bgm/th07_01.mid`、初始化 14 个 AnmVm）。
+  本轮未抬升 MainMenu 函数体（0xd158 struct 太大，先解决 boot 阻塞）。
+- **P1.6 boot 调查（2026-06-23）**：本轮发现并修复 3 个让 boot loop 立即退出
+  的 stub bug（commit 0073265）：(1) `reinit_mainmenu_d3d` label 漏掉
+  `MainMenu::RegisterChain()` 调用（orig LAB_00437eac 有，C++ 没有）；(2)
+  `CheckAlreadyRunning` stub 返回 -1（应创建 mutex 后返回 0），让 WinMain
+  当场 abort；(3) `RunFrameOnce` stub 返回 0（orig FUN_0042fd60 是
+  Chain::RunCalcChain，0 = EXIT_GAME_SUCCESS），让 RunSession 一帧后退出。
+  另修 WndProc stub（void() no-op → DefWindowProcA thunk，否则
+  CreateWindowExA 内部 WM_NCCREATE/WM_CREATE 无返回值崩溃）。
+
+  **当前 wine 实测**：boot 现在能走到 `Direct3DCreate8` → `RegisterClassA`
+  → `CreateWindowExA("BASE")` 成功（hwnd 非零），但随后 InitD3D 的
+  CreateDevice vtable 调用在 **Wine 的 d3d8.dll 内 SIGILL**（地址
+  0x7b41ce00，由游戏代码 0x0040400a→0x00408d13 触发）。原版 th07.exe 在同
+  一 wine 下可正常运行。这说明我们的 D3D8 调用路径参数与 orig 有差异
+  （可能是 D3DPRESENT_PARAMETERS 的 fields[] 索引错位、CreateDevice 行为
+  标志、或 hFocusWindow 传错），需要专门一轮 D3D8 调用链调试。**主菜单
+  尚未渲染**——P1.6 未达成。
 
 ## 2026-06-18 typed-C++ 全项目重构（对齐 th06 严格标准）
 
