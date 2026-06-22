@@ -69,7 +69,56 @@ anchored, it must be promoted to a named member.
 | `(char *)0xADDR` | same | string literal |
 | `((void(*)())0xADDR)()` code-address call | same | typed `extern` declaration |
 | `*(T *)((u8 *)this + OFF)` on `this` | Bypasses named struct | `this->member` |
+| `*(T *)(g_Bytes + idx*stride + off)` on a typed byte-array global | Bypasses named fields; magic-number offsets | element struct + `g_Array[idx].field` (see §3.1) |
 | `nullptr` | MSVC 7.0 doesn't support C++11 | `0` |
+
+### 3.1 Fixed-stride byte arrays → element struct (verified zero-cost)
+
+When a typed global is declared as a flat byte array (`extern "C" u8 g_X[N];`)
+but every access follows the pattern `*(T*)(g_X + idx*stride + fieldOff)`,
+the array is conceptually an array of fixed-size records. **Promote it to an
+element struct** — this is both more readable and provably free at the
+codegen level.
+
+**Pattern**:
+
+```cpp
+// BEFORE (forbidden): magic strides, opaque offsets, unreadable
+extern "C" u8 g_Pbg4Nodes[0x2001 * 0xc];
+// ...
+*(i32 *)(g_Pbg4Nodes + idx * 0xc + 0x0) = 0x2000;
+*(i32 *)(g_Pbg4Nodes + idx * 0xc + 0x8) = 0;
+Pbg4_NodeShrink(idx, *(i32 *)(g_Pbg4Nodes + idx * 0xc + 0x4));
+
+// AFTER (preferred): named element struct, self-documenting
+struct Pbg4Node { i32 parent; i32 leftChild; i32 rightChild; };  // 0xc bytes
+extern "C" Pbg4Node g_Pbg4Nodes[0x2001];
+// ...
+g_Pbg4Nodes[idx].parent     = 0x2000;
+g_Pbg4Nodes[idx].rightChild = 0;
+Pbg4_NodeShrink(idx, g_Pbg4Nodes[idx].leftChild);
+```
+
+**Why this is safe — verified equivalence (Pbg4Parser, 2026-06-22)**:
+
+MSVC 7.0 at `/Od` emits **byte-identical** code for both forms. Each
+`g_Nodes[idx].field` lowers to `IMUL reg, idx, sizeof(Node)` +
+`mov [reg + DAT_addr + fieldOff]`, exactly matching the hand-written
+byte-pointer arithmetic. objdiff match% was unchanged across all three
+Pbg4Parser functions after the refactor:
+
+| Function | Before (byte casts) | After (element struct) |
+|---|---|---|
+| SetIndex | 99.44% | 99.44% |
+| Reset | 94.85% | 94.85% |
+| AdvanceNode | 91.90% | 91.90% |
+| **module avg** | **95.40%** | **95.40%** |
+
+This is the same principle the rest of the standard relies on: **standard
+typed C++ is a zero-cost abstraction under MSVC 7.0 /Od**, so we never need
+to sacrifice readability for codegen. The rule of thumb — if you find
+yourself writing `idx*stride + fieldOff` more than once on the same array,
+stop and define the element struct.
 
 ### Allowed (with justification)
 
@@ -181,6 +230,10 @@ grep -rE '\*\([^)]+\*?\)\s*0x[0-9a-fA-F]{5,}|reinterpret_cast<[^>]+>\(0x[0-9a-fA
 
 # Must print ZERO non-comment matches:
 grep -rnE 'u8 raw\[|&raw\[0x' src/
+
+# Fixed-stride byte-array casts (see S3.1). Each hit is a candidate for
+# promotion to an element struct. Must print ZERO non-comment matches:
+grep -rnE '\*\([^)]+\*\)\s*\(\s*g_[A-Za-z0-9_]+\s*\+\s*[A-Za-z0-9_]+\s*\*\s*0x[0-9a-fA-F]+' src/
 
 # Must print ZERO non-comment matches:
 grep -rn 'nullptr' src/

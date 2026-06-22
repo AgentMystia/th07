@@ -38,6 +38,7 @@
 | **`u8 raw[0xNNNN]` byte buffer**（整个 struct 当字节数组）| 绕过字段名、不可读、非 th06 风格（th06 Player 零 raw[]）| 全部命名成员；未知区域用 `u8 unk_XXXX[N]` 命名 padding |
 | **accessor 方法返回 `&raw[OFF]`**（`T *Field() { return (T*)&raw[0x978]; }`）| 仍是 raw[] 伪装；th06 Player 零 accessor | 直接命名成员 `p->fieldName` |
 | **`SCORE_SUB_I32(off)` 等 raw-offset 宏** | 同上 | typed struct 字段访问 `SCORE_SUB->counter14` |
+| **对 typed global 做 `(T*)(bytes + idx*stride + off)` cast**（`*(i32*)(g_Nodes + idx*0xc + 0x4)`）| 把命名字节数组当 stride 算偏移，绕过字段名、magic number 满天飞 | 定义 element struct（`struct Node { i32 parent; i32 left; i32 right; };`）+ `g_Nodes[idx].parent`。**已验证**：MSVC 7.0 /Od 对两种写法生成字节级相同的 `IMUL reg,reg,stride` + `mov [reg+addr+off]`，objdiff match% 零变化（Pbg4Parser 95.40% 实测） |
 | **`nullptr`** | MSVC 7.0 不支持 C++11 | `0` |
 | **源码 UTF-8/CJK 字符**（含全角括号 `（）`）| MSVC 7.0 不认，且会致预处理器吞 struct 成员 | 注释必须 ASCII；Shift-JIS 字符串用八进制转义 |
 
