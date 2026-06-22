@@ -241,23 +241,6 @@ extern "C" f64  g_SupervisorFrametime2_498bc8;  // rdata double (~0.015)
 
 // P1.3 rdata-string slots reached via absolute address by the boot loop's
 // GameErrorLog/Fatal calls (orig .rdata addresses; content lives in orig).
-extern "C" char *g_SupervisorRdataStr_4978b0;
-extern "C" char *g_SupervisorRdataStr_4978f8;
-extern "C" char *g_SupervisorRdataStr_497948;
-extern "C" char *g_SupervisorRdataStr_497998;
-extern "C" char *g_SupervisorRdataStr_4979b4;
-extern "C" char *g_SupervisorRdataStr_4979c8;
-extern "C" char *g_SupervisorRdataStr_497a04;
-extern "C" char *g_SupervisorRdataStr_497a3c;
-extern "C" char *g_SupervisorRdataStr_497a7c;
-extern "C" char *g_SupervisorRdataStr_497ab4;
-extern "C" char *g_SupervisorRdataStr_497adc;
-extern "C" char *g_SupervisorRdataStr_497afc;
-extern "C" char *g_SupervisorRdataStr_497b20;
-extern "C" char *g_SupervisorRdataStr_497b44;
-extern "C" char *g_SupervisorRdataStr_497b70;
-extern "C" char *g_SupervisorRdataStr_497bd8;
-extern "C" char *g_SupervisorRdataStr_497c28;
 
 // ---- P1.3 boot-path helper externs (not yet lifted; resolved by stubs in
 //      link_stubs.cpp for the normal build). Each one's FUN_ anchor is
@@ -754,14 +737,14 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     dev->EndScene();
     if (dev->Present(0, 0, 0, 0) < 0)
     {
-        dev->Reset((D3DPRESENT_PARAMETERS *)0x575a30);
+        dev->Reset((D3DPRESENT_PARAMETERS *)&g_SupervisorPresentParams_575a30[0]);
     }
     dev->BeginScene();
     dev->Clear(0, 0, D3DCLEAR_TARGET, 0xff000000, 1.0f, 0);
     dev->EndScene();
     if (dev->Present(0, 0, 0, 0) < 0)
     {
-        dev->Reset((D3DPRESENT_PARAMETERS *)0x575a30);
+        dev->Reset((D3DPRESENT_PARAMETERS *)&g_SupervisorPresentParams_575a30[0]);
     }
 
     // 3. Callback6 (version/archive probe). Bail -1 on fail.
@@ -792,7 +775,7 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
             dev->EndScene();
             if (dev->Present(0, 0, 0, 0) < 0)
             {
-                dev->Reset((D3DPRESENT_PARAMETERS *)0x575a30);
+                dev->Reset((D3DPRESENT_PARAMETERS *)&g_SupervisorPresentParams_575a30[0]);
             }
         }
     }
@@ -1355,7 +1338,7 @@ extern "C" i32 __fastcall Supervisor_Bootstrap()
     g_SupervisorD3D8_575954 = Direct3DCreate8(120);
     if (g_SupervisorD3D8_575954 == 0)
     {
-        Supervisor_GameErrorFatal_00431730(&g_GameErrorContext_624210, g_SupervisorRdataStr_497bd8);
+        Supervisor_GameErrorFatal_00431730(&g_GameErrorContext_624210, "Direct3D \203I\203u\203W\203F\203N\203g\202\315\211\275\214\314\202\251\215\354\220\254\217o\227\210\202\310\202\251\202\301\202\275\r\n");
         return 1;
     }
     return 0;
@@ -1391,7 +1374,7 @@ extern "C" i32 __fastcall Supervisor_CreateWindow(void *hInstance)
         // Windowed: fixed 640x480.
         windowWidth = 0x280;
         windowHeight = 0x1e0;
-        g_SupervisorWindow_575c20 = (void *)CreateWindowExA(0, "BASE", (LPCSTR)0x497b9c,
+        g_SupervisorWindow_575c20 = (void *)CreateWindowExA(0, "BASE", (LPCSTR)"\223\214\225\373\227d\201X\226\262\201@\201` Perfect Cherry Blossom. ver 1.00b",
             0xcf0000, 0, 0, 0x280, 0x1e0, 0, 0, (HINSTANCE)hInstance, 0);
     }
     else
@@ -1399,7 +1382,7 @@ extern "C" i32 __fastcall Supervisor_CreateWindow(void *hInstance)
         // Fullscreen: add frame extents around the 640x480 client.
         windowWidth = GetSystemMetrics(SM_CXBORDER) * 2 + 0x280;
         windowHeight = GetSystemMetrics(SM_CYCAPTION) + 0x1e0 + GetSystemMetrics(SM_CYBORDER) * 2;
-        g_SupervisorWindow_575c20 = (void *)CreateWindowExA(0, "BASE", (LPCSTR)0x497b9c,
+        g_SupervisorWindow_575c20 = (void *)CreateWindowExA(0, "BASE", (LPCSTR)"\223\214\225\373\227d\201X\226\262\201@\201` Perfect Cherry Blossom. ver 1.00b",
             0x100a0000, (i32)0x80000000, (i32)0x80000000, windowWidth, windowHeight,
             0, 0, (HINSTANCE)hInstance, 0);
     }
@@ -1629,7 +1612,7 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
         {
             localPP.fields[2] = 0x16; // D3DFMT_A8R8G8B8
             g_SupervisorColorMode_575a86 = 0;
-            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497b70);
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "\217\211\211\361\213N\223\256\201A\211\346\226\312\202\360 32Bits \202\305\217\211\212\372\211\273\202\265\202\334\202\265\202\275\r\n");
         }
         else if (g_SupervisorColorMode_575a86 == 0)
         {
@@ -1648,7 +1631,7 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
             // Default windowed present params.
             localPP.fields[8] = 0x3c; // PresentationInterval = D3DPRESENT_INTERVAL_DEFAULT (60Hz)
             local_20 = 1;            // windowed
-            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497b44);
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "\203\212\203t\203\214\203b\203V\203\205\203\214\201[\203g\202\36060Hz\202\311\225\317\215X\202\360\216\212\202\335\202\334\202\267\r\n");
             localPP.fields[6] = (g_SupervisorUnkFlag_575a8c == 0) ? 2 : 4; // SwapEffect
         }
         else
@@ -1657,7 +1640,7 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
             localPP.fields[8] = 0;   // Default interval
             localPP.fields[6] = 3;   // D3DSWAPEFFECT_COPY_VSYNC
             local_20 = (i32)0x80000000; // fullscreen-style windowed flag
-            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497b20);
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "VSync\224\361\223\257\212\372\211\302\224\\\202\251\202\307\202\244\202\251\202\360\216\212\202\335\202\334\202\267\r\n");
         }
     }
     else
@@ -1690,13 +1673,13 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
                 g_SupervisorWindow_575c20, 0x40, &localPP, (void *)&g_SupervisorD3dDevice_575958);
             if (iVar1 >= 0)
             {
-                Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497998);
+                Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "T&L HAL \202\305\223\256\215\354\202\265\202\334\201`\202\267\r\n");
                 g_SupervisorFrameFlags_575adc = g_SupervisorFrameFlags_575adc | 1;
                 goto device_ok;
             }
             if (fallbackTried != 0)
             {
-                Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497afc);
+                Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "T&L HAL \202\315\216g\227p\202\305\202\253\202\310\202\242\202\346\202\244\202\305\202\267\r\n");
             }
             // Fallback: software vertex processing (0x20).
             iVar1 = ((i32(__fastcall *)(void *, i32, i32, void *, i32, void *, void *))(
@@ -1706,11 +1689,11 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
             {
                 if (fallbackTried != 0)
                 {
-                    Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497adc);
+                    Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "HAL \202\340\216g\227p\202\305\202\253\202\310\202\242\202\346\202\244\202\305\202\267\r\n");
                 }
                 goto ref_or_fail;
             }
-            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_4979b4);
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "HAL \202\305\223\256\215\354\202\265\202\334\202\267\r\n");
         device_ok:
             g_SupervisorFrameFlags_575adc = g_SupervisorFrameFlags_575adc & ~1u;
         copy_pp_and_setup:
@@ -1754,12 +1737,12 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
 
             if ((g_SupervisorCfgOpts_575a9c & 1) == 0 && (g_SupervisorUnkB78_575b78 & 0x40) == 0)
             {
-                Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497948);
+                Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "D3DTEXOPCAPS_ADD \202\360\203T\203|\201[\203g\202\265\202\304\202\242\202\334\202\271\202\361\201A\220F\211\301\216Z\203G\203~\203\205\203\214\201[\203g\203\202\201[\203h\r\n");
                 g_SupervisorCfgOpts_575a9c = g_SupervisorCfgOpts_575a9c | 1;
             }
             if (g_SupervisorVramMegs_575b40 < 0x101)
             {
-                Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_4978f8);
+                Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "512 \210\310\217\343\202\314\203e\203N\203X\203`\203\203\202\360\203T\203|\201[\203g\202\265\202\304\202\242\202\334\202\271\202\361\201B\226w\202\307\202\314\212G\202\252\203{\203P\202\304\225\\\216\246\r\n");
             }
             Supervisor_ResetDisplayMode_00435230();
             Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, localMsgBuf);
@@ -1779,7 +1762,7 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
                 {
                     g_SupervisorFrameFlags_575adc = g_SupervisorFrameFlags_575adc & ~4u;
                     g_SupervisorCfgOpts_575a9c = g_SupervisorCfgOpts_575a9c | 4;
-                    Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_4978b0);
+                    Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "D3DFMT_A8R8G8B8 \202\360\203T\203|\201[\203g\202\265\202\304\202\242\202\334\202\271\202\361\201A\214\270\220F\203\202\201[\203h\202\305\223\256\215\354\202\265\202\334\202\267\r\n");
                 }
             }
             Supervisor_DeviceNotResetHandler_004356a0();
@@ -1795,14 +1778,14 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
             g_SupervisorWindow_575c20, 0x20, &localPP, (void *)&g_SupervisorD3dDevice_575958);
         if (iVar1 >= 0)
         {
-            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_4979c8);
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "REF \202\305\223\256\215\354\202\265\202\334\202\267\202\252\201A\217d\202\265\202\254\202\304\213\260\202\347\202\255\203Q\201[\203\200\202\311\202\310\202\350\202\334\202\271\202\361...\r\n");
             fallbackTried = 0;
             goto device_ok;
         }
         if (g_SupervisorWindowedOverride_575abc == 0)
         {
             // First failure: downgrade to windowed and retry.
-            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497ab4);
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "\203\212\203t\203\214\203b\203V\203\205\203\214\201[\203g\202\252\225\317\215X\202\305\202\253\202\334\202\271\202\361\r\n");
             localPP.fields[8] = 0;
             g_SupervisorHasHwVertexProc_575ac4 = 0;
             fallbackTried = 1;
@@ -1812,7 +1795,7 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
             // Already tried the fallback: hard fail.
             if (local_20 != (i32)0x80000000)
             {
-                Supervisor_GameErrorFatal_00431730(&g_GameErrorContext_624210, g_SupervisorRdataStr_497a04);
+                Supervisor_GameErrorFatal_00431730(&g_GameErrorContext_624210, "Direct3D \202\314\217\211\212\372\211\273\202\311\216\270\224s\201A\202\261\202\352\202\315\203Q\201[\203\200\202\315\217o\227\210\202\334\202\271\202\361\r\n");
                 if (g_SupervisorD3D8_575954 != 0)
                 {
                     ((void (__fastcall *)(void *))(VTBL(g_SupervisorD3D8_575954, 8)))(
@@ -1821,8 +1804,8 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
                 }
                 return 1;
             }
-            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497a7c);
-            Supervisor_GameErrorFatal_00431730(&g_GameErrorContext_624210, g_SupervisorRdataStr_497a3c);
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "\224\361\223\257\212\372\215X\220V\202\340\215s\202\246\202\334\202\271\202\361\201B\210\352\224\324\211\230\202\242\203\202\201[\203h\202\311\225\317\215X\202\265\202\334\202\267\r\n");
+            Supervisor_GameErrorFatal_00431730(&g_GameErrorContext_624210, "*** \203\212\203t\203\214\203b\203V\203\205\203\214\201[\203g\202\36060Hz\202\311\225\317\215X\202\267\202\351\202\261\202\306\202\360\220\204\217\247\202\265\202\334\202\267 ***\r\n");
             local_20 = 1;
             localPP.fields[6] = 3;
         }

@@ -271,25 +271,6 @@ extern "C" char *g_SupervisorErrTitle_497c78 = 0;
 // Per-frame input/pad flag (orig 0x575c0c); stamped each frame by RunSession.
 extern "C" u8 g_SupervisorFrameInputFlag_575c0c = 0;
 
-// P1.3 rdata-string slots (orig .rdata addresses; zero-init
-// placeholders -- the real string content lives in orig .rdata).
-extern "C" char *g_SupervisorRdataStr_4978b0 = 0;
-extern "C" char *g_SupervisorRdataStr_4978f8 = 0;
-extern "C" char *g_SupervisorRdataStr_497948 = 0;
-extern "C" char *g_SupervisorRdataStr_497998 = 0;
-extern "C" char *g_SupervisorRdataStr_4979b4 = 0;
-extern "C" char *g_SupervisorRdataStr_4979c8 = 0;
-extern "C" char *g_SupervisorRdataStr_497a04 = 0;
-extern "C" char *g_SupervisorRdataStr_497a3c = 0;
-extern "C" char *g_SupervisorRdataStr_497a7c = 0;
-extern "C" char *g_SupervisorRdataStr_497ab4 = 0;
-extern "C" char *g_SupervisorRdataStr_497adc = 0;
-extern "C" char *g_SupervisorRdataStr_497afc = 0;
-extern "C" char *g_SupervisorRdataStr_497b20 = 0;
-extern "C" char *g_SupervisorRdataStr_497b44 = 0;
-extern "C" char *g_SupervisorRdataStr_497b70 = 0;
-extern "C" char *g_SupervisorRdataStr_497bd8 = 0;
-extern "C" char *g_SupervisorRdataStr_497c28 = 0;
 
 extern "C" f64  g_SupervisorQpcThresh_498a90 = 0.0;       // rdata (placeholder)
 extern "C" f64  g_SupervisorFrametime_498bc0 = 0.0;       // rdata (placeholder)

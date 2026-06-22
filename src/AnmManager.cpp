@@ -2539,29 +2539,55 @@ void AnmManager::SetupVertexBuffer()
 // sourceFileIndex]), sets the vertex shader at +0x2e4d2 to 2, and streams
 // this->vertexBuffer (stride 0x14). The other Draw variants share most of
 // this preamble and only differ in how they transform the 4 sprite corners
-// into the vertexBufferContents scratch. Not yet lifted.
+// into the vertexBufferContents scratch.
+//
+// ANCHOR MAP (verified via xref from BombData.cpp / Player.cpp / EffectManager.cpp
+// call sites + decompile of each candidate). Each variant early-bails on the
+// same 3 flags (Visible, InScope, color.alpha!=0) then dispatches to the
+// shared 2D-draw core FUN_0044efb0 (which handles culling, color modulation,
+// and the actual DrawInner-equivalent vertex emit):
+//   DrawNoRotation  = FUN_0044f770 -- axis-aligned corner box, no rotation.
+//                     Calls FUN_0044efb0(this, 1).
+//   Draw3           = FUN_0044f9a0 -- rotates 4 corners via FUN_0044f960
+//                     (2D rotation helper: x'=sx*cy-sy*cx+px, y'=sy*cy+sx*cx+py),
+//                     falls back to FUN_0044f770 when rotation.z == 0.
+//                     Calls FUN_0044efb0(this, 0).
+//   Draw            = FUN_00450130 -- 3D-transform-aware variant. Calls
+//                     FUN_0044fe00 (3D vertex transform) then FUN_0044efb0(this, 0).
+//   Draw2           = (candidate FUN_0044fe00 wrapper or alias of Draw)
+//   DrawFacingCamera= FUN_004504b0 -- calls FUN_004501a0 (3D billboard/proj
+//                     setup) then FUN_0044efb0(this, 0).
+//
+// Full lift of these 5 variants requires also lifting FUN_0044efb0 (the 2D
+// draw dispatch, ~0x5c9 bytes) + FUN_0044f960 (rotation helper) + the
+// DAT_004b9fa8..DAT_004ba014 family of vertex-buffer globals (8 x,y pairs +
+// 4 z slots). That is a dedicated sub-task; the stubs below are kept so
+// BombData.cpp / Player.cpp / EffectManager.cpp link until each is reversed.
 // ============================================================================
 ZunResult AnmManager::Draw(AnmVm *vm)
 {
-    // TODO: lift body. Anchor address TBD (likely near FUN_00450520).
+    // FUN_00450130: 3D-transform variant. Not yet lifted (see anchor map above).
     (void)vm;
     return ZUN_ERROR;
 }
 
 ZunResult AnmManager::Draw2(AnmVm *vm)
 {
+    // Candidate: FUN_0044fe00 wrapper or Draw alias. Not yet lifted.
     (void)vm;
     return ZUN_ERROR;
 }
 
 ZunResult AnmManager::Draw3(AnmVm *vm)
 {
+    // FUN_0044f9a0: rotated 4-corner variant. Not yet lifted.
     (void)vm;
     return ZUN_ERROR;
 }
 
 ZunResult AnmManager::DrawNoRotation(AnmVm *vm)
 {
+    // FUN_0044f770: axis-aligned variant. Not yet lifted.
     (void)vm;
     return ZUN_ERROR;
 }
@@ -2730,6 +2756,8 @@ ZunResult AnmManager::DrawInner(AnmVm *vm)
 
 ZunResult AnmManager::DrawFacingCamera(AnmVm *vm)
 {
+    // FUN_004504b0: billboard variant. Calls FUN_004501a0 (3D proj setup)
+    // then FUN_0044efb0(this, 0). Not yet lifted (see Draw-family anchor map).
     (void)vm;
     return ZUN_ERROR;
 }

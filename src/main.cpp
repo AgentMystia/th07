@@ -108,23 +108,6 @@ extern "C" void __fastcall AnmManager_Ctor_0044d3e0(void *anmMgr);
 // P1.3 rdata-string slots reached via absolute address by the boot loop's
 // GameErrorLog/Fatal calls (orig .rdata addresses; content lives in orig).
 // Declared as char* (pointer to the first char of each string).
-extern "C" char *g_SupervisorRdataStr_4978b0;
-extern "C" char *g_SupervisorRdataStr_4978f8;
-extern "C" char *g_SupervisorRdataStr_497948;
-extern "C" char *g_SupervisorRdataStr_497998;
-extern "C" char *g_SupervisorRdataStr_4979b4;
-extern "C" char *g_SupervisorRdataStr_4979c8;
-extern "C" char *g_SupervisorRdataStr_497a04;
-extern "C" char *g_SupervisorRdataStr_497a3c;
-extern "C" char *g_SupervisorRdataStr_497a7c;
-extern "C" char *g_SupervisorRdataStr_497ab4;
-extern "C" char *g_SupervisorRdataStr_497adc;
-extern "C" char *g_SupervisorRdataStr_497afc;
-extern "C" char *g_SupervisorRdataStr_497b20;
-extern "C" char *g_SupervisorRdataStr_497b44;
-extern "C" char *g_SupervisorRdataStr_497b70;
-extern "C" char *g_SupervisorRdataStr_497bd8;
-extern "C" char *g_SupervisorRdataStr_497c28;
 
 // WINNLSEnableIME: undocumented user32 export (ordinal). Orig calls it via
 // import stub. Declared here so the linker resolves it against user32.lib
@@ -241,7 +224,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         // Reset the error context for the new session.
         g_GameErrorContextHead_626210 = &g_GameErrorContext_624210;
         g_GameErrorContext_624210[0] = 0;
-        Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497c28);
+        Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "\215\304\213N\223\256\202\360\227v\202\267\202\351\203I\203v\203V\203\207\203\223\202\252\225\317\215X\202\263\202\352\202\275\202\314\202\305\215\304\213N\223\256\202\265\r\n");
         if (g_SupervisorIsForeground_575a8a == 0)
         {
             WINNLSEnableIME(0, 1);
@@ -320,7 +303,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                         th07::g_Supervisor.frameBasedStuffFlags =
                             th07::g_Supervisor.frameBasedStuffFlags & ~0x10u;
                     }
-                    else if (local_8 == (i32)0x8876b869) // D3DERR_DEVICELOST
+                    else if (local_8 == (i32)0x8876b869) /* D3DERR_DEVICEREMOVED or similar DX8 status */ // D3DERR_DEVICELOST
                     {
                         Supervisor_DeviceLostHandler_00433f20();
                         iVar1 = ((i32 (__fastcall *)(void *, void *))(
