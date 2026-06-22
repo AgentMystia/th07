@@ -90,6 +90,11 @@ SYMBOL_MAP = {
     b"th07::g_ControllerMapping": b"DAT_00575a68",  # Actually starts at a different addr
     b"th07::g_Pbg4Archive": b"DAT_00575c1c",
     b"th07::g_Pbg4ArchiveName": b"DAT_00575c14",
+    # Pbg4Parser.cpp LZSS static state (extern "C" => leading underscore
+    # stays in the COFF symbol since suffix isn't DAT_/FUN_/PTR_).
+    b"_g_Pbg4Dict": b"DAT_004b7e40",         # LZSS dictionary (0x2000 bytes)
+    b"_g_Pbg4Nodes": b"DAT_0049fe30",        # LZSS node heap (0x2001 * 0xc bytes)
+    b"_g_Pbg4CurIndex": b"DAT_004b7e38",     # LZSS current write cursor
     b"th07::g_GameErrorContext": b"DAT_00624210",
     b"th07::g_GameManager": b"DAT_00626278",
     # EffectManager rdata float constants (defined in EffectManager.cpp as

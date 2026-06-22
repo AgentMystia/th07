@@ -54,9 +54,9 @@ extern "C" {
     void __fastcall MidiOutput_Ctor(i32 a0) { }
     void __fastcall MidiOutput_Play(i32 a0, i32 a1, i32 a2) { }
     void __fastcall MidiOutput_StopPlayback(void) { }
-    void __fastcall Pbg4_NodePick(i32 a0) { }
-    void __fastcall Pbg4_NodePush(i32 a0) { }
-    void __fastcall Pbg4_NodeShrink(i32 a0) { }
+    i32 __fastcall Pbg4_NodePick(i32 a0) { return 0; }
+    void __fastcall Pbg4_NodePush(i32 a0, i32 a1) { }
+    void __fastcall Pbg4_NodeShrink(i32 a0, i32 a1) { }
     void __fastcall Player_ResetOptionSpriteScale(i32 a0, i32 a1, i32 a2, i32 a3, i32 a4) { }
     void __fastcall Rng_GetRandomU32(i32 a0) { }
     void __fastcall SoundPlayer_Callback_C020(i32 a0, i32 a1) { }

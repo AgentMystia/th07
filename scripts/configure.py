@@ -32,7 +32,11 @@ def configure(build_type):
         writer.variable("cl_common_flags", cl_common_flags)
         writer.variable("cl_flags", "$cl_common_flags /Od /Oi /Ob1 /Gy")
         writer.variable("cl_flags_small_codegen", "$cl_flags /Os")
-        writer.variable("cl_flags_pbg4", "$cl_common_flags /O2")
+        # pbg4 is compiled with the same /Od debug flag as the rest of the
+        # project: the orig binary was /Od (visible from ECX-arg spill +
+        # per-access IMUL patterns in FUN_0045f270 / FUN_0045f2c0 /
+        # FUN_0045f460). /O2 historically diverged badly from orig.
+        writer.variable("cl_flags_pbg4", "$cl_flags")
         writer.variable(
             "cl_flags_detours",
             "/W4 /WX /we4777 /we4800 /Zi /MT /Gy /Gm- /Zl /Od /DDETOUR_DEBUG=0 /DWIN32_LEAN_AND_MEAN /D_WIN32_WINNT=0x501",

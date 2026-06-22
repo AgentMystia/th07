@@ -1,6 +1,6 @@
 # TH07-RE 反编译重建进度
 
-最后更新：2026-06-22
+最后更新：2026-06-22（P1.4 Pbg4Parser 抬升）
 
 ## 终极目标
 
@@ -13,13 +13,13 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 |---|---|
 | objdiff 跟踪模块 | 22 |
 | objdiff 跟踪函数 | 228 |
-| 模块平均 match%（per-module 算术平均）| ~80.6%（2026-06-22 AnmManager 58→71% 后估算；下次全量重测基线待更新）|
-| 函数加权 match% | ~77.5%（同上估算）|
-| ≥90% 模块 | 11（核心完成）|
+| 模块平均 match%（per-module 算术平均）| ~81.0%（2026-06-22 Pbg4Parser 19.72→95.40% 后估算；下次全量重测基线待更新）|
+| 函数加权 match% | ~78.0%（同上估算）|
+| ≥90% 模块 | 12（Pbg4Parser 本轮升入此档）|
 | 80–90% 模块 | 3（接近达标）|
-| 50–80% 模块 | 5（进行中；AnmManager 本轮 58→71% 升入此档中段）|
+| 50–80% 模块 | 4（进行中）|
 | <50% 模块 | 3（阻塞/早期）|
-| **normal build** | ✅ **链接成功，产出 `build/th07e.exe`（PE32 i386 GUI）** |
+| **normal build** | ✅ **链接成功，产出 `build/th07e.exe`（PE32 i386 GUI，143360B）** |
 | **Player 模块** | ✅ **17 缺失函数已实现（OnUpdate/OnDrawHighPrio/AddedCallback/HandlePlayerInputs/SpawnBullets/UpdatePlayerBullets/DrawBullets/DrawBulletExplosions/CalcDamageToEnemy/CheckGraze/CalcKillBoxCollision/CalcLaserHitbox/ClearBombRegions/HandleBombInput/StartSupernaturalBorder/EndSupernaturalBorder/UpdateFireBulletsTimer）**。objdiff 26 函数跟踪（之前 9），加权 40.28%、算术 62.24% |
 | **AnmManager 模块** | 本轮（2026-06-22）ExecuteScript 完整 lift（0.21% → **44.44%**），58.41% → **71.44%**（+13.03pp）。详见 P1.2 段 |
 | mapping.csv 函数覆盖 | 1562 行（th07.exe 全部非 thunk 函数）|
@@ -52,7 +52,7 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 
 `<<` = <50%（阻塞），`*` = <90%（待抛光）。函数按字节大小降序。
 
-### 核心完成（≥90%）— 11 模块
+### 核心完成（≥90%）— 12 模块
 
 **AnmVm 100.00%** (3 fns) — ResetInterpTimers 100, Initialize 100, AnmVm 100
 **GameErrorContext 99.81%** (3) — Fatal 99.93, Log 99.93, Flush 99.56
@@ -63,6 +63,7 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 **zwave 96.01%** (26) — 5×100, CSoundManager::CreateStreaming* 91-94, CStreamingSound::HandleWaveStreamNotification 88.40, CWaveFile::ResetFile 78.61
 **FileSystem 95.82%** (2) — RawWriteFile 99.29, OpenPath 92.35
 **Rng 95.77%** (3) — GetRandomU16 100, GetRandomU32 100, GetRandomF32ZeroToOne 87.31
+**Pbg4Parser 95.40%** (3) — SetIndex **99.44**, Reset **94.85**, AdvanceNode **91.90**（本轮 P1.4 全量抬升；详见下方 "2026-06-22 P1.4 Pbg4Parser 全量抬升" 段）
 **MidiOutput 92.23%** (17) — ClearTracks/LoadFile/Play/ReleaseFileData/SetFadeOut 100×5, StopPlayback 99.75, MidiOutput 99.69; **ProcessMsg 34.76**（大函数待实现）
 **ScreenEffect 90.23%** (13) — AddedCallback/DrawFadeOut/DrawFlickerFade 100×3, DrawFadeIn 98.06, Clear 97.54, SetViewport 97.00; DrawSquare 79.82, RegisterChain 81.95, ShakeScreen 82.50, CalcFlickerFade 78.61（+0.34pp vs 旧基线，typed-C++ 重构后）
 
@@ -79,12 +80,11 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 **CMyFont 70.75%** (5) — Reset 99.81, Clean 95.00, InitWrapper 91.86; Init 64.88; **Print 2.20**（GDI 渲染大函数）
 **Supervisor 67.37%** (14) — OnDraw 99.55, TickTimer 97.95, ReadMidiFile 91.76, PlayMidiFile 86.34; SetupDInput 77.16, RegisterChain 76.48, FadeOutMusic 73.73, StopAudio 70.71; **LoadConfig 30.60, DrawFpsCounter 0.00**（-1.81pp，fps 平滑变量 retyping + 字符串重定位；待后续抛光）
 
-### 阻塞/早期（<50%）— 4 模块
+### 阻塞/早期（<50%）— 3 模块
 
 **AnmManager 71.44%** (15) — CreateEmptyTexture 99.40, ReleaseTexture 88.28; **LoadAnmEntry 91.53, SetRenderStateForVm 88.08**；DrawInner 82.88; LoadTextureFromMemory 86.82, LoadTextureAlphaChannel 76.65; LoadTexture 76.73; LoadAnm 59.97, ReleaseAnm 59.65, LoadSprite/SetActiveSprite 57; AnmManager(ctor) 44.66; **ExecuteScript 0.21→44.44（13178B，P1.2 本轮完整 lift）**, SetAndExecuteScript 58.13。本轮（2026-06-22）P1.2 ExecuteScript 完整 lift + 4 个 register-file helper 方法化（GetFloatRegOr/GetIntRegOr/ResolveFloatReg/ResolveIntReg），模块 58.41% → 71.44%（+13.03pp）。详见下方 "2026-06-22 P1.2 ExecuteScript 完整 lift" 段。
 **BombData 40.87%** (24) — MarisaABombDraw 90.92, MarisaBBombDraw 90.68 等 12 draw 完成；MarisaABombCalc2 42.75；**11 calc 未实现**（+1.23pp）
 **ReplayManager 34.70%** (12) — StopRecording 99.67, DeletedCallback 89.47; RegisterChain 84.78; **SaveReplay 4.36, RewriteReplay 2.73** 等
-**Pbg4Parser 19.72%** (3) — AdvanceNode 32.55, SetIndex 26.61; **Reset 0.00**（LZSS 字典/节点表初始化）
 
 （ItemManager 0% 未在 objdiff 跟踪列表中，属 P1 工作。）
 
@@ -204,6 +204,65 @@ objdiff。被跟踪的 `th07::Supervisor::*` 方法（OnUpdate/RegisterChain/...
 **验收**：`build/th07e.exe` normal build 链接成功（139264B PE32 GUI）；宪法审计
 0 raw addr / 0 raw[] / 0 nullptr / 0 非 ASCII（em-dash 已替换为 --）。
 
+## 2026-06-22 P1.4 Pbg4Parser 全量抬升
+
+本轮（commit 待提交）从 Ghidra 逐指令抬升 th07 的 Pbg4 LZSS 字典 helper
+三函数，打通"资源解包前的字典/节点表初始化"基础通路。Pbg4Parser 是
+P1.5 MainMenu（加载 `data/title/*.anm`）和 P1.6（wine 渲染主菜单）的
+底层依赖之一。
+
+| 函数 | 原地址 | 大小 | 抬升前 | 抬升后 | 状态 |
+|---|---|---|---|---|---|
+| SetIndex | 0x45f270 | 0x42 | 26.61% | **99.44%** | ✅ ≥90% |
+| Reset | 0x45f2c0 | 0x7b | 0.00% | **94.85%** | ✅ ≥90% |
+| AdvanceNode | 0x45f460 | 0x85 | 32.55% | **91.90%** | ✅ ≥90% |
+
+**Pbg4Parser 模块平均**：19.72% → **95.40%**（+75.68pp，从"<50% 阻塞"档
+直升"≥90% 核心完成"档）。三个函数全部 ≥90%，达成项目"~90% 即收"标准。
+
+**实现要点**：
+- **彻底重写 Pbg4Parser.cpp**：消灭原 `Pbg4Parser_Reset/SetIndex/AdvanceNode`
+  C 风格 wrapper + namespace 别名双重定义（6 函数符号 → 3，对齐 orig obj
+  的符号集）。改为 `namespace th07 { struct Pbg4Parser { static ... }; }`
+  单一路径，3 个方法 mangled 名直接匹配 orig（`?SetIndex@Pbg4Parser@th07@@SIXH@Z`
+  / `?Reset@...@@SIXPAU12@@Z` / `?AdvanceNode@...@@SIXH@Z`）。
+- **静态成员方法化**：SetIndex/AdvanceNode 是 `static __fastcall(i32)`
+  （ECX = idx，无 this）；Reset 是 `static __fastcall(Pbg4Parser*)`
+  （ECX = this，但 body 完全忽略）。这是让 MSVC 不为"this"参数分配独立
+  栈槽、让 prologue 退化成 `PUSH ECX`（4 字节帧）的关键。
+- **`__fastcall` 单参数栈帧启发式**：MSVC 7.0 对单 __fastcall 参数函数
+  在帧大小 ≤ 4 字节时使用 `PUSH ECX`（1 字节）替代 `SUB ESP, 4`（3 字节）。
+  SetIndex/Reset 满足此条件（单 i32 局部）；AdvanceNode 因有 2 个局部
+  （idxSlot + pickedNodeSlot）退化为标准 `SUB ESP, 0x8`。
+- **去局部缓存 + 每次重读**：所有 idx 访问都从栈帧重读（不缓存在寄存器），
+  匹配 orig `/Od` 的每次 `IMUL reg, idx, 0xc` 模式。SetIndex 99.44% 的
+  关键是直接用 `__fastcall` 参数 `idx`（让 MSVC 自动 spill 到 [EBP-0x4]），
+  而非再声明一个 `idxSlot` 局部变量（那会让 MSVC 多一次 `mov [ebp-X], ecx`）。
+- **`for` 循环 vs `while` 循环**：Reset 用 `for (i=0; i<N; i=i+1) {...}`，
+  MSVC 生成 orig 的 "init -> jmp cond -> body -> inc -> cond" 控制流（94.85%）；
+  改用 `while` 会让 MSVC 生成 "init -> cond -> body -> inc -> jmp cond"
+  顺序，match% 仅 63%。
+- **修复 `cl_flags_pbg4`**：原本 pbg4 用 `/O2` 编译（与其他模块 `/Od` 不一致），
+  导致寄存器分配/CSE 与 orig 严重偏离。改为 `$cl_flags`（与其他模块一致）
+  后，orig 的 `IMUL reg, reg, 0xc` per-access 模式自然重建。
+- **SYMBOL_MAP 3 条新映射**：`_g_Pbg4Dict` → DAT_004b7e40、`_g_Pbg4Nodes` →
+  DAT_0049fe30、`_g_Pbg4CurIndex` → DAT_004b7e38，让 typed global 与 orig
+  delinked obj 的 DAT_ 符号对齐。
+- **link_stubs.cpp 节点 helper 签名修复**：`Pbg4_NodePick` 从 `void` 改为
+  `i32`（返回值），`Pbg4_NodePush`/`Pbg4_NodeShrink` 加上 `EDX` 第二参数，
+  匹配 orig 的 `MOV ECX, idx` + `MOV EDX, field` + `CALL` 调用模式。
+
+**剩余差距**（< 10%，主要为 reloc 编码差异，非行为差异）：
+- Reset prologue 仍是 `SUB ESP, 0x8`（orig `PUSH ECX`），因 MSVC 仍为
+  `Pbg4Parser*` 形参分配独立栈槽（即便 body 未用）。每次 node field 写入
+  用 `DAT_0049fe30+0x4/+0x8` 表达式而非 orig 的 `DAT_0049fe34/0049fe38`
+  独立符号，objdiff 视作 ARG_MISMATCH（地址相同）。
+
+**验收**：每函数 `python3 scripts/build.py --build-type=objdiffbuild
+--object-name Pbg4Parser.obj` + objdiff-cli diff 验证；`build/th07e.exe`
+normal build 链接成功（143360B PE32 GUI，+4KB 因 Pbg4Parser 真实实现替代
+部分 stub）；宪法审计 0 raw addr / 0 raw[] / 0 nullptr / 0 非 ASCII。
+
 ## "打开游戏显示主菜单" 长期路线图（P1.1 - P1.6）
 
 本路线图把"wine 启动 build/th07e.exe 能渲染出与原作一致的主菜单"拆成多轮，
@@ -221,9 +280,12 @@ objdiff。被跟踪的 `th07::Supervisor::*` 方法（OnUpdate/RegisterChain/...
   为真实 boot 序列；normal build th07e.exe 135168B → **139264B**（+4KB 真实 boot）。
   详见上方 "P1.3" 段。注意：这 6 函数不在 objdiff 跟踪（mapping.csv 'unknown'），
   优先级是游戏行为正确性而非字节精确。
-- **P1.4（下一轮）**：Pbg4Parser Reset/AdvanceNode/SetIndex（LZSS 解码器，资源解包必需）+
-  FileSystem 路径整合。当前 Pbg4Parser 19.72%、Reset 0%。
-- **P1.5**：MainMenu 模块全量（0x41e4b0-0x41f6f0，13+ 函数 ~5KB，mapping.csv 仅
+- **P1.4（2026-06-22）** ✅ Pbg4Parser Reset/AdvanceNode/SetIndex（LZSS 字典 helper）
+  全量抬升：模块 19.72% → **95.40%**，三函数全部 ≥90%（SetIndex 99.44% / Reset 94.85% /
+  AdvanceNode 91.90%）。从"<50% 阻塞"直升"≥90% 核心完成"。关键修复：消灭双重 wrapper
+  定义、改 static __fastcall、修正 `cl_flags_pbg4` 从 /O2 回到 /Od、for 循环而非 while
+  循环、SYMBOL_MAP 3 条新映射。详见上方 "P1.4" 段。
+- **P1.5（下一轮）**：MainMenu 模块全量（0x41e4b0-0x41f6f0，13+ 函数 ~5KB，mapping.csv 仅
   RegisterChain 一个命名）。这是标题画面的子系统（OnUpdate/OnDraw/AddedCallback），
   加载 data/title/*.anm 并驱动 title AnmVm。
 - **P1.6（验收）**：wine 实测 build/th07e.exe 能 boot 到主菜单、与原作视觉/行为一致。
@@ -289,7 +351,8 @@ AnmManager 大函数 / BombData calc / ReplayManager / Pbg4Parser）。
 - **BombData 39.6%**：12 calc 函数中 11 个未实现（每个 800–2400B 的 Player 状态机）。
   MarisaABombCalc2（42.75%）是已验证的范本，新 calc 抄其结构。
 - **ReplayManager 34.7%**：SaveReplay/RewriteReplay/AddedCallback 等大函数未实现。
-- **Pbg4Parser 19.7%**：LZSS 解码器（Reset/AdvanceNode/SetIndex），纯算法模块。
+- **Pbg4Parser 95.40%** ✅（本轮 P1.4 完成）：LZSS 字典 helper 三函数全部 ≥90%。
+  详见上方 "P1.4" 段。
 - **ItemManager 0%**：OnUpdate 4297B 单体巨型 switch 函数，需逐 case 逆向。
 
 ### P2：抛光接近达标模块（80–90%）
