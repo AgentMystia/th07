@@ -273,7 +273,7 @@ extern "C" char *g_SupervisorErrTitle_497c78 = 0;
 extern "C" u8 g_SupervisorFrameInputFlag_575c0c = 0;
 
 
-extern "C" f64  g_SupervisorQpcThresh_498a90 = 0.0;       // rdata (placeholder)
+extern "C" f64  g_PlayerAbsorbSizeZero = 0.0;             // rdata (double 0.0; shared by CalcBulletAbsorption size threshold)
 extern "C" f64  g_SupervisorFrametime_498bc0 = 0.0;       // rdata (placeholder)
 extern "C" f64  g_SupervisorFrametime2_498bc8 = 0.0;      // rdata (placeholder)
 

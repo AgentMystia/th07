@@ -74,6 +74,11 @@ extern "C" const f32 g_PlayerBorderYThreshold = 400.0f;               // DAT_004
 extern "C" const f32 g_PlayerStateDurationDivisor = 30.0f;            // DAT_00498b00 (dying/spawning anim progress divisor: 30 frames)
 extern "C" const f32 g_PlayerSpawnYOffset = 64.0f;                    // DAT_00498b08 (AddedCallback: spawn y = arcadeRegionH - 64)
 extern "C" const f32 g_PlayerBorderSpriteScale = -1.0f;               // DAT_00498b5c (StartBorder: effect sprite scale factor)
+extern "C" const f32 g_PlayerGrazePadSize = 20.0f;                    // DAT_00498b84 (CheckGraze: box expansion pad on each side)
+// double 0.0 used as the bulletAbsorbRegions sizeX threshold in
+// CalcBulletAbsorption (orig fcomp QWORD PTR ds:0x498a90). Reuses the same
+// rdata slot Supervisor touches (placeholder name retained).
+extern "C" f64 g_PlayerAbsorbSizeZero;                                // DAT_00498a90 (double 0.0)
 // game-state globals read directly by AddedCallback / HandleBombInput / etc.
 // All defined by their owning modules; here only declared.
 extern "C" u8 g_GameMgr_character;        // DAT_0062f645 (0=Reimu,1=Marisa,2=Sakuya)
@@ -122,6 +127,9 @@ struct GameManagerScore
     void IncreaseSubrank(i32 amount);
     void AddScore(i32 amount);
     void AddGrazeScoreOnly(i32 amount);
+    // Orig FUN_0043b5c0 (called on player death to bump a score counter via
+    // scoreSub->field_34 = (counter % 100000) + 6543).
+    void BumpDeathScoreCounter();
 };
 struct EffectManagerDamage
 {
@@ -186,8 +194,8 @@ static GameManagerScore *const g_GameManagerScore = &g_GameManagerScoreObj;
 // (counter14, counter18, mainSeedScoreBase, score) instead of raw offsets.
 
 // =============================================================================
-// Static helper: reset the 0x80-entry bombRegion.sizeX table + advance the
-// 0x60-entry option scratch table. FUN_00440940 (ClearBombRegions).
+// Static helper: reset the 0x70-entry bombRegion.sizeX table + advance the
+// 0x60-entry bulletAbsorbRegions table. FUN_00440940 (ClearBombRegions).
 // =============================================================================
 void __fastcall Player::ClearBombRegions(Player *p)
 {
@@ -195,24 +203,23 @@ void __fastcall Player::ClearBombRegions(Player *p)
     {
         p->bombRegions[i].sizeX = 0.0f;
     }
-    // Advance option-table timers (stride 0x20, 0x60 entries, base +0x17dc).
-    // Layout (verified by disasm): i32 activeFrames @ +0x18, f32 cur+vel @
-    // +0x10/+0x14. When activeFrames<1 the entries zero out; otherwise they
-    // decrement and accumulate velocity into the position field.
-    u8 *opt = reinterpret_cast<u8 *>(p) + 0x17dc;
-    for (i32 i = 0; i < 0x60; i++)
+    // Advance bulletAbsorbRegions (stride 0x20, 0x60 entries). When
+    // framesLeft <= 0 the region is dead: zero aabbSizeX/circleRadius.
+    // Otherwise decrement framesLeft and accumulate circleVelocity into
+    // circleRadius (radius grows/shrinks over the region's lifetime).
+    // Orig uses a region-pointer advanced in the for-step alongside i.
+    BulletAbsorbRegion *region = p->bulletAbsorbRegions;
+    for (i32 i = 0; i < 0x60; i++, region++)
     {
-        i32 *slot = reinterpret_cast<i32 *>(opt + i * 0x20);
-        if (slot[6] < 1) // +0x18 activeFrames
+        if (region->framesLeft > 0)
         {
-            slot[4] = 0; // +0x10
-            slot[2] = 0; // +0x08
+            region->framesLeft = region->framesLeft - 1;
+            region->circleRadius = region->circleRadius + region->circleVelocity;
         }
         else
         {
-            slot[6] = slot[6] - 1;
-            f32 *fslot = reinterpret_cast<f32 *>(slot);
-            fslot[4] = fslot[4] + fslot[5]; // pos += vel
+            region->circleRadius = 0.0f;
+            region->aabbSizeX = 0.0f;
         }
     }
 }
@@ -397,8 +404,8 @@ i32 Player::CalcItemBoxCollision(D3DXVECTOR3 *center, D3DXVECTOR3 *size)
     maxCorner.y = center->y + half2.y;
     maxCorner.x = center->x + half2.x;
 
-    f32 *boxTL = reinterpret_cast<f32 *>(&this->grazeTopLeft);
-    f32 *boxBR = reinterpret_cast<f32 *>(&this->grazeBottomRight);
+    f32 *boxTL = reinterpret_cast<f32 *>(&this->itemBoxTopLeft);
+    f32 *boxBR = reinterpret_cast<f32 *>(&this->itemBoxBottomRight);
     if (boxTL[0] < maxCorner.x)
     {
         if (boxBR[0] > minCorner.x)
@@ -851,7 +858,7 @@ i32 __fastcall Player::HandleState_Dying(Player *p)
 // =============================================================================
 void __fastcall Player::HandleState_Spawning(Player *p)
 {
-    p->bulletGracePeriod = 0x3c;
+    p->spawnBulletClearFrames = 0x3c;
     f32 t = g_PlayerConst1p0 -
             ((f32)p->invulnerabilityTimer.current +
              p->invulnerabilityTimer.subFrame) /
@@ -893,9 +900,9 @@ void __fastcall Player::HandleState_Spawning(Player *p)
 // =============================================================================
 void __fastcall Player::DispatchState(Player *p)
 {
-    if (p->bulletGracePeriod != 0)
+    if (p->spawnBulletClearFrames != 0)
     {
-        p->bulletGracePeriod = p->bulletGracePeriod - 1;
+        p->spawnBulletClearFrames = p->spawnBulletClearFrames - 1;
         BulletMgr_RemoveAllBullets(0);
     }
     if (p->playerState == PLAYER_STATE_INVULNERABLE)
@@ -1779,31 +1786,65 @@ i32 Player::CalcDamageToEnemy(D3DXVECTOR3 *enemyPos, D3DXVECTOR3 *enemySize,
 }
 
 // =============================================================================
+// CalcBulletAbsorption  --  FUN_0043e0a0  (__thiscall)
+// Walks bulletAbsorbRegions[0x60] (Player+0x17dc). For each region, either:
+//   - if aabbSize (+0x08) != 0.0f: AABB-test region.center/aabbSize vs bullet
+//   - else if circleRadius (+0x10) != 0.0 (double): circle-test (distance from
+//     region.center to bulletCenter <= circleRadius)
+// On a hit the region's hitCounter (+0x1c) is stored to Player::bulletGracePeriod
+// and 2 is returned.
+// =============================================================================
+i32 Player::CalcBulletAbsorption(D3DXVECTOR3 *bulletCenter, D3DXVECTOR3 *bulletSize)
+{
+    BulletAbsorbRegion *region = this->bulletAbsorbRegions;
+    f32 bulletLeft = bulletCenter->x - bulletSize->x / g_PlayerConst2p0;
+    f32 bulletTop = bulletCenter->y - bulletSize->y / g_PlayerConst2p0;
+    f32 bulletRight = bulletCenter->x + bulletSize->x / g_PlayerConst2p0;
+    f32 bulletBottom = bulletCenter->y + bulletSize->y / g_PlayerConst2p0;
+    for (i32 i = 0; i < 0x60; i++)
+    {
+        if (region->aabbSizeX != g_PlayerBombRegionActivateThreshold)
+        {
+            f32 rLeft = region->centerX - region->aabbSizeX / g_PlayerConst2p0;
+            f32 rTop = region->centerY - region->aabbSizeY / g_PlayerConst2p0;
+            f32 rRight = region->centerX + region->aabbSizeX / g_PlayerConst2p0;
+            f32 rBottom = region->centerY + region->aabbSizeY / g_PlayerConst2p0;
+            if (!(rLeft > bulletRight || rRight < bulletLeft ||
+                  rTop > bulletBottom || rBottom < bulletTop))
+            {
+                this->bulletGracePeriod = region->hitCounter;
+                return 2;
+            }
+        }
+        else if (region->circleRadius != g_PlayerAbsorbSizeZero)
+        {
+            f32 dx = bulletCenter->x - region->centerX;
+            f32 dy = bulletCenter->y - region->centerY;
+            if (dx * dx + dy * dy <= region->circleRadius * region->circleRadius)
+            {
+                this->bulletGracePeriod = region->hitCounter;
+                return 2;
+            }
+        }
+        region++;
+    }
+    return 0;
+}
+
+// =============================================================================
 // CalcKillBoxCollision  --  FUN_0043e260  (__thiscall)
 // =============================================================================
 i32 Player::CalcKillBoxCollision(D3DXVECTOR3 *bulletCenter, D3DXVECTOR3 *bulletSize)
 {
-    f32 bulletLeft = bulletCenter->x - bulletSize->x * 0.5f;
-    f32 bulletTop = bulletCenter->y - bulletSize->y * 0.5f;
-    f32 bulletRight = bulletCenter->x + bulletSize->x * 0.5f;
-    f32 bulletBottom = bulletCenter->y + bulletSize->y * 0.5f;
-    // Check against bomb regions (any overlap = bullet absorbed, return 2).
-    for (i32 i = 0; i < 0x70; i++)
+    this->bulletGracePeriod = 6;
+    if (this->CalcBulletAbsorption(bulletCenter, bulletSize) != 0)
     {
-        if (this->bombRegions[i].sizeX == 0.0f)
-        {
-            continue;
-        }
-        f32 bLeft = this->bombRegions[i].position.x - this->bombRegions[i].sizeX * 0.5f;
-        f32 bTop = this->bombRegions[i].position.y - this->bombRegions[i].sizeX * 0.5f;
-        f32 bRight = this->bombRegions[i].position.x + this->bombRegions[i].sizeX * 0.5f;
-        f32 bBottom = this->bombRegions[i].position.y + this->bombRegions[i].sizeX * 0.5f;
-        if (!(bLeft > bulletRight || bRight < bulletLeft ||
-              bTop > bulletBottom || bBottom < bulletTop))
-        {
-            return 2;
-        }
+        return 2;
     }
+    f32 bulletLeft = bulletCenter->x - bulletSize->x / g_PlayerConst2p0;
+    f32 bulletTop = bulletCenter->y - bulletSize->y / g_PlayerConst2p0;
+    f32 bulletRight = bulletCenter->x + bulletSize->x / g_PlayerConst2p0;
+    f32 bulletBottom = bulletCenter->y + bulletSize->y / g_PlayerConst2p0;
     if (this->hitboxTopLeft.x > bulletRight ||
         this->hitboxTopLeft.y > bulletBottom ||
         this->hitboxBottomRight.x < bulletLeft ||
@@ -1811,10 +1852,19 @@ i32 Player::CalcKillBoxCollision(D3DXVECTOR3 *bulletCenter, D3DXVECTOR3 *bulletS
     {
         return 0;
     }
+    // Graze Gui flag: set bit 1 of GuiObjPtr[+0xd6].
+    u16 *guiFlags = reinterpret_cast<u16 *>(g_GuiObjPtr + 0xd6);
+    *guiFlags = (u16)(*guiFlags | 2);
+    if (this->playerState == PLAYER_STATE_DYING)
+    {
+        Player::EndSupernaturalBorder(&g_Player, 0);
+        return 1;
+    }
     if (this->playerState != PLAYER_STATE_ALIVE)
     {
         return 1;
     }
+    g_GameManagerScore->BumpDeathScoreCounter();
     Player::Die(this);
     return 1;
 }
@@ -1824,33 +1874,24 @@ i32 Player::CalcKillBoxCollision(D3DXVECTOR3 *bulletCenter, D3DXVECTOR3 *bulletS
 // =============================================================================
 i32 Player::CheckGraze(D3DXVECTOR3 *center, D3DXVECTOR3 *size)
 {
-    f32 grazePad = 20.0f;
-    f32 tlX = center->x - size->x * 0.5f - grazePad;
-    f32 tlY = center->y - size->y * 0.5f - grazePad;
-    f32 brX = center->x + size->x * 0.5f + grazePad;
-    f32 brY = center->y + size->y * 0.5f + grazePad;
-    for (i32 i = 0; i < 0x70; i++)
+    this->bulletGracePeriod = 6;
+    if (this->CalcBulletAbsorption(center, size) != 0)
     {
-        if (this->bombRegions[i].sizeX == 0.0f)
-        {
-            continue;
-        }
-        f32 bLeft = this->bombRegions[i].position.x - this->bombRegions[i].sizeX * 0.5f;
-        f32 bTop = this->bombRegions[i].position.y - this->bombRegions[i].sizeX * 0.5f;
-        f32 bRight = this->bombRegions[i].position.x + this->bombRegions[i].sizeX * 0.5f;
-        f32 bBottom = this->bombRegions[i].position.y + this->bombRegions[i].sizeX * 0.5f;
-        if (!(bLeft > brX || bRight < tlX || bTop > brY || bBottom < tlY))
-        {
-            return 2;
-        }
+        return 2;
     }
+    f32 grazeLeft = center->x - size->x / g_PlayerConst2p0 - g_PlayerGrazePadSize;
+    f32 grazeTop = center->y - size->y / g_PlayerConst2p0 - g_PlayerGrazePadSize;
+    f32 grazeRight = center->x + size->x / g_PlayerConst2p0 + g_PlayerGrazePadSize;
+    f32 grazeBottom = center->y + size->y / g_PlayerConst2p0 + g_PlayerGrazePadSize;
     if (this->playerState == PLAYER_STATE_DEAD ||
         this->playerState == PLAYER_STATE_SPAWNING)
     {
         return 0;
     }
-    if (this->hitboxTopLeft.x > brX || this->hitboxBottomRight.x < tlX ||
-        this->hitboxTopLeft.y > brY || this->hitboxBottomRight.y < tlY)
+    if (this->grazeBoxTopLeft.x > grazeRight ||
+        this->grazeBoxBottomRight.x < grazeLeft ||
+        this->grazeBoxTopLeft.y > grazeBottom ||
+        this->grazeBoxBottomRight.y < grazeTop)
     {
         return 0;
     }
@@ -1946,6 +1987,7 @@ void GameManagerScore::GuiClearFlags() { }
 void GameManagerScore::IncreaseSubrank(i32) { }
 void GameManagerScore::AddScore(i32) { }
 void GameManagerScore::AddGrazeScoreOnly(i32) { }
+void GameManagerScore::BumpDeathScoreCounter() { }
 
 // P0 link-pass: definitions of the cross-module singleton handles declared
 // `extern` at the top of this file. They live here because the struct types

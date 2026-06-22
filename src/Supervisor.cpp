@@ -235,7 +235,7 @@ extern "C" void *g_SupervisorD3D8_575954;
 // link_globals.cpp definition (g_SupervisorD3dDevice_575958); the boot
 // helpers reach it via absolute address with a VTBL macro cast.
 extern "C" void *g_SupervisorD3dDevice_575958;
-extern "C" f64  g_SupervisorQpcThresh_498a90;   // rdata double 0.002
+extern "C" f64  g_PlayerAbsorbSizeZero;            // rdata double 0.0 at 0x498a90 (also used as QPC threshold / absorb-size threshold)
 extern "C" f64  g_SupervisorFrametime_498bc0;   // rdata double (~0.01666)
 extern "C" f64  g_SupervisorFrametime2_498bc8;  // rdata double (~0.015)
 
@@ -1517,7 +1517,7 @@ frame_loop:
             QueryPerformanceCounter(&qpc);
             frameElapsed = (f64)(qpc.u.LowPart - g_SupervisorQpcLastLo_135e208) /
                            (f64)*(i32 *)&g_SupervisorPerfFreq_575c34;
-            if (frameElapsed < g_SupervisorQpcThresh_498a90)
+            if (frameElapsed < g_PlayerAbsorbSizeZero)
             {
                 g_SupervisorQpcLastLo_135e208 = qpc.u.LowPart;
                 g_SupervisorQpcLastHi_135e20c = qpc.u.HighPart;

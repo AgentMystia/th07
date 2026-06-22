@@ -451,7 +451,7 @@ th07::Player::DrawBulletExplosions,0x43d790,0xf0,__fastcall,,void,Player*
 th07::Player::UpdateFireBulletsTimer,0x43d880,0x80,__fastcall,,ZunResult,Player*
 th07::Player::StartFireBulletTimer,0x43d990,0x30,__fastcall,,void,Player*
 th07::Player::CalcDamageToEnemy,0x43d9e0,0x280,__thiscall,,i32,D3DXVECTOR3*,D3DXVECTOR3*,ZunBool*
-FUN_0043e0a0,0x43e0a0,0x1ba,unknown,,u8
+th07::Player::CalcBulletAbsorption,0x43e0a0,0x1ba,__thiscall,,i32,D3DXVECTOR3*,D3DXVECTOR3*
 th07::Player::CalcKillBoxCollision,0x43e260,0x150,__thiscall,,i32,D3DXVECTOR3*,D3DXVECTOR3*
 th07::Player::CheckGraze,0x43e3b0,0x150,__thiscall,,i32,D3DXVECTOR3*,D3DXVECTOR3*
 th07::Player::CalcItemBoxCollision,0x43e4e0,0x1d0,__thiscall,,i32,D3DXVECTOR3*,D3DXVECTOR3*

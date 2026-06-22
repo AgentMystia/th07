@@ -126,6 +126,8 @@ SYMBOL_MAP = {
     b"_g_PlayerStateDurationDivisor": b"DAT_00498b00",
     b"_g_PlayerSpawnYOffset": b"DAT_00498b08",
     b"_g_PlayerBorderSpriteScale": b"DAT_00498b5c",
+    b"_g_PlayerGrazePadSize": b"DAT_00498b84",        # 20.0f (CheckGraze box pad)
+    b"_g_PlayerAbsorbSizeZero": b"DAT_00498a90",      # double 0.0 (CalcBulletAbsorption AABB threshold)
     # Supervisor.cpp rdata float constants + game-state globals (Part C.1).
     b"_g_SupervisorC0x498a48": b"DAT_00498A48",
     b"_g_SupervisorC0x498a4c": b"DAT_00498A4C",

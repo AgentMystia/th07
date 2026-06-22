@@ -165,6 +165,32 @@ struct BombRegion
 };
 ZUN_ASSERT_SIZE(BombRegion, 0x20);
 
+// Bullet-absorption region (player-graze / supernatural-border circles).
+// Stride 0x20, table at Player+0x17dc, 0x60 entries (ends at +0x23dc).
+// Layout reconstructed from CalcBulletAbsorption (FUN_0043e0a0) +
+// ClearBombRegions (FUN_00440940):
+//   - centerX/Y (+0x00/+0x04): region center
+//   - aabbSizeX/Y (+0x08/+0x0c): AABB extents; AABB test fires when
+//     aabbSizeX != 0.0f
+//   - circleRadius (+0x10): circle radius; circle test fires when
+//     circleRadius != 0.0 (compared as double). ClearBombRegions advances
+//     this by circleVelocity (+0x14) each frame.
+//   - framesLeft (+0x18): lifetime counter; ClearBombRegions decrements
+//     when > 0, else zeroes aabbSizeX/circleRadius.
+//   - hitCounter (+0x1c): stored to Player::bulletGracePeriod on hit.
+struct BulletAbsorbRegion
+{
+    f32 centerX;            // +0x00
+    f32 centerY;            // +0x04
+    f32 aabbSizeX;          // +0x08
+    f32 aabbSizeY;          // +0x0c
+    f32 circleRadius;       // +0x10 (compared as double in circle test)
+    f32 circleVelocity;     // +0x14 (added to circleRadius each frame)
+    i32 framesLeft;         // +0x18 (lifetime; ClearBombRegions decrements)
+    i32 hitCounter;         // +0x1c (stored to Player::bulletGracePeriod on hit)
+};
+ZUN_ASSERT_SIZE(BulletAbsorbRegion, 0x20);
+
 // Option-slot metadata. Stride 0x10, 3 (or 4 for Sakuya) entries starting at
 // Player+0x169c4. Layout from UpdatePlayerBullets (FUN_0043d2f0):
 //   +0x169c4+0x10*i: ZunTimer current-frame counter (i32) -- "0x169cc - 0x8"
@@ -230,10 +256,10 @@ ZUN_ASSERT_SIZE(BombProjectileSlot, 0x1428);
 //   +0x930   D3DXVECTOR3 positionCenter
 //   +0x948   D3DXVECTOR3 hitboxTopLeft
 //   +0x954   D3DXVECTOR3 hitboxBottomRight
-//   +0x960   D3DXVECTOR3 grabItemTopLeft
-//   +0x96c   D3DXVECTOR3 grabItemBottomRight
-//   +0x978   D3DXVECTOR3 grazeTopLeft
-//   +0x984   D3DXVECTOR3 grazeBottomRight
+//   +0x960   D3DXVECTOR3 grazeBoxTopLeft     (CheckGraze AABB TL)
+//   +0x96c   D3DXVECTOR3 grazeBoxBottomRight (CheckGraze AABB BR)
+//   +0x978   D3DXVECTOR3 itemBoxTopLeft      (CalcItemBoxCollision AABB TL)
+//   +0x984   D3DXVECTOR3 itemBoxBottomRight  (CalcItemBoxCollision AABB BR)
 //   +0x990   D3DXVECTOR3 hitboxSize    (default 1.25 / 1.25 / 5.0)
 //   +0x99c   D3DXVECTOR3 grabItemSize  (default 12 / 12 / 5)
 //   +0x9a8   f32 grazeSizeX  (= 20.0 in graze boxes)
@@ -279,12 +305,15 @@ struct Player
     AnmVm playerSprite;                      // +0x000
     AnmVm orbsSprite[3];                     // +0x24c, +0x498, +0x6e4
     D3DXVECTOR3 positionCenter;              // +0x930
+    u8 unk_93c[0x948 - 0x93c];               // +0x93c (12 bytes reserved; orig leaves gap)
     D3DXVECTOR3 hitboxTopLeft;               // +0x948
     D3DXVECTOR3 hitboxBottomRight;           // +0x954
-    D3DXVECTOR3 grabItemTopLeft;             // +0x960
-    D3DXVECTOR3 grabItemBottomRight;         // +0x96c
-    D3DXVECTOR3 grazeTopLeft;                // +0x978
-    D3DXVECTOR3 grazeBottomRight;            // +0x984
+    // Graze box AABB (used by CheckGraze / orig FUN_0043e3b0).
+    D3DXVECTOR3 grazeBoxTopLeft;             // +0x960
+    D3DXVECTOR3 grazeBoxBottomRight;         // +0x96c
+    // Item-pickup box AABB (used by CalcItemBoxCollision / orig FUN_0043e4e0).
+    D3DXVECTOR3 itemBoxTopLeft;              // +0x978
+    D3DXVECTOR3 itemBoxBottomRight;          // +0x984
     D3DXVECTOR3 hitboxSize;                  // +0x990
     D3DXVECTOR3 grabItemSize;                // +0x99c
     f32 grazeSizeX;                          // +0x9a8
@@ -294,15 +323,15 @@ struct Player
     f32 movementSpeedX;                      // +0x9cc
     f32 movementSpeedY;                      // +0x9d0
     u8 unk_9d4[0x9dc - 0x9d4];               // +0x9d4 (8 bytes scratch)
-    // +0x9dc..+0x19dc: BombRegion table (0x80 entries, stride 0x20).
-    //   - CalcDamageToEnemy walks 0x70 entries; AddedCallback/ClearBombRegions
-    //     walk 0x80 entries (zeroing the +0xc sizeX dword each frame).
-    BombRegion bombRegions[0x80];            // +0x9dc (0x80 * 0x20 = 0x1000 -> ends 0x19dc)
-    // +0x19dc..+0x23f0 opaque: option/characterData scratch + per-bomb motion
-    // tables. The bomb callbacks (ReimuCBombCalc etc.) reach this region via
-    // Player* + imm arithmetic. Reserved as named padding so the offset math
-    // stays exact.
-    u8 unk_19dc[0x23f0 - 0x19dc];            // +0x19dc
+    // +0x9dc..+0x17dc: BombRegion table (0x70 entries, stride 0x20).
+    //   - CalcDamageToEnemy walks 0x70 entries (reads pos xy, sizeX, dmg,
+    //     hitCounter); ClearBombRegions zeroes sizeX for 0x70 entries.
+    BombRegion bombRegions[0x70];            // +0x9dc (0x70 * 0x20 = 0xe00 -> ends 0x17dc)
+    // +0x17dc..+0x23dc: BulletAbsorbRegion table (0x60 entries, stride 0x20).
+    //   - CalcBulletAbsorption walks all 0x60 entries each call.
+    //   - ClearBombRegions walks all 0x60 entries (zeroes radius+sizeX or
+    //     decrements hitCounter + advances position by velocity).
+    BulletAbsorbRegion bulletAbsorbRegions[0x60]; // +0x17dc (0x60 * 0x20 = 0xc00 -> ends 0x23dc)
 
     // ===== +0x23dc .. +0x2450 : per-bomb motion + flags =====
     // +0x23dc: supernatural-border "active this frame" flag (set to 1 by
@@ -313,9 +342,9 @@ struct Player
     f32 horizontalMovementSpeedMultiplierDuringBomb; // +0x23f0
     f32 verticalMovementSpeedMultiplierDuringBomb;   // +0x23f4
     i32 unk_23f8;                            // +0x23f8 (lives mirror)
-    i32 respawnTimer;                        // +0x23fc
-    i32 bulletGracePeriod;                   // +0x2400
-    u8 unk_2404[0x2408 - 0x2404];            // +0x2404
+    i32 respawnTimer;                        // +0x23fc (counts down from 0x28)
+    i32 spawnBulletClearFrames;              // +0x2400 (60 on spawn; DispatchState decrements + clears bullets)
+    i32 bulletGracePeriod;                   // +0x2404 (6 on graze/bomb-absorb; stores region.hitCounter)
     u8 playerState;                          // +0x2408
     u8 unk_2409;                             // +0x2409
     u8 orbState;                             // +0x240a
@@ -418,6 +447,12 @@ struct Player
     void ScoreGraze(D3DXVECTOR3 *center);
     i32 CalcDamageToEnemy(D3DXVECTOR3 *enemyPos, D3DXVECTOR3 *enemySize,
                           ZunBool *hitWithBomb);
+    // CalcBulletAbsorption: walks the bulletAbsorbRegions table (0x60 entries
+    // at +0x17dc) and tests whether the given bullet (center/size) is absorbed
+    // by any active region. Returns 2 + sets bulletGracePeriod if absorbed,
+    // else 0. Helper shared by CalcKillBoxCollision and CheckGraze
+    // (orig FUN_0043e0a0).
+    i32 CalcBulletAbsorption(D3DXVECTOR3 *bulletCenter, D3DXVECTOR3 *bulletSize);
     i32 CalcKillBoxCollision(D3DXVECTOR3 *bulletCenter, D3DXVECTOR3 *bulletSize);
     i32 CheckGraze(D3DXVECTOR3 *center, D3DXVECTOR3 *size);
     i32 CalcLaserHitbox(D3DXVECTOR3 *laserCenter, D3DXVECTOR3 *laserSize,
