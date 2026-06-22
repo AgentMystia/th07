@@ -219,3 +219,79 @@ extern "C" const f32 g_AnmMgrC0x498b5c = -1.0f;  // DAT_00498B5C (scale flip)
 // it absolutely. Zero-init matches the boot state until Supervisor sets it.
 extern "C" f32 g_AnmMgrFramerateMul_575ac8 = 0.0f;
 
+// P1.3 Supervisor boot-path globals (FUN_00434020/a40/a80/bd0/46e0/3e90).
+// These are standalone .data/.bss globals the boot helpers reach via absolute
+// address. Zero-init matches orig boot state; InitD3D / CreateWindow populate
+// them as the device / window come up.
+extern "C" void *g_SupervisorWindow_575c20 = 0;          // HWND
+extern "C" i32  g_SupervisorExStyle_575c28 = 0;
+extern "C" i32  g_SupervisorStyle_575c2c = 0;
+extern "C" i32  g_SupervisorExitFlag_575c24 = 0;
+extern "C" i32  g_SupervisorBootVar_575c30 = 0;
+extern "C" i64  g_SupervisorPerfFreq_575c34 = 0;          // QueryPerformanceFrequency
+extern "C" i32  g_SupervisorSysParam_575c40 = 0;          // SPI screensaver
+extern "C" i32  g_SupervisorSysParam_575c44 = 0;          // SPI keyboard delay
+extern "C" i32  g_SupervisorSysParam_575c48 = 0;          // SPI keyboard speed
+extern "C" u8   g_SupervisorLoadResult_575c3c = 0;
+extern "C" u8   g_SupervisorColorMode_575a86 = 0;
+extern "C" u8   g_SupervisorIsForeground_575a8a = 0;
+extern "C" u8   g_SupervisorFrameskipCfg_575a8b = 0;
+extern "C" u8   g_SupervisorUnkFlag_575a8c = 0;
+extern "C" u8   g_SupervisorWindowedOverride_575abc = 0;
+extern "C" i32  g_SupervisorUnkAb4_575ab4 = 0;
+extern "C" i32  g_SupervisorUnkAc0_575ac0 = 0;
+extern "C" i32  g_SupervisorHasHwVertexProc_575ac4 = 0;
+extern "C" i32  g_SupervisorFrameFlags_575adc = 0;
+extern "C" i32  g_SupervisorUnkAe8_575ae8 = 0;
+extern "C" u32  g_SupervisorVramMegs_575b40 = 0;
+extern "C" u32  g_SupervisorUnkB78_575b78 = 0;
+extern "C" char  g_GameErrorContext_624210[0x2008] = {0};
+extern "C" void *g_GameErrorContextHead_626210 = 0;
+extern "C" i32  g_SupervisorQpcLastLo_135e208 = 0;
+extern "C" i32  g_SupervisorQpcLastHi_135e20c = 0;
+extern "C" f64  g_SupervisorTimeLast_135e200 = 0;
+extern "C" i32  g_SupervisorFrameCounter_135e1f8 = 0;
+extern "C" u32  g_SupervisorPresentParams_575a30[13] = {0};
+// g_SupervisorViewport_575a18 already defined as i32 earlier (as
+// g_SupervisorViewport_575a18); the boot helpers index it as u32[8] via the
+// same address. Kept as-is; the union alias is fine since both are 0-init.
+extern "C" u32  g_SupervisorUnkMatrix1_575990[16] = {0};
+extern "C" u32  g_SupervisorUnkMatrix2_5759d0[16] = {0};
+extern "C" void *g_SupervisorHwndMirror_575994 = 0;
+extern "C" void *g_SupervisorAnmMgrSlot_4b9e44 = 0;
+extern "C" void *g_SupervisorHInstance_575950 = 0;
+extern "C" void *g_SupervisorD3D8_575954 = 0;
+// g_SupervisorReplayActive_62f4e0 is a separate symbol from the
+// wav-format-table g_SupervisorG0x62f4e0 (also at DAT_0062f4e0). Both alias
+// the same address; the boot loop reads it as a replay-active flag.
+extern "C" i32  g_SupervisorReplayActive_62f4e0 = 0;
+// Error message title rdata pointer (orig 0x497c78); reached absolutely by
+// the boot loop's MessageBoxA in Teardown. Zero-init placeholder.
+extern "C" char *g_SupervisorErrTitle_497c78 = 0;
+// Per-frame input/pad flag (orig 0x575c0c); stamped each frame by RunSession.
+extern "C" u8 g_SupervisorFrameInputFlag_575c0c = 0;
+
+// P1.3 rdata-string slots (orig .rdata addresses; zero-init
+// placeholders -- the real string content lives in orig .rdata).
+extern "C" char *g_SupervisorRdataStr_4978b0 = 0;
+extern "C" char *g_SupervisorRdataStr_4978f8 = 0;
+extern "C" char *g_SupervisorRdataStr_497948 = 0;
+extern "C" char *g_SupervisorRdataStr_497998 = 0;
+extern "C" char *g_SupervisorRdataStr_4979b4 = 0;
+extern "C" char *g_SupervisorRdataStr_4979c8 = 0;
+extern "C" char *g_SupervisorRdataStr_497a04 = 0;
+extern "C" char *g_SupervisorRdataStr_497a3c = 0;
+extern "C" char *g_SupervisorRdataStr_497a7c = 0;
+extern "C" char *g_SupervisorRdataStr_497ab4 = 0;
+extern "C" char *g_SupervisorRdataStr_497adc = 0;
+extern "C" char *g_SupervisorRdataStr_497afc = 0;
+extern "C" char *g_SupervisorRdataStr_497b20 = 0;
+extern "C" char *g_SupervisorRdataStr_497b44 = 0;
+extern "C" char *g_SupervisorRdataStr_497b70 = 0;
+extern "C" char *g_SupervisorRdataStr_497bd8 = 0;
+extern "C" char *g_SupervisorRdataStr_497c28 = 0;
+
+extern "C" f64  g_SupervisorQpcThresh_498a90 = 0.0;       // rdata (placeholder)
+extern "C" f64  g_SupervisorFrametime_498bc0 = 0.0;       // rdata (placeholder)
+extern "C" f64  g_SupervisorFrametime2_498bc8 = 0.0;      // rdata (placeholder)
+

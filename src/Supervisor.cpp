@@ -144,6 +144,154 @@ extern "C" void *g_SupervisorG0x4980c4;        // rdata pointer (ECX for Callbac
 extern "C" void *g_SupervisorG0x4bd994;        // scratch (thbgm descriptor table)
 extern "C" i8  g_GameManagerRankForceFlag;     // GameManager +0xd (inside flag0c i32)
 
+// ---- P1.3 boot-path globals + helpers (FUN_00434020 / a40 / a80 / bd0 /
+//      46e0 / 3e90). These live as standalone .data/.bss globals, not as
+//      Supervisor struct fields; referenced by the boot loop, the window/D3D
+//      init helpers, and RunSession.
+// Boot/window state:
+//   g_SupervisorWindow_575c20: HWND created by CreateWindow (FUN_00434a80).
+//   g_SupervisorExStyle_575c28 / g_SupervisorStyle_575c2c: cached window
+//     style bits for re-creation on mode change.
+//   g_SupervisorExitFlag_575c24: nonzero -> main loop terminates (set at end
+//     of InitD3D and cleared on reboot).
+//   g_SupervisorBootVar_575c30: 0xe2 written before entering the session
+//     loop (likely a vsync/sleep config).
+//   g_SupervisorPerfFreq_575c34: QueryPerformanceFrequency result.
+//   g_SupervisorSysParam_575c40/44/48: SystemParametersInfo snapshots
+//     (screensaver/keyboard speed/cursor) restored on exit.
+//   g_SupervisorLoadResult_575c3c: nonzero when cfg load requested windowed
+//     override for InitD3D.
+//   g_SupervisorIsForeground_575a8a: cfg.windowed byte (also accessed via
+//     g_Supervisor.cfg.windowed).
+//   g_SupervisorFrameskipCfg_575a8b: cfg.frameskipConfig byte.
+//   g_SupervisorColorMode_575a86: cfg.colorMode16bit byte.
+//   g_SupervisorCfgOpts_575a9c: cfg.opts dword.
+//   g_SupervisorUnkFlag_575a8c, _575abc, _575ab4, _575ac0, _575ac4, _575adc,
+//     _575ae8, _575b40, _575b78: assorted per-frame / boot flags touched by
+//     InitD3D and the session loop.
+//   g_GameErrorContext_624210: the 0x2008-byte GameErrorContext buffer; the
+//     boot loop writes its address into the chain head at DAT_00626210.
+//   g_GameErrorContextHead_626210: chain head pointer.
+//   g_SupervisorQpcLast_135e208/_c: last QueryPerformanceCounter sample.
+//   g_SupervisorTimeLast_135e200: last timeGetTime sample.
+//   g_SupervisorFrameCounter_135e1f8: per-frame monotonic counter bumped by
+//     RunSession.
+//   g_SupervisorPresentParams_575a30: present-parameters buffer (copy of the
+//     local one built by InitD3D, used by device-reset paths).
+//   g_SupervisorViewport_575a18: the D3D viewport set after device creation.
+//   g_SupervisorUnkMatrix1_575990 / _5759d0: scratch matrices for the boot-
+//     time D3DXMatrixPerspectiveLH / D3DXMatrixLookAtLH calls.
+//   g_SupervisorAnmMgrSlot_4b9e44: the AnmManager singleton pointer slot.
+//   g_SupervisorReplayActive_62f4e0: nonzero when a replay is recording /
+//     playing back (flushed on session exit).
+extern "C" void *g_SupervisorWindow_575c20;
+extern "C" i32  g_SupervisorExStyle_575c28;
+extern "C" i32  g_SupervisorStyle_575c2c;
+extern "C" i32  g_SupervisorExitFlag_575c24;
+extern "C" i32  g_SupervisorBootVar_575c30;
+extern "C" i64  g_SupervisorPerfFreq_575c34;
+extern "C" i32  g_SupervisorSysParam_575c40;
+extern "C" i32  g_SupervisorSysParam_575c44;
+extern "C" i32  g_SupervisorSysParam_575c48;
+extern "C" u8   g_SupervisorLoadResult_575c3c;
+extern "C" u8   g_SupervisorColorMode_575a86;
+extern "C" u8   g_SupervisorIsForeground_575a8a;
+extern "C" u8   g_SupervisorFrameskipCfg_575a8b;
+extern "C" u32  g_SupervisorCfgOpts_575a9c;
+extern "C" u8   g_SupervisorUnkFlag_575a8c;
+extern "C" u8   g_SupervisorWindowedOverride_575abc;
+extern "C" i32  g_SupervisorUnkAb4_575ab4;
+extern "C" i32  g_SupervisorUnkAc0_575ac0;
+extern "C" i32  g_SupervisorHasHwVertexProc_575ac4;
+extern "C" i32  g_SupervisorFrameFlags_575adc;
+extern "C" i32  g_SupervisorUnkAe8_575ae8;
+extern "C" u32  g_SupervisorVramMegs_575b40;
+extern "C" u32  g_SupervisorUnkB78_575b78;
+extern "C" char  g_GameErrorContext_624210[0x2008];
+extern "C" void *g_GameErrorContextHead_626210;
+extern "C" i32  g_SupervisorQpcLastLo_135e208;
+extern "C" i32  g_SupervisorQpcLastHi_135e20c;
+extern "C" f64  g_SupervisorTimeLast_135e200;
+extern "C" i32  g_SupervisorFrameCounter_135e1f8;
+extern "C" u32  g_SupervisorPresentParams_575a30[13];
+extern "C" u32  g_SupervisorViewport_575a18[8];
+extern "C" u32  g_SupervisorUnkMatrix1_575990[16];
+extern "C" u32  g_SupervisorUnkMatrix2_5759d0[16];
+extern "C" void *g_SupervisorHwndMirror_575994;
+extern "C" void *g_SupervisorAnmMgrSlot_4b9e44;
+// Error message title string (rdata pointer at orig 0x497c78). Reached via
+// absolute address by the boot loop's MessageBoxA call in Teardown.
+extern "C" char *g_SupervisorErrTitle_497c78;
+// Per-frame input/pad flag (orig 0x575c0c). Stamped each frame by RunSession.
+extern "C" u8 g_SupervisorFrameInputFlag_575c0c;
+// Note: g_SupervisorReplayActive shares DAT_0062f4e0 with the existing
+// g_SupervisorG0x62f4e0 declared earlier in this file (u32). Reuse that name.
+// HINSTANCE mirror of g_Supervisor.hInstance (orig 0x575950), since the boot
+// helpers reach the value via the absolute address.
+extern "C" void *g_SupervisorHInstance_575950;
+// IDirect3D8 iface mirror (orig 0x575954).
+extern "C" void *g_SupervisorD3D8_575954;
+// D3D device pointer slot (orig 0x575958). Reused from the existing
+// link_globals.cpp definition (g_SupervisorD3dDevice_575958); the boot
+// helpers reach it via absolute address with a VTBL macro cast.
+extern "C" void *g_SupervisorD3dDevice_575958;
+extern "C" f64  g_SupervisorQpcThresh_498a90;   // rdata double 0.002
+extern "C" f64  g_SupervisorFrametime_498bc0;   // rdata double (~0.01666)
+extern "C" f64  g_SupervisorFrametime2_498bc8;  // rdata double (~0.015)
+
+// P1.3 rdata-string slots reached via absolute address by the boot loop's
+// GameErrorLog/Fatal calls (orig .rdata addresses; content lives in orig).
+extern "C" char *g_SupervisorRdataStr_4978b0;
+extern "C" char *g_SupervisorRdataStr_4978f8;
+extern "C" char *g_SupervisorRdataStr_497948;
+extern "C" char *g_SupervisorRdataStr_497998;
+extern "C" char *g_SupervisorRdataStr_4979b4;
+extern "C" char *g_SupervisorRdataStr_4979c8;
+extern "C" char *g_SupervisorRdataStr_497a04;
+extern "C" char *g_SupervisorRdataStr_497a3c;
+extern "C" char *g_SupervisorRdataStr_497a7c;
+extern "C" char *g_SupervisorRdataStr_497ab4;
+extern "C" char *g_SupervisorRdataStr_497adc;
+extern "C" char *g_SupervisorRdataStr_497afc;
+extern "C" char *g_SupervisorRdataStr_497b20;
+extern "C" char *g_SupervisorRdataStr_497b44;
+extern "C" char *g_SupervisorRdataStr_497b70;
+extern "C" char *g_SupervisorRdataStr_497bd8;
+extern "C" char *g_SupervisorRdataStr_497c28;
+
+// ---- P1.3 boot-path helper externs (not yet lifted; resolved by stubs in
+//      link_stubs.cpp for the normal build). Each one's FUN_ anchor is
+//      preserved in the comment for the next RE pass.
+extern "C" i32  __fastcall Supervisor_LoadConfig_004398b6(char *path); // LoadConfig
+extern "C" i32  __fastcall Supervisor_CheckAlreadyRunning_00435bd0();  // CheckForRunningGameInstance
+extern "C" void __fastcall Supervisor_InitGameErrorCtx_00435ec0();     // pre-boot error ctx init
+extern "C" void __fastcall Supervisor_GameErrorLog_004315f0(void *ctx, char *msg); // Log
+extern "C" void __fastcall Supervisor_GameErrorFatal_00431730(void *ctx, char *msg); // Fatal
+extern "C" void __fastcall Supervisor_FlushGameError_00431540(i32 size); // Flush
+extern "C" void __fastcall Supervisor_SeedRngFromPerf_00435e30();      // QPC seed
+extern "C" void __fastcall Supervisor_RegisterWndProc_00434490();      // WndProc (FUN_00434490)
+extern "C" void __fastcall Supervisor_PreSessionInit_004345c0();        // per-frame pre-run
+extern "C" i32  __fastcall Supervisor_RunFrameOnce_0042fd60();         // chain calc/draw+present
+extern "C" void __fastcall Supervisor_DrainChain_0044c9c0();           // chain cleanup pass
+extern "C" void __fastcall Supervisor_AnmMgrReset_0044b830();          // pre-alloc reset
+extern "C" void __fastcall Supervisor_AnmMgrReleaseVm_0044d620();      // AnmVm release
+extern "C" void __fastcall Supervisor_AnmMgrDtorCall_0044b560(void *hwnd); // pre-ctor drain
+extern "C" void __fastcall Supervisor_SuspendMusic_00430290();         // BGM pause
+extern "C" void __fastcall Supervisor_ShutdownAudio_004312c0();        // audio teardown
+extern "C" void __fastcall Supervisor_ResetDisplayMode_00435230();     // display-mode reset
+extern "C" void __fastcall Supervisor_DeviceLostHandler_00433f20();    // device-lost recovery
+extern "C" void __fastcall Supervisor_DeviceNotResetHandler_004356a0(); // device-reset recovery
+extern "C" void __fastcall Supervisor_FlushReplay_0044a302();          // replay data flush
+extern "C" void __fastcall Supervisor_TeardownFinal_00430060();        // final teardown
+extern "C" void __fastcall Supervisor_AnmVmInit_0044f580();            // AnmVm zero/init
+extern "C" void __fastcall Supervisor_AnmMgrFlush_0044f5c0();          // FlushVertexBuffer
+extern "C" void __fastcall Supervisor_BgmFrameTick_0043a207();         // bgm per-frame tick
+extern "C" void __fastcall Supervisor_MidiFrameTick_0042fe20();        // midi per-frame tick
+extern "C" void __fastcall Supervisor_PostD3DInit_0044a520();          // post-CreateDevice
+extern "C" f32  __fastcall Supervisor_GetRefreshRate_0048b920();       // display refresh rate
+extern "C" void __fastcall D3DXMatrixLookAtLH_004621a0(void *out, void *eye, void *at, void *up);
+extern "C" void __fastcall D3DXMatrixPerspectiveLH_00461dd8(void *out, f32 w, f32 h, f32 zn, f32 zf);
+
 namespace th07
 {
 DIFFABLE_STATIC(Supervisor, g_Supervisor);
@@ -1181,4 +1329,504 @@ ZunResult MidiOutput::SetFadeOut(unsigned int) { return ZUN_SUCCESS; }
 ZunResult MidiOutput::StopPlayback() { return ZUN_SUCCESS; }
 void ReplayManager::SaveReplay(char *, char *) { }
 extern "C" void *_free_th07(void *p) { return 0; }
+
+// =============================================================================
+// P1.3 boot-path functions (FUN_00434020 / a40 / a80 / bd0 / 46e0 / 3e90).
+// These are global-namespace extern "C" free functions (orig is NOT
+// __thiscall; they reach the Supervisor singleton via the absolute
+// DAT_00575950 base). Not in objdiff tracking (no orig .obj / not named in
+// mapping.csv), so the priority is game-behavior correctness + normal-build
+// linkability, not byte-exact objdiff.
+// =============================================================================
+
+// Vtable-indexed call helpers. The orig disasm emits the pattern
+//   CALL dword ptr [EAX + vtable_off]
+// where EAX = *(void**)com_interface. We mirror that by reading the vtable
+// pointer then indexing by byte offset. The cast to u8* is required because
+// MSVC 7.0 forbids pointer arithmetic on void* (C2036).
+#define VTBL(comIf, off) (*(u8 **)(comIf) + (off))
+
+// Bootstrap (FUN_00434a40). Creates the IDirect3D8 interface (D3D runtime
+// version 0x78 = 120 = DirectX 8.0 header). Returns true on failure (i.e.
+// when the D3D8 create returned NULL), false on success. On failure logs a
+// fatal error to the game-error context.
+extern "C" i32 __fastcall Supervisor_Bootstrap()
+{
+    g_SupervisorD3D8_575954 = Direct3DCreate8(120);
+    if (g_SupervisorD3D8_575954 == 0)
+    {
+        Supervisor_GameErrorFatal_00431730(&g_GameErrorContext_624210, g_SupervisorRdataStr_497bd8);
+        return 1;
+    }
+    return 0;
+}
+
+// CreateWindow (FUN_00434a80). __fastcall(HINSTANCE). Registers the "BASE"
+// window class with the orig wndproc (FUN_00434490) and creates the game
+// window. Windowed mode: fixed 0x280x0x1e0 (640x480). Fullscreen mode:
+// computes the size from system metrics (border/caption + client 640x480).
+// On success: stores HWND into both g_SupervisorWindow_575c20 and the
+// g_SupervisorHwndMirror_575994 slot, seeds the rng from QPC, returns 0.
+// On failure returns 1.
+extern "C" i32 __fastcall Supervisor_CreateWindow(void *hInstance)
+{
+    WNDCLASSA wc;
+    i32 windowWidth;
+    i32 windowHeight;
+
+    // Zero the WNDCLASSA (orig does a 10-dword clear loop on the struct).
+    ZeroMemory(&wc, sizeof(wc));
+
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.hCursor = LoadCursorA(0, IDC_ARROW);
+    wc.lpfnWndProc = (WNDPROC)Supervisor_RegisterWndProc_00434490;
+    g_SupervisorExStyle_575c28 = 1;
+    g_SupervisorStyle_575c2c = 0;
+    wc.lpszClassName = "BASE";
+    wc.hInstance = (HINSTANCE)hInstance;
+    RegisterClassA(&wc);
+
+    if (g_SupervisorIsForeground_575a8a == 0)
+    {
+        // Windowed: fixed 640x480.
+        windowWidth = 0x280;
+        windowHeight = 0x1e0;
+        g_SupervisorWindow_575c20 = (void *)CreateWindowExA(0, "BASE", (LPCSTR)0x497b9c,
+            0xcf0000, 0, 0, 0x280, 0x1e0, 0, 0, (HINSTANCE)hInstance, 0);
+    }
+    else
+    {
+        // Fullscreen: add frame extents around the 640x480 client.
+        windowWidth = GetSystemMetrics(SM_CXBORDER) * 2 + 0x280;
+        windowHeight = GetSystemMetrics(SM_CYCAPTION) + 0x1e0 + GetSystemMetrics(SM_CYBORDER) * 2;
+        g_SupervisorWindow_575c20 = (void *)CreateWindowExA(0, "BASE", (LPCSTR)0x497b9c,
+            0x100a0000, (i32)0x80000000, (i32)0x80000000, windowWidth, windowHeight,
+            0, 0, (HINSTANCE)hInstance, 0);
+    }
+    g_SupervisorHwndMirror_575994 = g_SupervisorWindow_575c20;
+    if (g_SupervisorWindow_575c20 != 0)
+    {
+        Supervisor_SeedRngFromPerf_00435e30();
+        return 0;
+    }
+    return 1;
+}
+
+// Teardown / error-context flush (FUN_00433e90). __fastcall(char *buf).
+// If the error buffer has been written to (i.e. buf[0x2000] != buf, the
+// self-marker GameErrorContext uses to mean "empty"), logs a separator,
+// optionally shows a MessageBox (if buf[0x2004] flag set), then flushes the
+// buffer to disk and resets its size.
+extern "C" void __fastcall Supervisor_Teardown(char *buf)
+{
+    char *p;
+
+    if (*(char **)(buf + 0x2000) != buf)
+    {
+        Supervisor_GameErrorLog_004315f0(buf,
+            "---------------------------------------------------------- \r\n");
+        if (buf[0x2004] != 0)
+        {
+            MessageBoxA(0, buf, g_SupervisorErrTitle_497c78, MB_ICONHAND);
+        }
+        p = buf;
+        while (*p != 0)
+        {
+            p++;
+        }
+        Supervisor_FlushGameError_00431540((i32)p - (i32)(buf + 1));
+    }
+}
+
+// RunSession (FUN_004346e0). __fastcall(th07::Supervisor *s). The per-frame
+// driver. Drives the calc/draw chain, presents the frame with vsync, and
+// paces the framerate via QueryPerformanceCounter (or timeGetTime fallback).
+// Returns: 0 = continue, 1 = exit session, 2 = reboot session.
+extern "C" i32 __fastcall Supervisor_RunSession(th07::Supervisor *s)
+{
+    f64 frameElapsed;
+    f64 timeElapsed;
+    LARGE_INTEGER qpc;
+    DWORD timeNow;
+    i32 frameResult;
+    u32 *viewport;
+    void *dev;
+
+    dev = s->d3dDevice;
+    if (dev == 0)
+    {
+        return 0;
+    }
+
+    if (s->unk188 != 0)
+    {
+        goto mid_loop_check;
+    }
+frame_loop:
+    do
+    {
+        while (1)
+        {
+            // When enough sub-frames have been ticked, do the actual Present
+            // + chain draw + bgm/midi ticks for the composed frame.
+            if ((i32)(u32)g_SupervisorFrameskipCfg_575a8b <= (i32)s->unk188)
+            {
+                // TestCooperativeLevel (vtable +0x88 / 0x22*4).
+                ((HRESULT(__fastcall *)(void *))(VTBL(dev, 0x88)))(dev);
+                Supervisor_AnmVmInit_0044f580();
+                g_SupervisorFrameInputFlag_575c0c = 0xff;
+                Supervisor_BgmFrameTick_0043a207();
+                Supervisor_MidiFrameTick_0042fe20();
+                Supervisor_AnmMgrFlush_0044f5c0();
+                // Present(src, dst, dirty, plug) -- vtable +0xf4 / 0x3d*4.
+                ((void (__fastcall *)(void *, void *, void *, void *, void *))(
+                    VTBL(dev, 0xf4)))(dev, 0, 0, 0, 0);
+                // EndScene -- vtable +0x8c / 0x23*4.
+                ((void (__fastcall *)(void *))(VTBL(dev, 0x8c)))(dev);
+            }
+            Supervisor_AnmMgrFlush_0044f5c0();
+            // Reset the viewport to the full 640x480 client.
+            viewport = &g_SupervisorViewport_575a18[0];
+            viewport[0] = 0;
+            viewport[1] = 0;
+            viewport[2] = 0x280;
+            viewport[3] = 0x1e0;
+            // SetViewport -- vtable +0xa0 / 0x28*4.
+            ((void (__fastcall *)(void *, void *))(VTBL(dev, 0xa0)))(
+                dev, &g_SupervisorViewport_575a18);
+
+            frameResult = Supervisor_RunFrameOnce_0042fd60();
+            Supervisor_DrainChain_0044c9c0();
+            if (frameResult == 0)
+            {
+                return 1;
+            }
+            if (frameResult == -1)
+            {
+                return 2;
+            }
+            *(u8 *)&s->unk188 = (u8)s->unk188 + 1;
+        mid_loop_check:
+            if ((g_SupervisorIsForeground_575a8a != 0 || g_SupervisorWindowedOverride_575abc != 0) &&
+                s->unk188 != 0)
+            {
+                break;
+            }
+        check_exit:
+            if (g_SupervisorIsForeground_575a8a != 0)
+            {
+                return 0;
+            }
+            if (g_SupervisorWindowedOverride_575abc != 0)
+            {
+                return 0;
+            }
+            if ((i32)(u32)g_SupervisorFrameskipCfg_575a8b < (i32)s->unk188)
+            {
+                goto reset_subframe;
+            }
+            Supervisor_PreSessionInit_004345c0();
+        }
+
+        // Frame-rate pacing. Use QPC if available, else timeGetTime.
+        if (*(i32 *)&g_SupervisorPerfFreq_575c34 != 0)
+        {
+            QueryPerformanceCounter(&qpc);
+            frameElapsed = (f64)(qpc.u.LowPart - g_SupervisorQpcLastLo_135e208) /
+                           (f64)*(i32 *)&g_SupervisorPerfFreq_575c34;
+            if (frameElapsed < g_SupervisorQpcThresh_498a90)
+            {
+                g_SupervisorQpcLastLo_135e208 = qpc.u.LowPart;
+                g_SupervisorQpcLastHi_135e20c = qpc.u.HighPart;
+            }
+            if (frameElapsed < g_SupervisorFrametime2_498bc8 &&
+                g_SupervisorLoadResult_575c3c == 0)
+            {
+                goto check_exit;
+            }
+            while (g_SupervisorFrametime2_498bc8 <= frameElapsed)
+            {
+                frameElapsed = frameElapsed - g_SupervisorFrametime2_498bc8;
+                g_SupervisorQpcLastLo_135e208 =
+                    g_SupervisorQpcLastLo_135e208 + *(i32 *)&g_SupervisorPerfFreq_575c34 / 0x3c;
+            }
+            if ((i32)(u32)g_SupervisorFrameskipCfg_575a8b < (i32)s->unk188)
+            {
+                break;
+            }
+            goto frame_loop;
+        }
+        // timeGetTime fallback path.
+        timeBeginPeriod(1);
+        timeNow = timeGetTime();
+        timeElapsed = (f64)timeNow;
+        if (timeElapsed < g_SupervisorTimeLast_135e200)
+        {
+            g_SupervisorTimeLast_135e200 = timeElapsed;
+        }
+        timeElapsed = g_SupervisorTimeLast_135e200 - timeElapsed;
+        if (timeElapsed < 0)
+        {
+            timeElapsed = -timeElapsed;
+        }
+        timeEndPeriod(1);
+        if (timeElapsed < g_SupervisorFrametime_498bc0 && g_SupervisorLoadResult_575c3c == 0)
+        {
+            goto check_exit;
+        }
+        while (g_SupervisorFrametime_498bc0 <= timeElapsed)
+        {
+            timeElapsed = timeElapsed - g_SupervisorFrametime_498bc0;
+            g_SupervisorTimeLast_135e200 = g_SupervisorTimeLast_135e200 + g_SupervisorFrametime_498bc0;
+        }
+    } while ((i32)(u8)s->unk188 <= (i32)(u32)g_SupervisorFrameskipCfg_575a8b);
+reset_subframe:
+    Supervisor_PreSessionInit_004345c0();
+    *(u8 *)&s->unk188 = 0;
+    g_SupervisorFrameCounter_135e1f8 = g_SupervisorFrameCounter_135e1f8 + 1;
+    return 0;
+}
+
+// InitD3D (FUN_00434bd0). Builds the D3DPRESENT_PARAMETERS, attempts
+// CreateDevice in several fallback orderings (hardware vertex processing
+// -> software T&L -> reference rasterizer), then primes the viewport /
+// projection matrices and registers the chain. Returns 0 on success, 1 on
+// failure (with the D3D8 iface released).
+extern "C" i32 __fastcall Supervisor_InitD3D()
+{
+    D3DPRESENT_PARAMETERS_FAKE localPP;
+    i32 iVar1;
+    u32 *dst;
+    u32 *srcP;
+    i32 fallbackTried;
+    char localMsgBuf[0x2000];
+    f32 refreshRate;
+    i32 local_20;
+    u32 local_10;
+    D3DXVECTOR3 eye;
+    D3DXVECTOR3 at;
+    D3DXVECTOR3 up;
+
+    fallbackTried = 0;
+
+    // Zero the local present-parameters (orig does a 13-dword clear loop).
+    ZeroMemory(&localPP, sizeof(localPP));
+
+    // Query the current display mode (GetAdapterDisplayMode -- vtable +0x20).
+    ((void (__fastcall *)(void *, i32, void *))(VTBL(g_SupervisorD3D8_575954, 0x20)))(
+        g_SupervisorD3D8_575954, 0, &local_10);
+
+    if (g_SupervisorIsForeground_575a8a == 0)
+    {
+        // Windowed mode.
+        if ((g_SupervisorCfgOpts_575a9c >> 2 & 1) == 1)
+        {
+            // Force 16-bit color mode.
+            localPP.fields[2] = 0x17; // D3DFMT_R5G6B5
+            g_SupervisorColorMode_575a86 = 1;
+        }
+        else if ((i8)g_SupervisorColorMode_575a86 == -1)
+        {
+            localPP.fields[2] = 0x16; // D3DFMT_A8R8G8B8
+            g_SupervisorColorMode_575a86 = 0;
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497b70);
+        }
+        else if (g_SupervisorColorMode_575a86 == 0)
+        {
+            localPP.fields[2] = 0x16;
+        }
+        else
+        {
+            localPP.fields[2] = 0x17;
+        }
+        if (g_SupervisorLoadResult_575c3c != 0)
+        {
+            g_SupervisorWindowedOverride_575abc = 1;
+        }
+        if (g_SupervisorWindowedOverride_575abc == 0)
+        {
+            // Default windowed present params.
+            localPP.fields[8] = 0x3c; // PresentationInterval = D3DPRESENT_INTERVAL_DEFAULT (60Hz)
+            local_20 = 1;            // windowed
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497b44);
+            localPP.fields[6] = (g_SupervisorUnkFlag_575a8c == 0) ? 2 : 4; // SwapEffect
+        }
+        else
+        {
+            // Windowed override (user requested).
+            localPP.fields[8] = 0;   // Default interval
+            localPP.fields[6] = 3;   // D3DSWAPEFFECT_COPY_VSYNC
+            local_20 = (i32)0x80000000; // fullscreen-style windowed flag
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497b20);
+        }
+    }
+    else
+    {
+        // Fullscreen: reuse the format from the display mode query.
+        localPP.fields[2] = local_10;
+        localPP.fields[6] = 3;
+        localPP.fields[4] = 1; // FullScreen_PresentationInterval
+    }
+
+    // Common present params: 640x480 backbuffer, depth/stencil, one backbuffer.
+    localPP.fields[0] = 0x280;        // BackBufferWidth
+    localPP.fields[1] = 0x1e0;        // BackBufferHeight
+    localPP.fields[3] = 1;            // BackBufferCount
+    localPP.fields[5] = 0x50;         // EnableAutoDepthStencil + depth format
+    localPP.fields[7] = 1;            // AutoDepthStencil enable
+    g_SupervisorFrameFlags_575adc = g_SupervisorFrameFlags_575adc | 2;
+    g_SupervisorHasHwVertexProc_575ac4 = 1;
+
+    // CreateDevice retry loop. Try hardware vertex processing first, then
+    // software T&L, then reference rasterizer.
+    do
+    {
+        if ((g_SupervisorCfgOpts_575a9c >> 9 & 1) == 0)
+        {
+            // CreateDevice(adapter, deviceType, hwnd, behaviorFlags, pp, &dev)
+            // -- vtable +0x3c / 0xf*4. Try hardware vertex processing (0x40).
+            iVar1 = ((i32(__fastcall *)(void *, i32, i32, void *, i32, void *, void *))(
+                VTBL(g_SupervisorD3D8_575954, 0x3c)))(g_SupervisorD3D8_575954, 0, 1,
+                g_SupervisorWindow_575c20, 0x40, &localPP, (void *)&g_SupervisorD3dDevice_575958);
+            if (iVar1 >= 0)
+            {
+                Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497998);
+                g_SupervisorFrameFlags_575adc = g_SupervisorFrameFlags_575adc | 1;
+                goto device_ok;
+            }
+            if (fallbackTried != 0)
+            {
+                Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497afc);
+            }
+            // Fallback: software vertex processing (0x20).
+            iVar1 = ((i32(__fastcall *)(void *, i32, i32, void *, i32, void *, void *))(
+                VTBL(g_SupervisorD3D8_575954, 0x3c)))(g_SupervisorD3D8_575954, 0, 1,
+                g_SupervisorWindow_575c20, 0x20, &localPP, (void *)&g_SupervisorD3dDevice_575958);
+            if (iVar1 < 0)
+            {
+                if (fallbackTried != 0)
+                {
+                    Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497adc);
+                }
+                goto ref_or_fail;
+            }
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_4979b4);
+        device_ok:
+            g_SupervisorFrameFlags_575adc = g_SupervisorFrameFlags_575adc & ~1u;
+        copy_pp_and_setup:
+            // Copy the local present-params into the persistent
+            // g_SupervisorPresentParams_575a30 buffer.
+            dst = &g_SupervisorPresentParams_575a30[0];
+            srcP = &localPP.fields[0];
+            for (iVar1 = 0xd; iVar1 != 0; iVar1--)
+            {
+                *dst = *srcP;
+                dst++;
+                srcP++;
+            }
+            // Build the view + projection matrices.
+            //   eye = (320, -240, -240/refreshRate)
+            //   at  = (320, -240, 0)
+            //   up  = (0, 1, 0)
+            //   proj= D3DXMatrixPerspectiveLH(w=0x3f060a92, h=0x3faaaaab,
+            //                                 zn=100, zf=10000)
+            refreshRate = 240.0f / Supervisor_GetRefreshRate_0048b920();
+            eye.x = 320.0f; eye.y = -240.0f; eye.z = -refreshRate;
+            at.x = 320.0f; at.y = -240.0f; at.z = 0.0f;
+            up.x = 0.0f; up.y = 1.0f; up.z = 0.0f;
+            D3DXMatrixLookAtLH_004621a0(&th07::g_Supervisor.viewMatrix, &eye, &at, &up);
+            {
+                f32 projW = *(f32 *)0x498b20; // rdata (0x3f060a92)
+                f32 projH = *(f32 *)0x498b24; // rdata (0x3faaaaab)
+                D3DXMatrixPerspectiveLH_00461dd8(&th07::g_Supervisor.projectionMatrix,
+                    projW, projH, 100.0f, 10000.0f);
+            }
+            ((void (__fastcall *)(void *, i32, void *))(VTBL(g_SupervisorD3dDevice_575958, 0x94)))(
+                g_SupervisorD3dDevice_575958, 2, &th07::g_Supervisor.viewMatrix);
+            ((void (__fastcall *)(void *, i32, void *))(VTBL(g_SupervisorD3dDevice_575958, 0x94)))(
+                g_SupervisorD3dDevice_575958, 3, &th07::g_Supervisor.projectionMatrix);
+            // SetViewport -- vtable +0xa0.
+            ((void (__fastcall *)(void *, void *))(VTBL(g_SupervisorD3dDevice_575958, 0xa0)))(
+                g_SupervisorD3dDevice_575958, &g_SupervisorViewport_575a18);
+            // SetMaterial -- vtable +0x1c.
+            ((void (__fastcall *)(void *, void *))(VTBL(g_SupervisorD3dDevice_575958, 0x1c)))(
+                g_SupervisorD3dDevice_575958, (void *)&g_SupervisorUnkAe8_575ae8);
+
+            if ((g_SupervisorCfgOpts_575a9c & 1) == 0 && (g_SupervisorUnkB78_575b78 & 0x40) == 0)
+            {
+                Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497948);
+                g_SupervisorCfgOpts_575a9c = g_SupervisorCfgOpts_575a9c | 1;
+            }
+            if (g_SupervisorVramMegs_575b40 < 0x101)
+            {
+                Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_4978f8);
+            }
+            Supervisor_ResetDisplayMode_00435230();
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, localMsgBuf);
+
+            // Try to enable 16-bit double-buffering if not already tried.
+            if ((g_SupervisorCfgOpts_575a9c >> 2 & 1) == 0 && fallbackTried != 0)
+            {
+                // CheckDeviceFormat -- vtable +0x28.
+                iVar1 = ((i32(__fastcall *)(void *, i32, i32, i32, i32, i32, i32))(
+                    VTBL(g_SupervisorD3D8_575954, 0x28)))(g_SupervisorD3D8_575954, 0, 1,
+                    localPP.fields[2], 0, 3, 0x15);
+                if (iVar1 == 0)
+                {
+                    g_SupervisorFrameFlags_575adc = g_SupervisorFrameFlags_575adc | 4;
+                }
+                else
+                {
+                    g_SupervisorFrameFlags_575adc = g_SupervisorFrameFlags_575adc & ~4u;
+                    g_SupervisorCfgOpts_575a9c = g_SupervisorCfgOpts_575a9c | 4;
+                    Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_4978b0);
+                }
+            }
+            Supervisor_DeviceNotResetHandler_004356a0();
+            Supervisor_PostD3DInit_0044a520();
+            g_SupervisorHasHwVertexProc_575ac4 = 0;
+            g_SupervisorExitFlag_575c24 = 0;
+            return 0;
+        }
+    ref_or_fail:
+        // Last-ditch: reference rasterizer (deviceType 2).
+        iVar1 = ((i32(__fastcall *)(void *, i32, i32, void *, i32, void *, void *))(
+            VTBL(g_SupervisorD3D8_575954, 0x3c)))(g_SupervisorD3D8_575954, 0, 2,
+            g_SupervisorWindow_575c20, 0x20, &localPP, (void *)&g_SupervisorD3dDevice_575958);
+        if (iVar1 >= 0)
+        {
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_4979c8);
+            fallbackTried = 0;
+            goto device_ok;
+        }
+        if (g_SupervisorWindowedOverride_575abc == 0)
+        {
+            // First failure: downgrade to windowed and retry.
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497ab4);
+            localPP.fields[8] = 0;
+            g_SupervisorHasHwVertexProc_575ac4 = 0;
+            fallbackTried = 1;
+        }
+        else
+        {
+            // Already tried the fallback: hard fail.
+            if (local_20 != (i32)0x80000000)
+            {
+                Supervisor_GameErrorFatal_00431730(&g_GameErrorContext_624210, g_SupervisorRdataStr_497a04);
+                if (g_SupervisorD3D8_575954 != 0)
+                {
+                    ((void (__fastcall *)(void *))(VTBL(g_SupervisorD3D8_575954, 8)))(
+                        g_SupervisorD3D8_575954);
+                    g_SupervisorD3D8_575954 = 0;
+                }
+                return 1;
+            }
+            Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, g_SupervisorRdataStr_497a7c);
+            Supervisor_GameErrorFatal_00431730(&g_GameErrorContext_624210, g_SupervisorRdataStr_497a3c);
+            local_20 = 1;
+            localPP.fields[6] = 3;
+        }
+    } while (1);
+}
+
 

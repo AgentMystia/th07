@@ -65,26 +65,21 @@ extern "C" {
     void __fastcall Sound_PlayEffect(i32 a0, i32 a1) { }
     void __fastcall Supervisor_AutosaveScore(i32 a0, i32 a1, i32 a2) { }
     void __fastcall Supervisor_BombPreDraw(void) { }
-    void __fastcall Supervisor_Bootstrap(void) { }
     void __fastcall Supervisor_Callback6(void) { }
     void __fastcall Supervisor_Callback7(void) { }
     void __fastcall Supervisor_Callback_Fun383d8(i32 a0) { }
     void __fastcall Supervisor_Cleanup3(void) { }
     void __fastcall Supervisor_ClearAnmScriptChain(void) { }
-    void __fastcall Supervisor_CreateWindow(void) { }
     void __fastcall Supervisor_D3DDiscard(i32 a0) { }
     void __fastcall Supervisor_HeapFreeAll(void) { }
-    void __fastcall Supervisor_InitD3D(void) { }
     void __fastcall Supervisor_MidiClearTracks(void) { }
     void __fastcall Supervisor_ReadConfigBuffer(i32 a0, i32 a1) { }
     void __fastcall Supervisor_ReleaseAnm0(void) { }
-    void __fastcall Supervisor_RunSession(void) { }
     void __fastcall Supervisor_SetAnmFlag(i32 a0, i32 a1) { }
     void __fastcall Supervisor_SetPlayerPosFlag(i32 a0) { }
     void __fastcall Supervisor_SomeCleanup1(void) { }
     void __fastcall Supervisor_SomeCleanup4(void) { }
     void __fastcall Supervisor_SomeCleanup5(void) { }
-    void __fastcall Supervisor_Teardown(void) { }
     void __fastcall Supervisor_TickTimer(i32 a0, i32 a1) { }
     void __fastcall Supervisor_TickTimer2(i32 a0, i32 a1) { }
     void __fastcall Supervisor_ValidateSize(i32 a0) { }
@@ -113,6 +108,41 @@ extern "C" {
     f32 __fastcall AnmMgr_RngRange_0048b920(void) { return 0.0f; }
     f32 __fastcall AnmMgr_RngRandI_0047eca0(void) { return 0.0f; }
     f32 __fastcall AnmMgr_RngRandI_0048ba20(void) { return 0.0f; }
+    // P1.3 boot-path helper stubs (not yet lifted; resolved by these stubs
+    // for the normal build until each is reversed). FUN_ anchors preserved.
+    i32  __fastcall Supervisor_LoadConfig_004398b6(char *path) { (void)path; return 0; }
+    i32  __fastcall Supervisor_CheckAlreadyRunning_00435bd0() { return -1; }
+    void __fastcall Supervisor_InitGameErrorCtx_00435ec0() { }
+    void __fastcall Supervisor_GameErrorLog_004315f0(void *ctx, char *msg) { (void)ctx; (void)msg; }
+    void __fastcall Supervisor_GameErrorFatal_00431730(void *ctx, char *msg) { (void)ctx; (void)msg; }
+    void __fastcall Supervisor_FlushGameError_00431540(i32 size) { (void)size; }
+    void __fastcall Supervisor_SeedRngFromPerf_00435e30() { }
+    void __fastcall Supervisor_RegisterWndProc_00434490() { }
+    void __fastcall Supervisor_PreSessionInit_004345c0() { }
+    i32  __fastcall Supervisor_RunFrameOnce_0042fd60() { return 0; }
+    void __fastcall Supervisor_DrainChain_0044c9c0() { }
+    void __fastcall Supervisor_AnmMgrReset_0044b830() { }
+    void __fastcall Supervisor_AnmMgrReleaseVm_0044d620() { }
+    void __fastcall Supervisor_AnmMgrDtorCall_0044b560(void *hwnd) { (void)hwnd; }
+    void __fastcall Supervisor_SuspendMusic_00430290() { }
+    void __fastcall Supervisor_ShutdownAudio_004312c0() { }
+    void __fastcall Supervisor_ResetDisplayMode_00435230() { }
+    void __fastcall Supervisor_DeviceLostHandler_00433f20() { }
+    void __fastcall Supervisor_DeviceNotResetHandler_004356a0() { }
+    void __fastcall Supervisor_FlushReplay_0044a302() { }
+    void __fastcall Supervisor_TeardownFinal_00430060() { }
+    void __fastcall Supervisor_AnmVmInit_0044f580() { }
+    void __fastcall Supervisor_AnmMgrFlush_0044f5c0() { }
+    void __fastcall Supervisor_BgmFrameTick_0043a207() { }
+    void __fastcall Supervisor_MidiFrameTick_0042fe20() { }
+    void __fastcall Supervisor_PostD3DInit_0044a520() { }
+    f32  __fastcall Supervisor_GetRefreshRate_0048b920() { return 60.0f; }
+    void __fastcall D3DXMatrixLookAtLH_004621a0(void *out, void *eye, void *at, void *up)
+    { (void)out; (void)eye; (void)at; (void)up; }
+    void __fastcall D3DXMatrixPerspectiveLH_00461dd8(void *out, f32 w, f32 h, f32 zn, f32 zf)
+    { (void)out; (void)w; (void)h; (void)zn; (void)zf; }
+    // P1.3 WinMain (FUN_00434020) helper: AnmManager ctor (FUN_0044d3e0).
+    void __fastcall AnmManager_Ctor_0044d3e0(void *anmMgr) { (void)anmMgr; }
 } // extern "C"
 
 // _Supervisor_LogStr1: extern "C" data slot (zero-init)
