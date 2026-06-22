@@ -196,9 +196,10 @@ extern "C" void *g_GameMgrG0x1347f9c = 0;
 // Gui object pointer (Player.cpp / Supervisor.cpp).
 extern "C" void *g_GuiObjPtr = 0;
 // Pbg4 LZSS static state (Pbg4Parser references).
+// Sizes must match orig .bss layout (DAT_0049fe30 = 0x2001 nodes * 0xc bytes).
 extern "C" i32 g_Pbg4CurIndex = 0;
-extern "C" u8 g_Pbg4Dict[0x10000] = {0};   // document-only: orig is u32[0x4000]
-extern "C" u8 g_Pbg4Nodes[0x8000] = {0};
+extern "C" u8 g_Pbg4Dict[0x2000] = {0};
+extern "C" u8 g_Pbg4Nodes[0x2001 * 0xc] = {0};
 // ScreenEffect Rng instance (ScreenEffect.cpp).
 extern "C" void *g_ScreenEffectRng = 0;
 // Supervisor rdata/state pointers (Supervisor.cpp).

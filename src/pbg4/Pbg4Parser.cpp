@@ -32,10 +32,24 @@ namespace th07
 // slots". They are defined (zero-initialized) by link_globals.cpp for the
 // normal build; the objdiff build leaves them as extern because the orig
 // delinker resolves the DAT_ symbols directly.
+//
+// Pbg4Node is the 0xc-byte heap node. The three fields are the
+// (parent, leftChild, rightChild) indices of an implicit binary tree used by
+// the LZSS match finder - names chosen to match orig field semantics
+// recovered from FUN_0045f460 (AdvanceNode) and FUN_0045f4f0 (NodeShrink).
+// Field offsets +0x0/+0x4/+0x8 are pinned by orig's `IMUL reg, reg, 0xc`
+// addressing, so this struct MUST stay 0xc bytes with no padding.
 // ---------------------------------------------------------------------------
-extern "C" u8 g_Pbg4Dict[0x2000];        // DAT_004b7e40
-extern "C" u8 g_Pbg4Nodes[0x2001 * 0xc]; // DAT_0049fe30
-extern "C" i32 g_Pbg4CurIndex;           // DAT_004b7e38
+struct Pbg4Node
+{
+    i32 parent;     // +0x0 (orig field0): subtree size / 0 = free
+    i32 leftChild;  // +0x4 (orig field4)
+    i32 rightChild; // +0x8 (orig field8)
+};
+
+extern "C" u8 g_Pbg4Dict[0x2000];                  // DAT_004b7e40
+extern "C" Pbg4Node g_Pbg4Nodes[0x2001];           // DAT_0049fe30
+extern "C" i32 g_Pbg4CurIndex;                     // DAT_004b7e38
 
 // ---------------------------------------------------------------------------
 // Pbg4Parser is a "static-method bag": orig th07 never instantiates it.
@@ -84,9 +98,9 @@ extern "C" i32  __fastcall Pbg4_NodePick(i32 idx);
 void __fastcall Pbg4Parser::SetIndex(i32 idx)
 {
     g_Pbg4CurIndex = idx;
-    *(i32 *)(g_Pbg4Nodes + idx * 0xc + 0x0) = 0x2000;
-    *(i32 *)(g_Pbg4Nodes + idx * 0xc + 0x8) = 0;
-    *(i32 *)(g_Pbg4Nodes + idx * 0xc + 0x4) = 0;
+    g_Pbg4Nodes[idx].parent = 0x2000;
+    g_Pbg4Nodes[idx].rightChild = 0;
+    g_Pbg4Nodes[idx].leftChild = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -117,9 +131,9 @@ void __fastcall Pbg4Parser::Reset(Pbg4Parser * /*unused this*/)
     }
     for (i = 0; i < 0x2001; i = i + 1)
     {
-        *(i32 *)(g_Pbg4Nodes + i * 0xc + 0x0) = 0;
-        *(i32 *)(g_Pbg4Nodes + i * 0xc + 0x4) = 0;
-        *(i32 *)(g_Pbg4Nodes + i * 0xc + 0x8) = 0;
+        g_Pbg4Nodes[i].parent = 0;
+        g_Pbg4Nodes[i].leftChild = 0;
+        g_Pbg4Nodes[i].rightChild = 0;
     }
 }
 
@@ -151,18 +165,18 @@ void __fastcall Pbg4Parser::AdvanceNode(i32 idx)
     i32 pickedNodeSlot;
 
     idxSlot = idx;
-    if (*(i32 *)(g_Pbg4Nodes + idxSlot * 0xc + 0x0) == 0)
+    if (g_Pbg4Nodes[idxSlot].parent == 0)
     {
         return;
     }
-    if (*(i32 *)(g_Pbg4Nodes + idxSlot * 0xc + 0x8) == 0)
+    if (g_Pbg4Nodes[idxSlot].rightChild == 0)
     {
-        Pbg4_NodeShrink(idxSlot, *(i32 *)(g_Pbg4Nodes + idxSlot * 0xc + 0x4));
+        Pbg4_NodeShrink(idxSlot, g_Pbg4Nodes[idxSlot].leftChild);
         return;
     }
-    if (*(i32 *)(g_Pbg4Nodes + idxSlot * 0xc + 0x4) == 0)
+    if (g_Pbg4Nodes[idxSlot].leftChild == 0)
     {
-        Pbg4_NodeShrink(idxSlot, *(i32 *)(g_Pbg4Nodes + idxSlot * 0xc + 0x8));
+        Pbg4_NodeShrink(idxSlot, g_Pbg4Nodes[idxSlot].rightChild);
         return;
     }
     pickedNodeSlot = Pbg4_NodePick(idxSlot);
