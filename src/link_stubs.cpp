@@ -3,7 +3,7 @@
 // module defines yet. Each stub is a no-op returning 0; the stack-
 // cleanup byte count from the @ suffix is preserved by declaring the
 // equivalent number of dummy args so MSVC emits the matching `RET N`.
-// th07 uses __fastcall for callbacks (AGENTS.md §6) so the stubs are
+// th07 uses __fastcall for callbacks (AGENTS.md section 6) so the stubs are
 // declared __fastcall too -- this yields the `@Name@N` mangling the
 // callers expect (no leading underscore, unlike __stdcall).
 //
@@ -97,6 +97,22 @@ extern "C" {
     void __fastcall utils_IsInBounds(i32 a0, i32 a1, i32 a2, i32 a3) { }
     void __fastcall utils_RandF32(void) { }
     void __fastcall utils_RandF32_2(void) { }
+    // AnmManager::ExecuteScript cross-module helpers (no-op stubs for the
+    // normal build; objdiff resolves them via SYMBOL_MAP to the orig FUN_s).
+    i32 __fastcall AnmMgr_Ftol_0048b8a0(f32 val) { return (i32)val; }
+    f32 __fastcall AnmMgr_AngleNormalize_00431930(f32 angle, f32 base) { return angle; }
+    void __fastcall AnmMgr_LogError_004394c7(i32 severity) { (void)severity; }
+    void __fastcall AnmMgr_TickTimer_0043958d(i32 *current, f32 *subFrame)
+    {
+        if (current) *current = *current + 1;
+        if (subFrame) *subFrame = 0.0f;
+    }
+    f32 __fastcall AnmMgr_RngRandI_0048bb0a(void) { return 0.0f; }
+    f32 __fastcall AnmMgr_RngRangeF_0048bb40(void) { return 0.0f; }
+    f32 __fastcall AnmMgr_RngRangeF2_0048bbf0(void) { return 0.0f; }
+    f32 __fastcall AnmMgr_RngRange_0048b920(void) { return 0.0f; }
+    f32 __fastcall AnmMgr_RngRandI_0047eca0(void) { return 0.0f; }
+    f32 __fastcall AnmMgr_RngRandI_0048ba20(void) { return 0.0f; }
 } // extern "C"
 
 // _Supervisor_LogStr1: extern "C" data slot (zero-init)

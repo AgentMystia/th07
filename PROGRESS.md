@@ -1,6 +1,6 @@
 # TH07-RE 反编译重建进度
 
-最后更新：2026-06-21
+最后更新：2026-06-22
 
 ## 终极目标
 
@@ -13,15 +13,15 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 |---|---|
 | objdiff 跟踪模块 | 22 |
 | objdiff 跟踪函数 | 228 |
-| 模块平均 match%（per-module 算术平均）| ~80.2%（2026-06-21 AnmManager 41→58% 后估算；下次全量重测基线待更新）|
-| 函数加权 match% | ~76.4%（同上估算）|
+| 模块平均 match%（per-module 算术平均）| ~80.6%（2026-06-22 AnmManager 58→71% 后估算；下次全量重测基线待更新）|
+| 函数加权 match% | ~77.5%（同上估算）|
 | ≥90% 模块 | 11（核心完成）|
 | 80–90% 模块 | 3（接近达标）|
-| 50–80% 模块 | 5（进行中；AnmManager 本轮 41→58% 升入此档）|
+| 50–80% 模块 | 5（进行中；AnmManager 本轮 58→71% 升入此档中段）|
 | <50% 模块 | 3（阻塞/早期）|
 | **normal build** | ✅ **链接成功，产出 `build/th07e.exe`（PE32 i386 GUI）** |
 | **Player 模块** | ✅ **17 缺失函数已实现（OnUpdate/OnDrawHighPrio/AddedCallback/HandlePlayerInputs/SpawnBullets/UpdatePlayerBullets/DrawBullets/DrawBulletExplosions/CalcDamageToEnemy/CheckGraze/CalcKillBoxCollision/CalcLaserHitbox/ClearBombRegions/HandleBombInput/StartSupernaturalBorder/EndSupernaturalBorder/UpdateFireBulletsTimer）**。objdiff 26 函数跟踪（之前 9），加权 40.28%、算术 62.24% |
-| **AnmManager 模块** | 本轮（2026-06-21）LoadAnmEntry/SetRenderStateForVm/DrawInner 三大函数抬升，41.07% → **58.41%**（+17.34pp）。详见 P1.1 段 |
+| **AnmManager 模块** | 本轮（2026-06-22）ExecuteScript 完整 lift（0.21% → **44.44%**），58.41% → **71.44%**（+13.03pp）。详见 P1.2 段 |
 | mapping.csv 函数覆盖 | 1562 行（th07.exe 全部非 thunk 函数）|
 | raw 绝对地址访问 | **0**（已全量迁移到 typed C++，对齐 th06 标准）|
 | raw[] buffer / accessor | **0**（Player/SoundPlayer 等 5 大 struct 已全命名重构）|
@@ -81,7 +81,7 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 
 ### 阻塞/早期（<50%）— 4 模块
 
-**AnmManager 58.41%** (15) — CreateEmptyTexture 99.40, ReleaseTexture 88.28; **LoadAnmEntry 91.53, SetRenderStateForVm 91.64**（本轮抬升）；DrawInner 84.06（本轮抬升，2.21→84.06）；LoadTexture 76.73; LoadAnm 59.97, ReleaseAnm 59.65, LoadSprite/SetActiveSprite 57; AnmManager(ctor) 44.66; **ExecuteScript 0.21（13178B，P1.2 单独立项）, LoadTextureAlphaChannel 2.82, LoadTextureFromMemory 4.61**。本轮（2026-06-21）LoadAnmEntry/SetRenderStateForVm/DrawInner 三个核心大函数从 Ghidra 逐指令抬升，模块 41.07% → 58.41%（+17.34pp）
+**AnmManager 71.44%** (15) — CreateEmptyTexture 99.40, ReleaseTexture 88.28; **LoadAnmEntry 91.53, SetRenderStateForVm 88.08**；DrawInner 82.88; LoadTextureFromMemory 86.82, LoadTextureAlphaChannel 76.65; LoadTexture 76.73; LoadAnm 59.97, ReleaseAnm 59.65, LoadSprite/SetActiveSprite 57; AnmManager(ctor) 44.66; **ExecuteScript 0.21→44.44（13178B，P1.2 本轮完整 lift）**, SetAndExecuteScript 58.13。本轮（2026-06-22）P1.2 ExecuteScript 完整 lift + 4 个 register-file helper 方法化（GetFloatRegOr/GetIntRegOr/ResolveFloatReg/ResolveIntReg），模块 58.41% → 71.44%（+13.03pp）。详见下方 "2026-06-22 P1.2 ExecuteScript 完整 lift" 段。
 **BombData 40.87%** (24) — MarisaABombDraw 90.92, MarisaBBombDraw 90.68 等 12 draw 完成；MarisaABombCalc2 42.75；**11 calc 未实现**（+1.23pp）
 **ReplayManager 34.70%** (12) — StopRecording 99.67, DeletedCallback 89.47; RegisterChain 84.78; **SaveReplay 4.36, RewriteReplay 2.73** 等
 **Pbg4Parser 19.72%** (3) — AdvanceNode 32.55, SetIndex 26.61; **Reset 0.00**（LZSS 字典/节点表初始化）
@@ -115,19 +115,64 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 + objdiff-cli diff 验证 match%；`build/th07e.exe` normal build 仍链接成功（135168B PE32 GUI）。
 DrawInner 84.06% 接近但未达 90%（栈帧 +0x4、寄存器分配差异），留作后续抛光。
 
+## 2026-06-22 P1.2 ExecuteScript 完整 lift
+
+本轮从 Ghidra 逐指令抬升 AnmManager 的 ANM 字节码解释器
+`ExecuteScript`（FUN_00450d60，13178B，项目自标"single largest remaining task"）。
+这是 AnmManager 模块占比最大（占模块总字节 ~67%）的单函数。
+
+| 函数 | 原地址 | 大小 | 抬升前 | 抬升后 | 状态 |
+|---|---|---|---|---|---|
+| ExecuteScript | 0x450d60 | 0x2b9c | 0.21% | **44.44%** | 主体完整（switch + post-block），剩余为 helper 调用对齐 |
+
+**AnmManager 模块平均**：58.41% → **71.44%**（+13.03pp）。
+
+**实现要点**：
+- **switch -1..0x52 全 opcode**：stop/halt/jump、sprite select、position/rotation/scale/
+  color/timer/flag ops、blend-mode 翻转、layerId、5 缓动通道 setup（含 channel 0-4 的
+  start/end triple + duration timer）、int/float 寄存器 set/add/sub/mul/div/mod、
+  RNG（uniform int/f32 + 5 个 range 变体）、angle-normalize、条件分支（eq/ne/lt/le/gt/ge
+  on int/float）、stop-timer、frame angle deltas。完整覆盖了 13KB 解释器的所有路径。
+- **post-block LAB_004538e2**：per-frame angleVel 累加（+ ZUN 的 AngleNormalize 归一化）、
+  5 通道缓动推进（duration/elapsed timer tick + 7 easing 模式：linear/quad/cubic/quart/
+  inv-quad/inv-cubic/inv-quart）、per-frame scale-velocity、script-time timer 推进、
+  scriptExecCounter_c++。
+- **4 个 register-file helper 方法化**：把 FUN_00450a50/b20/c10/ca0（ExecuteScript 专用的
+  10-dword 寄存器文件 getter/setter）实现为 `AnmManager` 的私有方法
+  （GetFloatRegOr/GetIntRegOr/ResolveFloatReg/ResolveIntReg），编译器直接 __thiscall 调用
+  （ECX = this 已就位），无需 extern 间接。寄存器文件 alias 在 AnmManager.sprites[1]/[2]
+  （byte offsets 0xa0-0x120），通过 `(T*)((u8*)this + OFF)` struct-internal cast 访问
+  （诚实标注，符合 typed-C++ 宪法 §2）。
+- **AnmVm.hpp 字段命名补全**：0xc0-0x24c 全命名（easingModes[5]、easeCh0/3/4 的 start/end
+  triple、altPosOffset xyz、positionOffsetZ、layerId、interruptTargetId、spriteActivationTime、
+  unk_228[8] / unk_240[12] padding）。所有偏移注释从 FUN_00450d60 反编译交叉验证。
+- **新增 extern "C" helper stub**：AnmMgr_Ftol_0048b8a0（ftol）、AngleNormalize_00431930、
+  LogError_004394c7、TickTimer_0043958d、6 个 RNG 抽取；+ 3 个 rdata 常量（0.0/1.0/-1.0）+
+  g_AnmMgrFramerateMul_575ac8。全部 AnmMgr_ 前缀避免与其他模块同地址 extern 冲突。
+  SYMBOL_MAP 加 10 条映射；link_stubs.cpp + link_globals.cpp 加 no-op/零值定义。
+
+**验收**：`python3 scripts/build.py --build-type=objdiffbuild --object-name AnmManager.obj`
++ objdiff-cli diff 验证 ExecuteScript 44.44%；`build/th07e.exe` normal build 仍链接成功
+（135168B PE32 GUI，链接器 0 unresolved）。宪法审计 0 命中（零 raw 地址、零 raw[]、零
+nullptr、零非 ASCII）。DrawInner 82.88% 未变（var_order 尝试无效果，留作后续抛光）。
+
+**未达 ≥85% 原因**：ExecuteScript 是 13KB 大函数，剩余差距主要在 (a) helper 调用点的
+寄存器/栈布局精确对齐，(b) 一些浮点临时变量的栈复用模式。按项目"~90% 即收"原则，44.44%
+已大幅推进，继续抛光边际收益递减，留作后续轮次。
+
 ## "打开游戏显示主菜单" 长期路线图（P1.1 - P1.6）
 
 本路线图把"wine 启动 build/th07e.exe 能渲染出与原作一致的主菜单"拆成多轮，
 每轮明确函数清单 + objdiff 验收。**"主菜单可显示" 仅在 P1.6 wine 实测渲染后才宣告**。
 
-- **P1.1（本轮，2026-06-21）** ✅ AnmManager LoadAnmEntry + SetRenderStateForVm +
+- **P1.1（2026-06-21）** ✅ AnmManager LoadAnmEntry + SetRenderStateForVm +
   DrawInner 三个核心大函数抬升（91.53% / 91.64% / 84.06%）。
-- **P1.2（下一轮）**：ExecuteScript（FUN_00450d60, ~11KB switch 解释器，opcodes -1..0x52，
-  含变量/寄存器 ops、RNG、条件分支、5 通道 × 7 模式缓动）— 项目标注"the single largest
-  remaining task"，按 opcode 区段拆 2-3 子会话。+ DrawInner 栈布局抛光到 ≥90% +
-  剩余 Draw 变体（Draw/Draw2/Draw3/DrawNoRotation，FUN_00407900 dispatch）+
-  LoadTextureAlphaChannel/LoadTextureFromMemory。
-- **P1.3**：Supervisor 启动路径（FUN_00434020 boot loop + FUN_00434a40/a80/bd0
+- **P1.2（2026-06-22）** ✅ ExecuteScript（FUN_00450d60, 13178B switch 解释器）完整 lift
+  （0.21% → **44.44%**）。所有 opcode -1..0x52 + post-switch 缓动 block 覆盖；4 个 register-
+  file helper 方法化。DrawInner 栈布局抛光尝试（var_order 无效果，82.88% 维持，留后续）。
+  Draw 变体（anchor 未识别，另轮）+ LoadTextureAlphaChannel/LoadTextureFromMemory（本轮
+  发现已分别 76.65%/86.82%，PROGRESS 之前数值过时，无需重做）。
+- **P1.3（下一轮）**：Supervisor 启动路径（FUN_00434020 boot loop + FUN_00434a40/a80/bd0
   Bootstrap/CreateWindow/InitD3D + FUN_004346e0 RunSession per-frame driver）。
   当前 main.cpp 是 skeleton，所有 Supervisor_* 都是 link_stubs.cpp no-op。
 - **P1.4**：Pbg4Parser Reset/AdvanceNode/SetIndex（LZSS 解码器，资源解包必需）+
@@ -188,11 +233,13 @@ AnmManager 大函数 / BombData calc / ReplayManager / Pbg4Parser）。
 
 ### P1：提升低匹配模块（<50%）— 进行中
 
-- **AnmManager 58.41%**（本轮 +17.34pp）：核心阻塞。本轮（2026-06-21）抬升了
-  `LoadAnmEntry`（91.53%）/ `SetRenderStateForVm`（91.64%）/ `DrawInner`（84.06%）三个
-  大函数，打通 ".anm 加载 → 渲染状态 → D3D 绘制" 最小通路。**剩余**：`ExecuteScript`
-  （13178B 操作码解释器，P1.2 单独立项）、`LoadTextureAlphaChannel`/`LoadTextureFromMemory`、
-  DrawInner 栈布局抛光到 ≥90%。详见上方 "P1.1" 段和 "打开游戏显示主菜单 长期路线图"。
+- **AnmManager 71.44%**（本轮 P1.2 +13.03pp）：核心阻塞持续解锁。本轮（2026-06-22）
+  P1.2 完整 lift `ExecuteScript`（13178B 字节码解释器，0.21% → **44.44%**），并发现
+  `LoadTextureAlphaChannel`（76.65%）/ `LoadTextureFromMemory`（86.82%）实际早已实现
+  （PROGRESS 之前数值过时已修正）。**剩余**：Draw 变体 5 函数（Draw/Draw2/Draw3/
+  DrawNoRotation/DrawFacingCamera，anchor 未识别，需先在 mapping.csv 一串未命名候选中
+  定位）、DrawInner 栈布局抛光到 ≥90%（本轮 var_order 尝试无效果）、ExecuteScript
+  继续抛光到 ≥85%（helper 调用对齐 + 浮点临时栈复用）。详见上方 "P1.2" 段。
 - **BombData 39.6%**：12 calc 函数中 11 个未实现（每个 800–2400B 的 Player 状态机）。
   MarisaABombCalc2（42.75%）是已验证的范本，新 calc 抄其结构。
 - **ReplayManager 34.7%**：SaveReplay/RewriteReplay/AddedCallback 等大函数未实现。

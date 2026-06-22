@@ -126,6 +126,17 @@ struct AnmRawInstr
     u32 args[1]; // variable length; indexed by the interpreter
 };
 
+// AnmRawInstrRaw: alternate view of the ANM instruction header used by the
+// interpreter's instruction-advance logic. The orig reads +0x02 as a single
+// u16 (opcode + argsCount packed) to compute the next-instruction stride.
+// We model that as a `size` field at +0x02 mirroring the orig access
+// `*psVar1[1]` (i.e. *(u16*)((u8*)instr + 2)).
+struct AnmRawInstrRaw
+{
+    i16 time;
+    u16 size; // +0x02: packed { opcode (low byte), argsCount (high byte) }
+};
+
 // ----- AnmRawEntry (header of a single chained entry in an .anm) -----
 //
 // Runtime field offsets used by FUN_0044e070 (LoadAnmEntry) and FUN_0044e4e0
@@ -260,6 +271,16 @@ struct AnmManager
     // --- Script execution ---
     void SetAndExecuteScript(AnmVm *vm, AnmRawInstr *beginingOfScript);
     i32 ExecuteScript(AnmVm *vm);
+
+    // ExecuteScript-internal register-file helpers (FUN_00450a50/b20/c10/ca0).
+    // These share AnmManager as `this` and access a 10-dword register file
+    // that aliases sprites[1] and sprites[2] (offsets 0xa0-0x120). The byte
+    // offsets 0xc8..0xec are reached via struct-internal casts on `this`.
+    // Declared public so ExecuteScript (which is public) can call them.
+    f32 GetFloatRegOr(f32 defaultVal);         // FUN_00450a50
+    i32 GetIntRegOr(i32 defaultVal);           // FUN_00450b20
+    f32 *ResolveFloatReg(f32 *regPtr, u16 mask, u8 shift);  // FUN_00450c10
+    i32 *ResolveIntReg(i32 *regPtr, u16 mask, u8 shift);    // FUN_00450ca0
 
     // --- Sprite ---
     void LoadSprite(u32 spriteIdx, AnmLoadedSprite *sprite);

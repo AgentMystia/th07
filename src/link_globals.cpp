@@ -209,3 +209,13 @@ extern "C" void *g_SupervisorG0x575a64 = 0;
 extern "C" void *g_SupervisorG0x575a68 = 0;
 // Player-specific AnmManager / ScoreSub / EffectManager / SoundManager handles.
 extern "C" void *g_AnmManagerFilesObj_P = 0;  // document-only alias (not currently referenced)
+
+// AnmManager::ExecuteScript rdata float constants (orig .rdata slots).
+// These mirror the const-float DAT_ addresses read absolutely by FUN_00450d60.
+extern "C" const f32 g_AnmMgrC0x498a4c = 0.0f;   // DAT_00498A4C (sentinel)
+extern "C" const f32 g_AnmMgrC0x498a54 = 1.0f;   // DAT_00498A54 (angle modulus)
+extern "C" const f32 g_AnmMgrC0x498b5c = -1.0f;  // DAT_00498B5C (scale flip)
+// Supervisor.framerateMultiplier mirror (orig 0x575ac8); ExecuteScript reads
+// it absolutely. Zero-init matches the boot state until Supervisor sets it.
+extern "C" f32 g_AnmMgrFramerateMul_575ac8 = 0.0f;
+

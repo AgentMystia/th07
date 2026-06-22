@@ -286,6 +286,26 @@ SYMBOL_MAP = {
     b"@AnmManager_FlushVertexBuffer@4": b"FUN_0044F5C0",
     b"@Supervisor_Setup3DCamera@4": b"FUN_00408180",
     b"@Supervisor_Setup2DCamera@4": b"FUN_004082B0",
+    # ExecuteScript (FUN_00450d60) cross-module helpers + rdata constants.
+    # __fastcall: COFF symbol is @Name@N (N = bytes cleaned = 4 per stack arg).
+    b"@AnmMgr_Ftol_0048b8a0@4": b"FUN_0048B8A0",
+    b"@AnmMgr_AngleNormalize_00431930@8": b"FUN_00431930",
+    b"@AnmMgr_LogError_004394c7@4": b"FUN_004394C7",
+    b"@AnmMgr_TickTimer_0043958d@8": b"FUN_0043958D",
+    # RNG draws return f32 in ST0 with no stack args (cdecl-like, but emitted
+    # as __fastcall@0 since no stack cleanup): bare @Name@0.
+    b"@AnmMgr_RngRandI_0048bb0a@0": b"FUN_0048BB0A",
+    b"@AnmMgr_RngRangeF_0048bb40@0": b"FUN_0048BB40",
+    b"@AnmMgr_RngRangeF2_0048bbf0@0": b"FUN_0048BBF0",
+    b"@AnmMgr_RngRange_0048b920@0": b"FUN_0048B920",
+    b"@AnmMgr_RngRandI_0047eca0@0": b"FUN_0047ECA0",
+    b"@AnmMgr_RngRandI_0048ba20@0": b"FUN_0048BA20",
+    # rdata float constants used by ExecuteScript.
+    b"_g_AnmMgrC0x498a4c": b"DAT_00498A4C",
+    b"_g_AnmMgrC0x498a54": b"DAT_00498A54",
+    b"_g_AnmMgrC0x498b5c": b"DAT_00498B5C",
+    # Supervisor.framerateMultiplier (orig 0x575ac8), read absolutely.
+    b"_g_AnmMgrFramerateMul_575ac8": b"DAT_00575AC8",
 }
 
 def map_symbol(sym):
