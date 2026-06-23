@@ -347,23 +347,56 @@ hand-written approximation（手写近似，控制流/字段都猜错）。
   FUN_0045c4c8/FUN_0045c546）、`0x45bf15` = AddedCallback（加载
   `data/title01.anm`、播 `bgm/th07_01.mid`、初始化 14 个 AnmVm）。
   本轮未抬升 MainMenu 函数体（0xd158 struct 太大，先解决 boot 阻塞）。
-- **P1.6 boot 调查（2026-06-23）**：本轮发现并修复 3 个让 boot loop 立即退出
-  的 stub bug（commit 0073265）：(1) `reinit_mainmenu_d3d` label 漏掉
-  `MainMenu::RegisterChain()` 调用（orig LAB_00437eac 有，C++ 没有）；(2)
-  `CheckAlreadyRunning` stub 返回 -1（应创建 mutex 后返回 0），让 WinMain
-  当场 abort；(3) `RunFrameOnce` stub 返回 0（orig FUN_0042fd60 是
-  Chain::RunCalcChain，0 = EXIT_GAME_SUCCESS），让 RunSession 一帧后退出。
-  另修 WndProc stub（void() no-op → DefWindowProcA thunk，否则
-  CreateWindowExA 内部 WM_NCCREATE/WM_CREATE 无返回值崩溃）。
+- **P1.6 boot 调查（2026-06-23，5 个修复 commit）**：逐层突破 D3D8 boot 路径：
 
-  **当前 wine 实测**：boot 现在能走到 `Direct3DCreate8` → `RegisterClassA`
-  → `CreateWindowExA("BASE")` 成功（hwnd 非零），但随后 InitD3D 的
-  CreateDevice vtable 调用在 **Wine 的 d3d8.dll 内 SIGILL**（地址
-  0x7b41ce00，由游戏代码 0x0040400a→0x00408d13 触发）。原版 th07.exe 在同
-  一 wine 下可正常运行。这说明我们的 D3D8 调用路径参数与 orig 有差异
-  （可能是 D3DPRESENT_PARAMETERS 的 fields[] 索引错位、CreateDevice 行为
-  标志、或 hFocusWindow 传错），需要专门一轮 D3D8 调用链调试。**主菜单
-  尚未渲染**——P1.6 未达成。
+  1. **commit 0073265** — 修复 3 个让 boot loop 立即退出的 stub bug：
+     `reinit_mainmenu_d3d` 漏 `MainMenu::RegisterChain()`；
+     `CheckAlreadyRunning` 返回 -1（应建 mutex 后返回 0）；
+     `RunFrameOnce` 返回 0（orig FUN_0042fd60 是 Chain::RunCalcChain，
+     0 = EXIT_GAME_SUCCESS）；WndProc stub 是 `void()` no-op（改为
+     DefWindowProcA thunk，否则 CreateWindowExA 内 WM_NCCREATE 崩溃）。
+
+  2. **commit b21e0df** — D3D8 vtable 调用双重 bug：
+     (a) `VTBL(comIf,off)` 宏返回 vtable 槽地址（`vtable+off`）而非
+     槽中的函数指针，导致 `call eax` 跳进 vtable 中部（EIP=0x7B41CE00
+     = Wine `__wine_unimplemented` 区 → SIGILL）。正确是再多一层解引用
+     `*(void**)(*(u8**)(comIf) + (off))`。
+     (b) 所有 D3D8 COM 方法用 `__fastcall`（错），应 `__stdcall`
+     （callee-clean，orig 汇编 push 全部参数含 this，调用后不 ADD ESP）。
+
+  3. **commit 0e1275d** — D3DPRESENT_PARAMETERS_FAKE 字段布局错位。
+     原结构是 `u32 fields[13]`，每处赋值用错索引（注释写 fields[5]=depth
+     format，实际应是 fields[9]；fields[7]=autoenable 应是 fields[8]；
+     fields[8]=interval 应是 fields[12]；fields[11]=windowed 应是
+     fields[7]）。结果 CreateDevice 看到 Windowed=0（fullscreen），Wine
+     尝试分配 ~1.3GB GL surface，耗尽 32-bit 地址空间 → OOM /
+     `device_init Failed to create primary stateblock`。按 orig
+     FUN_00434bd0 反汇编重新映射（local_N → field index = (0x4c-offset)/4），
+     改用命名字段（BackBufferWidth/SwapEffect/Windowed/
+     EnableAutoDepthStencil/AutoDepthStencilFormat/Flags/
+     FullScreen_PresentationInterval）。**CreateDevice 现在成功**，
+     Wine 到达 `context_choose_pixel_format`（GL setup）。
+
+  4. **commit 559915e** — D3D8/device/hInstance 三个全局与 g_Supervisor
+     结构体字段脱钩。orig 把 DAT_00575950/4/8 与 Supervisor 结构体重叠
+     （hInstance @ +0、d3dIface @ +4、d3dDevice @ +8）；objdiff build
+     链接器把 g_Supervisor 放在 0x575950 所以天然 alias，但 normal build
+     放在别处，三个 `extern "C" void*` 全局变成独立存储——InitD3D 把
+     CreateDevice 结果写进独立全局，AddedCallback 读 g_Supervisor.d3dDevice
+     （恒为 NULL）→ null deref。改用宏 alias 到结构体字段：
+     `#define g_SupervisorD3dDevice_575958 g_Supervisor.d3dDevice` 等。
+     **AddedCallback 现在能读到有效 D3D8 device 并运行 boot D3D setup**。
+
+  **当前阻塞（未解决，需下一轮）**：`AddToCalcChain` 调用
+  `elem->addedCallback` 时 EIP 跳到 `0x454a10`（超出我们 .text 末尾
+  0x414455 约 0x40KB）。但 debug 打印显示调用前 `elem->addedCallback`
+  = `0x00404DE0`（= Supervisor::AddedCallback，正确值）。同一 elem、
+  同一字段、debug 读到正确值但 call 跳到错误地址——原因未明。怀疑：
+  (a) 调用约定（成员函数 __thiscall vs __fastcall）导致 ECX/栈不一致，
+  间接 call 读到错误地址；(b) `g_Chain.calcChain` 哨兵节点未正确构造
+  （Chain() 空构造函数未显式初始化 ChainElem 成员？）；(c) 栈/堆污染。
+  需要专门一轮调试。**主菜单尚未渲染**——P1.6 仍未达成，但 boot 路径
+  从「立即退出」推进到「D3D 设备创建成功、进入 AddedCallback」。
 
 ## 2026-06-18 typed-C++ 全项目重构（对齐 th06 严格标准）
 
