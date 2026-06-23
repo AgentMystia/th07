@@ -44,6 +44,7 @@
 // declarations so the normal-build linker resolves them to one definition.
 
 #include "Supervisor.hpp"
+#include "AnmManager.hpp"
 #include "Chain.hpp"
 #include "ZunResult.hpp"
 #include "diffbuild.hpp"
@@ -73,6 +74,7 @@ extern "C" i32  g_SupervisorSysParam_575c48;
 extern "C" i32  g_SupervisorBootVar_575c30;
 extern "C" i64  g_SupervisorPerfFreq_575c34;
 extern "C" u8   g_SupervisorIsForeground_575a8a;
+extern "C" u8   g_SupervisorWindowedOverride_575abc;
 extern "C" char  g_GameErrorContext_624210[0x2008];
 extern "C" void *g_GameErrorContextHead_626210;
 extern "C" void *g_SupervisorAnmMgrSlot_4b9e44;
@@ -268,6 +270,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
             AnmManager_Ctor_0044d3e0(anmMgr);
         }
         g_SupervisorAnmMgrSlot_4b9e44 = anmMgr;
+        th07::g_AnmManager = (th07::AnmManager *)anmMgr;
 
         // Hide cursor + disable IME in windowed mode.
         if (g_SupervisorIsForeground_575a8a == 0)

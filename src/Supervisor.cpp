@@ -1484,7 +1484,8 @@ frame_loop:
                 Supervisor_MidiFrameTick_0042fe20();
                 Supervisor_AnmMgrFlush_0044f5c0();
                 // Present(src, dst, dirty, plug) -- vtable +0xf4 / 0x3d*4.
-                ((void (__fastcall *)(void *, void *, void *, void *, void *))(
+                // __stdcall: this + 4 args all pushed on stack (callee clean).
+                ((void (__stdcall *)(void *, void *, void *, void *, void *))(
                     VTBL(dev, 0xf4)))(dev, 0, 0, 0, 0);
                 // EndScene -- vtable +0x8c / 0x23*4.
                 ((void (__stdcall *)(void *))(VTBL(dev, 0x8c)))(dev);

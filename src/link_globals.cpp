@@ -262,6 +262,12 @@ extern "C" u32  g_SupervisorUnkMatrix1_575990[16] = {0};
 extern "C" u32  g_SupervisorUnkMatrix2_5759d0[16] = {0};
 extern "C" void *g_SupervisorHwndMirror_575994 = 0;
 extern "C" void *g_SupervisorAnmMgrSlot_4b9e44 = 0;
+// MainMenu / BGM dispatcher state (orig DAT_ slots read by FUN_0045bf15 /
+// FUN_00439dd0). 0-init matches first-boot defaults.
+extern "C" i32   g_SupervisorAac_575aac = 0;     // 0x575aac -- accum state
+extern "C" u8    g_SupervisorMusicMode_575a87 = 0; // 0x575a87 -- 1=WAVE, 2=MIDI
+extern "C" void *g_SupervisorMidiSlot_575acc = 0;  // 0x575acc -- MidiOutput*
+extern "C" i32   g_MainMenuFlagBits_62f648 = 0;    // 0x62f648 -- menu flag word
 // NOTE: g_SupervisorHInstance_575950, g_SupervisorD3D8_575954, and
 // g_SupervisorD3dDevice_575958 are NOT separate globals -- they alias
 // the hInstance/d3dIface/d3dDevice fields of g_Supervisor (see the macros

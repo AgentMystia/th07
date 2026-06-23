@@ -19,17 +19,17 @@
 extern "C" {
     void __fastcall AnmManager_Callback_D630(i32 a0) { }
     void __fastcall AnmManager_FlushSprites(i32 a0) { }
-    void __fastcall AnmManager_LoadAnm(i32 a0, i32 a1, i32 a2, i32 a3) { }
+    i32  __fastcall AnmManager_LoadAnm(i32 a0, i32 a1, i32 a2, i32 a3) { return 0; }
     void __fastcall AnmMgr_ExecuteAnmIdx(i32 a0, i32 a1) { }
     void __fastcall AnmVm_Die(i32 a0, i32 a1, i32 a2, i32 a3, i32 a4) { }
     void __fastcall AnmVm_ExecuteScript(i32 a0) { }
     void __fastcall BulletMgr_RemoveAllBullets(i32 a0) { }
     void __fastcall CMyFont_GetPixelFormat(i32 a0) { }
     void __fastcall CStreamingSound_UpdateFadeOut(void) { }
-    void __fastcall Callback_01e30(void) { }
+    i32  __fastcall Callback_01e30(void) { return 0; }
     void __fastcall Callback_3225b(void) { }
     void __fastcall Callback_378d0(i32 a0) { }
-    void __fastcall Callback_44c20(i32 a0) { }
+    void * __fastcall Callback_44c20(i32 a0) { return (void *)1; }   // non-NULL handle
     void __fastcall Callback_4547f(i32 a0, i32 a1, i32 a2) { }
     void __fastcall Callback_4547f_2arg(i32 a0, i32 a1) { }
     void __fastcall Callback_454fc(i32 a0) { }
@@ -56,7 +56,7 @@ extern "C" {
     void __fastcall Item_SpawnItem(i32 a0, i32 a1, i32 a2) { }
     void __fastcall ListNode_Ctor(i32 a0) { }
     void __fastcall MidiOutput_Ctor(i32 a0) { }
-    void __fastcall MidiOutput_Play(i32 a0, i32 a1, i32 a2) { }
+    i32  __fastcall MidiOutput_Play(i32 a0, i32 a1, i32 a2) { return 0; }
     void __fastcall MidiOutput_StopPlayback(void) { }
     i32 __fastcall Pbg4_NodePick(i32 a0) { return 0; }
     void __fastcall Pbg4_NodePush(i32 a0, i32 a1) { }
@@ -65,12 +65,12 @@ extern "C" {
     void __fastcall Rng_GetRandomU32(i32 a0) { }
     void __fastcall SoundPlayer_Callback_C020(i32 a0, i32 a1) { }
     void __fastcall SoundPlayer_Callback_C7d0(i32 a0) { }
-    void __fastcall SoundPlayer_LoadFmt(i32 a0, i32 a1) { }
+    i32  __fastcall SoundPlayer_LoadFmt(i32 a0, i32 a1) { return 0; }
     void __fastcall Sound_PlayEffect(i32 a0, i32 a1) { }
     void __fastcall Supervisor_AutosaveScore(i32 a0, i32 a1, i32 a2) { }
     void __fastcall Supervisor_BombPreDraw(void) { }
-    void __fastcall Supervisor_Callback6(void) { }
-    void __fastcall Supervisor_Callback7(void) { }
+    i32  __fastcall Supervisor_Callback6(void) { return 0; }
+    i32  __fastcall Supervisor_Callback7(void) { return 0; }
     void __fastcall Supervisor_Callback_Fun383d8(i32 a0) { }
     void __fastcall Supervisor_Cleanup3(void) { }
     void __fastcall Supervisor_ClearAnmScriptChain(void) { }
@@ -90,7 +90,10 @@ extern "C" {
     void __fastcall ZunAngleNormalize(i32 a0, i32 a1) { }
     void __fastcall ZunCos(i32 a0) { }
     void __fastcall ZunSin(i32 a0) { }
-    void __fastcall operator_new_th07(i32 a0) { }
+    // operator_new_th07 returns void* (caller derefs). Return non-NULL so the
+    // "allocation succeeded" branch runs; the ctor stubs are no-ops so the
+    // bogus pointer is never really written through meaningfully.
+    void * __fastcall operator_new_th07(i32 a0) { extern void *malloc(unsigned int); return malloc((unsigned int)a0); }
     void __fastcall utils_AddNormalizeAngle(i32 a0, i32 a1) { }
     void __fastcall utils_GetArcadeRegionMaxX(void) { }
     void __fastcall utils_IsInBounds(i32 a0, i32 a1, i32 a2, i32 a3) { }
@@ -186,8 +189,37 @@ extern "C" {
     void __fastcall AnmMgr_BootDrawLogo_454aa0(void *anm, i32 idx,
                                                i32 a2, i32 a3, i32 a4, i32 a5)
     { (void)anm; (void)idx; (void)a2; (void)a3; (void)a4; (void)a5; }
+    // SoundPlayer wave-play variant -- orig FUN_0044d2f0. The full impl loads
+    // and plays a .wav through the streaming-sound stack; normal-build stub
+    // is a no-op until the SoundPlayer wave path is lifted.
+    void __fastcall SoundPlayer_PlayWaveVariant(i32 a, void *b, char *path)
+    { (void)a; (void)b; (void)path; }
 } // extern "C"
 
+// The following were originally objdiff-only extern "C" data slots (zero-init
+// ints that just reserve the symbol so objdiff maps to the orig exe's import
+// thunks). The NORMAL build calls them as functions, so for the normal build
+// we provide real wrappers around the CRT. The data-slot form is kept only
+// under DIFFBUILD so objdiff remains unaffected.
+#ifndef DIFFBUILD
+extern "C" {
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+    // _sprintf_th07: orig imports msvcrt sprintf. Wrap vsnprintf-backed sprintf.
+    int __cdecl sprintf_th07(char *dst, const char *fmt, ...) { va_list a; va_start(a, fmt); int r = vsprintf(dst, fmt, a); va_end(a); return r; }
+    // _strchr_th07: orig imports msvcrt strchr.
+    char *__cdecl strchr_th07(char *s, int ch) { return strchr(s, ch); }
+    // _Supervisor_LogStr1: orig imports a printf-like logger; normal build just
+    // no-ops (output goes nowhere; the game does not read it back).
+    void __cdecl Supervisor_LogStr1(const char *fmt, ...) { (void)fmt; }
+    // _new_0047d441 / _delete_0047d43c: operator new/delete thunks (orig sizes
+    // 0x4d441/0x4d43c). Normal build uses malloc/free so the allocators stay
+    // consistent with operator_new_th07 above.
+    void *__cdecl new_0047d441(unsigned int size) { return malloc(size); }
+    void __cdecl delete_0047d43c(void *p) { free(p); }
+}
+#else
 // _Supervisor_LogStr1: extern "C" data slot (zero-init)
 extern "C" int Supervisor_LogStr1 = 0;
 // _delete_0047d43c: extern "C" data slot (zero-init)
@@ -198,3 +230,4 @@ extern "C" int new_0047d441 = 0;
 extern "C" int sprintf_th07 = 0;
 // _strchr_th07: extern "C" data slot (zero-init)
 extern "C" int strchr_th07 = 0;
+#endif
