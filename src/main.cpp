@@ -182,20 +182,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         if (g_SupervisorD3dDevice_575958 != 0)
         {
             // (*dev)->Reset(presentParams) -- vtable +0x38.
-            ((void (__fastcall *)(void *, void *))(*(u8 **)g_SupervisorD3dDevice_575958 + 0x38))(
+            ((void (__stdcall *)(void *, void *))( *(void **)(*(u8 **)g_SupervisorD3dDevice_575958 + 0x38) ))(
                 g_SupervisorD3dDevice_575958, (void *)&g_SupervisorPresentParams_575a30);
         }
         if (g_SupervisorD3dDevice_575958 != 0)
         {
             // (*dev)->Release() -- vtable +8.
-            ((u32 (__fastcall *)(void *))(*(u8 **)g_SupervisorD3dDevice_575958 + 8))(
+            ((u32 (__stdcall *)(void *))( *(void **)(*(u8 **)g_SupervisorD3dDevice_575958 + 8) ))(
                 g_SupervisorD3dDevice_575958);
             g_SupervisorD3dDevice_575958 = 0;
         }
         // Release the D3D8 iface.
         if (g_SupervisorD3D8_575954 != 0)
         {
-            ((u32 (__fastcall *)(void *))(*(u8 **)g_SupervisorD3D8_575954 + 8))(
+            ((u32 (__stdcall *)(void *))( *(void **)(*(u8 **)g_SupervisorD3D8_575954 + 8) ))(
                 g_SupervisorD3D8_575954);
             g_SupervisorD3D8_575954 = 0;
         }
@@ -290,8 +290,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 if (!PeekMessageA(&msg, 0, 0, 0, PM_REMOVE))
                 {
                     // TestCooperativeLevel -- vtable +0xc.
-                    local_8 = ((i32 (__fastcall *)(void *))(
-                        *(u8 **)g_SupervisorD3dDevice_575958 + 0xc))(
+                    local_8 = ((i32 (__stdcall *)(void *))( *(void **)(*(u8 **)g_SupervisorD3dDevice_575958 + 0xc) ))(
                         g_SupervisorD3dDevice_575958);
                     if (local_8 == 0)
                     {
@@ -306,8 +305,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                     else if (local_8 == (i32)0x8876b869) /* D3DERR_DEVICEREMOVED or similar DX8 status */ // D3DERR_DEVICELOST
                     {
                         Supervisor_DeviceLostHandler_00433f20();
-                        iVar1 = ((i32 (__fastcall *)(void *, void *))(
-                            *(u8 **)g_SupervisorD3dDevice_575958 + 0x38))(
+                        iVar1 = ((i32 (__stdcall *)(void *, void *))( *(void **)(*(u8 **)g_SupervisorD3dDevice_575958 + 0x38) ))(
                             g_SupervisorD3dDevice_575958, (void *)&g_SupervisorPresentParams_575a30);
                         if (iVar1 != 0)
                         {

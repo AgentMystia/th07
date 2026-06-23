@@ -1327,10 +1327,26 @@ extern "C" void *_free_th07(void *p) { return 0; }
 
 // Vtable-indexed call helpers. The orig disasm emits the pattern
 //   CALL dword ptr [EAX + vtable_off]
-// where EAX = *(void**)com_interface. We mirror that by reading the vtable
-// pointer then indexing by byte offset. The cast to u8* is required because
-// MSVC 7.0 forbids pointer arithmetic on void* (C2036).
-#define VTBL(comIf, off) (*(u8 **)(comIf) + (off))
+// where EAX = *(void**)com_interface. We mirror that by reading the
+// vtable pointer then indexing by byte offset, then DEREFERENCING the
+// slot to obtain the function pointer. The cast to u8* is required
+// because MSVC 7.0 forbids pointer arithmetic on void* (C2036).
+//
+// BUG FIX (2026-06-23): the old macro returned (vtable + off), i.e. the
+// ADDRESS of the slot, not the function pointer IN the slot. The cast to
+// a function pointer then made `call eax` jump into the middle of the
+// vtable itself (0x7B41CE00 = vtable+0x20), which is Wine's
+// __wine_unimplemented region -> SIGILL. The slot must be dereferenced
+// with one more indirection.
+//
+// IMPORTANT: All D3D8 / Direct3D8 COM methods are __stdcall (callee-clean),
+// matching the Win32 ABI. Orig disasm pushes every argument on the stack
+// (including 'this') and never ADDs ESP after the call -- the callee pops
+// them. Using __fastcall for these calls is a bug: __fastcall passes the
+// first 2 args in ECX/EDX and only spills the rest to the stack, so the
+// callee (which expects N*4 bytes on the stack) pops a wrong amount and
+// corrupts ESP.
+#define VTBL(comIf, off) (*(void **)(*(u8 **)(comIf) + (off)))
 
 // Bootstrap (FUN_00434a40). Creates the IDirect3D8 interface (D3D runtime
 // version 0x78 = 120 = DirectX 8.0 header). Returns true on failure (i.e.
@@ -1458,7 +1474,7 @@ frame_loop:
             if ((i32)(u32)g_SupervisorFrameskipCfg_575a8b <= (i32)s->unk188)
             {
                 // TestCooperativeLevel (vtable +0x88 / 0x22*4).
-                ((HRESULT(__fastcall *)(void *))(VTBL(dev, 0x88)))(dev);
+                ((HRESULT(__stdcall *)(void *))(VTBL(dev, 0x88)))(dev);
                 Supervisor_AnmVmInit_0044f580();
                 g_SupervisorFrameInputFlag_575c0c = 0xff;
                 Supervisor_BgmFrameTick_0043a207();
@@ -1468,7 +1484,7 @@ frame_loop:
                 ((void (__fastcall *)(void *, void *, void *, void *, void *))(
                     VTBL(dev, 0xf4)))(dev, 0, 0, 0, 0);
                 // EndScene -- vtable +0x8c / 0x23*4.
-                ((void (__fastcall *)(void *))(VTBL(dev, 0x8c)))(dev);
+                ((void (__stdcall *)(void *))(VTBL(dev, 0x8c)))(dev);
             }
             Supervisor_AnmMgrFlush_0044f5c0();
             // Reset the viewport to the full 640x480 client.
@@ -1478,7 +1494,7 @@ frame_loop:
             viewport[2] = 0x280;
             viewport[3] = 0x1e0;
             // SetViewport -- vtable +0xa0 / 0x28*4.
-            ((void (__fastcall *)(void *, void *))(VTBL(dev, 0xa0)))(
+            ((void (__stdcall *)(void *, void *))(VTBL(dev, 0xa0)))(
                 dev, &g_SupervisorViewport_575a18);
 
             frameResult = Supervisor_RunFrameOnce_0042fd60();
@@ -1599,7 +1615,7 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
     ZeroMemory(&localPP, sizeof(localPP));
 
     // Query the current display mode (GetAdapterDisplayMode -- vtable +0x20).
-    ((void (__fastcall *)(void *, i32, void *))(VTBL(g_SupervisorD3D8_575954, 0x20)))(
+    ((void (__stdcall *)(void *, i32, void *))(VTBL(g_SupervisorD3D8_575954, 0x20)))(
         g_SupervisorD3D8_575954, 0, &local_10);
 
     if (g_SupervisorIsForeground_575a8a == 0)
@@ -1671,7 +1687,7 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
         {
             // CreateDevice(adapter, deviceType, hwnd, behaviorFlags, pp, &dev)
             // -- vtable +0x3c / 0xf*4. Try hardware vertex processing (0x40).
-            iVar1 = ((i32(__fastcall *)(void *, i32, i32, void *, i32, void *, void *))(
+            iVar1 = ((i32(__stdcall *)(void *, i32, i32, void *, i32, void *, void *))(
                 VTBL(g_SupervisorD3D8_575954, 0x3c)))(g_SupervisorD3D8_575954, 0, 1,
                 g_SupervisorWindow_575c20, 0x40, &localPP, (void *)&g_SupervisorD3dDevice_575958);
             if (iVar1 >= 0)
@@ -1685,7 +1701,7 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
                 Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "T&L HAL \202\315\216g\227p\202\305\202\253\202\310\202\242\202\346\202\244\202\305\202\267\r\n");
             }
             // Fallback: software vertex processing (0x20).
-            iVar1 = ((i32(__fastcall *)(void *, i32, i32, void *, i32, void *, void *))(
+            iVar1 = ((i32(__stdcall *)(void *, i32, i32, void *, i32, void *, void *))(
                 VTBL(g_SupervisorD3D8_575954, 0x3c)))(g_SupervisorD3D8_575954, 0, 1,
                 g_SupervisorWindow_575c20, 0x20, &localPP, (void *)&g_SupervisorD3dDevice_575958);
             if (iVar1 < 0)
@@ -1727,15 +1743,15 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
                 D3DXMatrixPerspectiveLH_00461dd8(&th07::g_Supervisor.projectionMatrix,
                     projW, projH, 100.0f, 10000.0f);
             }
-            ((void (__fastcall *)(void *, i32, void *))(VTBL(g_SupervisorD3dDevice_575958, 0x94)))(
+            ((void (__stdcall *)(void *, i32, void *))(VTBL(g_SupervisorD3dDevice_575958, 0x94)))(
                 g_SupervisorD3dDevice_575958, 2, &th07::g_Supervisor.viewMatrix);
-            ((void (__fastcall *)(void *, i32, void *))(VTBL(g_SupervisorD3dDevice_575958, 0x94)))(
+            ((void (__stdcall *)(void *, i32, void *))(VTBL(g_SupervisorD3dDevice_575958, 0x94)))(
                 g_SupervisorD3dDevice_575958, 3, &th07::g_Supervisor.projectionMatrix);
             // SetViewport -- vtable +0xa0.
-            ((void (__fastcall *)(void *, void *))(VTBL(g_SupervisorD3dDevice_575958, 0xa0)))(
+            ((void (__stdcall *)(void *, void *))(VTBL(g_SupervisorD3dDevice_575958, 0xa0)))(
                 g_SupervisorD3dDevice_575958, &g_SupervisorViewport_575a18);
             // SetMaterial -- vtable +0x1c.
-            ((void (__fastcall *)(void *, void *))(VTBL(g_SupervisorD3dDevice_575958, 0x1c)))(
+            ((void (__stdcall *)(void *, void *))(VTBL(g_SupervisorD3dDevice_575958, 0x1c)))(
                 g_SupervisorD3dDevice_575958, (void *)&g_SupervisorUnkAe8_575ae8);
 
             if ((g_SupervisorCfgOpts_575a9c & 1) == 0 && (g_SupervisorUnkB78_575b78 & 0x40) == 0)
@@ -1754,7 +1770,7 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
             if ((g_SupervisorCfgOpts_575a9c >> 2 & 1) == 0 && fallbackTried != 0)
             {
                 // CheckDeviceFormat -- vtable +0x28.
-                iVar1 = ((i32(__fastcall *)(void *, i32, i32, i32, i32, i32, i32))(
+                iVar1 = ((i32(__stdcall *)(void *, i32, i32, i32, i32, i32, i32))(
                     VTBL(g_SupervisorD3D8_575954, 0x28)))(g_SupervisorD3D8_575954, 0, 1,
                     localPP.fields[2], 0, 3, 0x15);
                 if (iVar1 == 0)
@@ -1776,7 +1792,7 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
         }
     ref_or_fail:
         // Last-ditch: reference rasterizer (deviceType 2).
-        iVar1 = ((i32(__fastcall *)(void *, i32, i32, void *, i32, void *, void *))(
+        iVar1 = ((i32(__stdcall *)(void *, i32, i32, void *, i32, void *, void *))(
             VTBL(g_SupervisorD3D8_575954, 0x3c)))(g_SupervisorD3D8_575954, 0, 2,
             g_SupervisorWindow_575c20, 0x20, &localPP, (void *)&g_SupervisorD3dDevice_575958);
         if (iVar1 >= 0)
@@ -1801,7 +1817,7 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
                 Supervisor_GameErrorFatal_00431730(&g_GameErrorContext_624210, "Direct3D \202\314\217\211\212\372\211\273\202\311\216\270\224s\201A\202\261\202\352\202\315\203Q\201[\203\200\202\315\217o\227\210\202\334\202\271\202\361\r\n");
                 if (g_SupervisorD3D8_575954 != 0)
                 {
-                    ((void (__fastcall *)(void *))(VTBL(g_SupervisorD3D8_575954, 8)))(
+                    ((void (__stdcall *)(void *))(VTBL(g_SupervisorD3D8_575954, 8)))(
                         g_SupervisorD3D8_575954);
                     g_SupervisorD3D8_575954 = 0;
                 }
