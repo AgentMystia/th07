@@ -129,10 +129,19 @@ i32 __fastcall RawWriteFile(LPCSTR fileName, LPCVOID buffer, DWORD size)
 }
 
 // =============================================================================
-// P0 link-pass stubs: ArchiveEntryTable::GetEntrySize / ReadEntry.
+// ArchiveEntryTable::GetEntrySize / ReadEntry -- thin wrappers around the
+// underlying Pbg4Archive reader (normal build). The objdiff build does not
+// link this translation unit's bodies; orig FUN_0045fab0 / FUN_0045f960 live
+// in the not-yet-lifted Pbg4 codec module and are resolved via mapping.csv.
 // =============================================================================
-u32 ArchiveEntryTable::GetEntrySize(char *) { return 0; }
-void ArchiveEntryTable::ReadEntry(char *, void *) { }
+u32 ArchiveEntryTable::GetEntrySize(char *entryName)
+{
+    return archive.GetEntrySize(entryName);
+}
+void ArchiveEntryTable::ReadEntry(char *entryName, void *outBuffer)
+{
+    archive.ReadEntry(entryName, outBuffer);
+}
 
 // =============================================================================
 // P0 link-pass: g_ArchiveEntries definition. The real initialiser lives in

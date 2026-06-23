@@ -46,6 +46,7 @@
 #include "Supervisor.hpp"
 #include "AnmManager.hpp"
 #include "Chain.hpp"
+#include "FileSystem.hpp"
 #include "ZunResult.hpp"
 #include "diffbuild.hpp"
 #include "inttypes.hpp"
@@ -63,6 +64,12 @@ extern "C" i32 __fastcall Supervisor_CreateWindow(void *hInstance);
 extern "C" i32 __fastcall Supervisor_InitD3D();
 extern "C" i32 __fastcall Supervisor_RunSession(th07::Supervisor *s);
 extern "C" void __fastcall Supervisor_Teardown(char *errBuf);
+
+// Debug-log helpers (file-backed) used by the normal-build boot path. Bodies
+// live in link_stubs.cpp; CRT wrappers around fopen/fprintf/fclose.
+extern "C" void *__cdecl th07_fopen_w(const char *path, const char *mode);
+extern "C" void __cdecl th07_fprintf(void *fp, const char *fmt, ...);
+extern "C" void __cdecl th07_fclose(void *fp);
 
 // Standalone boot globals (defined in link_globals.cpp; declared here so
 // WinMain can reach them with typed C++).
@@ -271,6 +278,33 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
         g_SupervisorAnmMgrSlot_4b9e44 = anmMgr;
         th07::g_AnmManager = (th07::AnmManager *)anmMgr;
+
+        // Open th07.dat before any packed resource load. The orig binary
+        // opens the archive lazily inside FUN_0045fb50 (Pbg4Archive::Open,
+        // called the first time FileSystem::OpenPath hits an archive entry);
+        // we just do it eagerly here so the normal build has a single,
+        // well-defined open point. A failed open is non-fatal -- disk-only
+        // resources still load via the CreateFileA fallback in OpenPath.
+#ifndef DIFFBUILD
+        {
+            void *dbg = th07_fopen_w("boot_debug.log", "w");
+            if (dbg) th07_fprintf(dbg, "[main] opening th07.dat\n");
+            i32 arcOk = th07::g_ArchiveEntries.archive.Open((char *)"th07.dat");
+            if (dbg) th07_fprintf(dbg, "[main] archive.Open=%d entryCount=%u\n",
+                                  arcOk, th07::g_ArchiveEntries.archive.entryCount);
+            // Probe key assets the boot needs.
+            u32 szA = th07::g_ArchiveEntries.archive.GetEntrySize((char *)"ascii.anm");
+            u32 szT = th07::g_ArchiveEntries.archive.GetEntrySize((char *)"title01.anm");
+            u32 szM = th07::g_ArchiveEntries.archive.GetEntrySize((char *)"bgm/init.mid");
+            u32 szF = th07::g_ArchiveEntries.archive.GetEntrySize((char *)"bgm/thbgm.fmt");
+            if (dbg)
+            {
+                th07_fprintf(dbg, "[main] ascii.anm=%u title01.anm=%u init.mid=%u thbgm.fmt=%u\n",
+                             szA, szT, szM, szF);
+                th07_fclose(dbg);
+            }
+        }
+#endif
 
         // Hide cursor + disable IME in windowed mode.
         if (g_SupervisorIsForeground_575a8a == 0)

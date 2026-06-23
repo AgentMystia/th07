@@ -87,6 +87,12 @@ extern "C" u8 g_SupervisorCameraStub_1347b00;
 extern "C" void __fastcall AnmManager_FlushVertexBuffer(void *anmMgr);
 extern "C" void __fastcall Supervisor_Setup3DCamera(void *cameraStub);
 extern "C" void __fastcall Supervisor_Setup2DCamera(void *cameraStub);
+
+// Boot-path debug log helpers (defined in link_stubs.cpp). File-backed so the
+// normal build can trace LoadTexture / LoadAnmEntry without touching DebugPrint.
+extern "C" void *__cdecl th07_fopen_w(const char *path, const char *mode);
+extern "C" void __cdecl th07_fprintf(void *fp, const char *fmt, ...);
+extern "C" void __cdecl th07_fclose(void *fp);
 // DrawInner (FUN_00450520) matrix helpers (D3DX math): build a rotation
 // matrix from a single angle (Z/X/Y variants) and multiply two matrices.
 // Each takes (D3DXMATRIX *out, float angle) or (out, a, b). Orig FUN_anchors.
@@ -417,8 +423,32 @@ ZunResult AnmManager::LoadTexture(i32 textureIdx, char *textureName, i32 texture
     _Memory = FileSystem::OpenPath(textureName, 1);
     if (_Memory == NULL)
     {
-        return ZUN_ERROR;
+#ifndef DIFFBUILD
+        // Normal-build fallback: th07.dat also packs many textures (e.g.
+        // data/title/th07logo.jpg) that the orig game shipped loose on disk.
+        // The orig LoadTexture hard-codes isExternalResource=1, so on a
+        // fresh unpack it would fail. Try the archive instead so the normal
+        // build can render with just th07.dat present.
+        _Memory = FileSystem::OpenPath(textureName, 0);
+#endif
+        if (_Memory == NULL)
+        {
+#ifndef DIFFBUILD
+            {
+                void *d = th07_fopen_w("boot_debug.log", "a");
+                if (d) { th07_fprintf(d, "[tex] OpenPath('%s') NULL both disk+arc\n", textureName); th07_fclose(d); }
+            }
+#endif
+            return ZUN_ERROR;
+        }
     }
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[tex] OpenPath('%s') ok, %lu bytes; calling D3DXCreateTexture\n",
+                              textureName, g_LastFileSize); th07_fclose(d); }
+    }
+#endif
 
     iVar2 = D3DXCreateTextureFromFileInMemoryEx(
         (LPDIRECT3DDEVICE8)g_Supervisor.d3dDevice, _Memory, g_LastFileSize, 0, 0, 0, 0,
@@ -615,6 +645,16 @@ ZunResult AnmManager::LoadTextureFromMemory(i32 textureIdx, void *headerIn, i32 
     IDirect3DSurface8 *texSurface;
 
     header = headerIn;
+
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[texMem] idx=%d fmt=%d hdrW=%d hdrH=%d hdrFmt=%d\n",
+                              textureIdx, textureFormat,
+                              *(i16 *)((u8 *)header + 0x8), *(i16 *)((u8 *)header + 0xa),
+                              *(i16 *)((u8 *)header + 0x6)); th07_fclose(d); }
+    }
+#endif
 
     this->ReleaseTexture(textureIdx);
 
@@ -2217,6 +2257,13 @@ ZunResult AnmManager::LoadAnm(i32 anmIdx, char *path, i32 spriteIdxOffset)
 
     iVar1 = anmIdx;
     local_14 = FileSystem::OpenPath(path, 0);
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[anm] LoadAnm('%s', idx=%d): OpenPath=%p lastSize=%lu\n",
+                              path, anmIdx, local_14, g_LastFileSize); th07_fclose(d); }
+    }
+#endif
     local_10 = 1;
     if (local_14 == NULL)
     {
@@ -2229,12 +2276,14 @@ ZunResult AnmManager::LoadAnm(i32 anmIdx, char *path, i32 spriteIdxOffset)
                                            local_10)) > ZUN_ERROR)
         {
             anmIdx = anmIdx + 1;
-            if (((AnmRawEntry *)local_14)->chainNextOffset == 0)
+            // Chain link lives at AnmRawEntry::nextOffset (+0x38). A zero link
+            // marks the last entry in the file. (Orig uses the same field.)
+            if (((AnmRawEntry *)local_14)->nextOffset == 0)
             {
                 this->anmFiles[iVar1].chainCount = anmIdx - iVar1;
                 return ZUN_SUCCESS;
             }
-            local_14 = (void *)((u8 *)local_14 + ((AnmRawEntry *)local_14)->chainNextOffset);
+            local_14 = (void *)((u8 *)local_14 + ((AnmRawEntry *)local_14)->nextOffset);
             local_10 = 0;
             spriteIdxOffset = spriteIdxOffset + iVar2;
         }
@@ -2273,6 +2322,17 @@ i32 AnmManager::LoadAnmEntry(i32 anmIdx, AnmRawEntry *entry, i32 spriteIdxOffset
     f32 invHeight;
 
     iVar_maxId = 0;
+
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[anmE] entry=%p anmIdx=%d version=%u hasData=%u numSprites=%d numScripts=%d\n",
+                              (void *)entry, anmIdx, entry ? entry->version : 0,
+                              entry ? entry->hasData : 0,
+                              entry ? entry->numSprites : -1,
+                              entry ? entry->numScripts : -1); th07_fclose(d); }
+    }
+#endif
 
     if (entry == NULL)
     {
@@ -2351,6 +2411,14 @@ i32 AnmManager::LoadAnmEntry(i32 anmIdx, AnmRawEntry *entry, i32 spriteIdxOffset
 
     // Record the source blob (entry + nameOffset) so ReleaseAnm can free it.
     this->imageDataArray[anmIdx] = (void *)((u8 *)entry + entry->nameOffset);
+
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[anmE] textures[%d]=%p unk1=%u\n",
+                              anmIdx, (void *)this->textures[anmIdx], entry->unk1); th07_fclose(d); }
+    }
+#endif
 
     // Apply texture priority (entry->unk1), preload to GPU, and query the
     // level-0 surface desc to learn the real texture pixel dimensions.

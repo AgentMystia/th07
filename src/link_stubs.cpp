@@ -11,10 +11,12 @@
 // objdiff.json / config/ghidra_ns_to_obj.csv).
 
 #include "inttypes.hpp"
+#include "ZunResult.hpp"
 
 #include <windows.h>
 
 #include "Chain.hpp"
+#include "AsciiManager.hpp"
 
 extern "C" {
     void __fastcall AnmManager_Callback_D630(i32 a0) { }
@@ -26,7 +28,12 @@ extern "C" {
     void __fastcall BulletMgr_RemoveAllBullets(i32 a0) { }
     void __fastcall CMyFont_GetPixelFormat(i32 a0) { }
     void __fastcall CStreamingSound_UpdateFadeOut(void) { }
-    i32  __fastcall Callback_01e30(void) { return 0; }
+    // Callback_01e30 (orig FUN_00401e30) is actually AsciiManager::RegisterChain.
+    // The real impl is in AsciiManager.cpp -- call it so the ASCII chain
+    // registers + the FPS counter / menu text get callbacks.
+    i32  __fastcall Callback_01e30(void) {
+        return (i32)th07::AsciiManager::RegisterChain();
+    }
     void __fastcall Callback_3225b(void) { }
     void __fastcall Callback_378d0(i32 a0) { }
     void * __fastcall Callback_44c20(i32 a0) { return (void *)1; }   // non-NULL handle
@@ -206,6 +213,14 @@ extern "C" {
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+    // File-backed debug log helpers used by the normal-build boot path. Wrap
+    // CRT fopen/fprintf/fclose so they work from anywhere in the binary.
+    void *__cdecl th07_fopen_w(const char *path, const char *mode) { return fopen(path, mode); }
+    void __cdecl th07_fprintf(void *fp, const char *fmt, ...) {
+        va_list a; va_start(a, fmt); vfprintf((FILE *)fp, fmt, a); va_end(a);
+        fflush((FILE *)fp);
+    }
+    void __cdecl th07_fclose(void *fp) { if (fp) fclose((FILE *)fp); }
     // _sprintf_th07: orig imports msvcrt sprintf. Wrap vsnprintf-backed sprintf.
     int __cdecl sprintf_th07(char *dst, const char *fmt, ...) { va_list a; va_start(a, fmt); int r = vsprintf(dst, fmt, a); va_end(a); return r; }
     // _strchr_th07: orig imports msvcrt strchr.

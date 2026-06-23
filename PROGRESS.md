@@ -25,7 +25,7 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 | mapping.csv 函数覆盖 | 1562 行（th07.exe 全部非 thunk 函数）|
 | raw 绝对地址访问 | **0**（已全量迁移到 typed C++，对齐 th06 标准）|
 | raw[] buffer / accessor | **0**（Player/SoundPlayer 等 5 大 struct 已全命名重构）|
-| **wine boot** | ✅ **P1.6 达成（2026-06-23）**：th07e.exe 在 wine 跑完整 6 秒无崩溃，calc chain 触发 ~8000 帧，每帧 Present 渲染。MainMenu::RegisterChain + AddedCallback 已抬升（0%→46% objdiff）。详见 §P1.6 |
+| **wine boot** | ✅ **P1.7 达成（2026-06-23）**：th07e.exe 在 wine 完成完整资源加载链路——Pbg4Archive 解压 th07.dat 全部 197 条目，LoadTexture 加载 th07logo.jpg（116KB），LoadAnm 加载 text.anm（36 sprites/30 scripts）+ title01.anm（10-entry chain，title 纹理 512×256），LoadTextureFromMemory 经 IDirect3DDevice8::CreateTexture 上传内嵌纹理。MainMenu::RegisterChain → AddedCallback → title01.anm 链全部成功。详见 §P1.7 |
 
 > match% 来源：`objdiff-cli diff` 的 `left.symbols[].match_percent`。模块平均为
 > simple average（各函数 match% 的算术平均）。2026-06-18 重测基线。
@@ -433,6 +433,68 @@ hand-written approximation（手写近似，控制流/字段都猜错）。
   AddedCallback 触发（probe 实测 aac=0 mmMode=0 midiSlot=0
   flagBits=0）。**渲染循环活跃（每帧 Present）**。BGM/anm 资源加载
   打到 stub（Pbg4 archive extraction 是下一个有声/可见内容的阻塞）。
+
+## 2026-06-23 P1.7 Pbg4 archive + 完整资源加载链路
+
+P1.6 之后，资源加载全部打到 stub（AnmManager_LoadAnm/SoundPlayer_PlayWave
+都是 no-op），主菜单只有空黑屏。本轮解锁整条资源加载链路：
+
+**Pbg4Archive（src/pbg4/Pbg4Archive.{hpp,cpp}）—— 逆向并实现真正的解压器**：
+
+1. **PBG4 格式逆向**（独立 C++ 程序验证，字节级正确）：
+   - 头：`"PBG4" + u32 entryCount + u32 tableOffset + u32 tableSize`（16B）
+   - 条目表：从 tableOffset 到 EOF 的 LZSS 压缩块，解压到 tableSize 字节
+   - 条目记录 = `name\0 + u32 offset + u32 size + u32(0)`（stride = nameLen+1+12）
+   - LZSS：13-bit offset / 4-bit length / 0x2000B 字典 / offset==0 = EOS
+   - compressedSize = nextEntry.offset - thisEntry.offset（按 offset 排序后推导）
+   - 实测 th07.dat：197 条目，ascii.anm=404392B，title01.anm=5541332B
+
+2. **Decompress EOF 修复**：原 `DEC_FETCH_NEW_BYTE` 宏在输入耗尽后仍读末字节，
+   导致死循环（输入 == 输出耗尽但 EOS 标志读不到）。修复：EOF 后所有 bit 读 0，
+   并加 safety guard（输入+输出都耗尽时直接 break）。
+
+3. **entryCount 字段公开**：供 main.cpp 启动时探测 archive 完整性。
+
+**AnmManager 修复（src/AnmManager.cpp）**：
+
+1. **LoadAnm 链遍历字段错误**：原代码读 `chainNextOffset`（+0x40，与
+   spriteOffsets[0] 重叠 → 读到 0x1d0 假链指针）。正确字段是
+   `nextOffset`（+0x38）。修复后 text.anm 单条目链正确终止。
+2. **LoadTexture archive fallback**：orig LoadTexture 硬编码
+   `isExternalResource=1`（从磁盘读），但 th07.dat 也打包了 .jpg 纹理
+   （th07logo.jpg 等）。normal build 加 `#ifndef DIFFBUILD` fallback：磁盘
+   失败后从 archive 读。objdiff 路径不变。
+3. **LoadTextureFromMemory 真实实现**：`D3DXCreateTextureFromSurface_46298a`
+   从 return -1 stub 改为调用 `IDirect3DDevice8::CreateTexture`；
+   `D3DXLoadSurfaceFromMemory_462aa6` 改 no-op（caller 已通过 LockRect +
+   memcpy 上传像素）。title01.anm 内嵌纹理（512×256 A4R4G4B4）现在真实创建。
+
+**Supervisor::AddedCallback 改用真实 LoadAnm/LoadTexture**：
+- step4 `Callback_4547f`（stub）→ `g_AnmManager->LoadTexture(...)`
+- step8 `AnmManager_LoadAnm`（stub）→ `g_AnmManager->LoadAnm(...)`
+- th07logo.jpg 现在真实加载（116988B → D3DXCreateTextureFromFileInMemoryEx）
+
+**MainMenu::AddedCallback 改用真实 LoadAnm**：
+- `AnmManager_LoadAnm`（stub）→ `g_AnmManager->LoadAnm(...)`
+- title01.anm 10-entry chain（anmIdx 32-41）全部加载成功
+
+**main.cpp 启动时打开 archive**：在 RegisterChain 前 eager
+`g_ArchiveEntries.archive.Open("th07.dat")`。
+
+**boot_debug.log 诊断框架**：`th07_fopen_w/th07_fprintf/th07_fclose`
+（link_stubs.cpp，CRT 包装），供 main/Supervisor/AnmManager/Pbg4Archive 写
+文件级 trace（`#ifndef DIFFBUILD` 包裹，不影响 objdiff）。
+
+**实测**（wine 25s）：完整启动序列——
+archive.Open=1 entryCount=197 → LoadTexture(th07logo)=0 →
+LoadAnm(text.anm)=0 → RegisterChain=0 →
+LoadAnm(title01.anm) chain anmIdx 32-41 全部 textures[] 有效 →
+进程稳定运行（timeout 终止，无崩溃）。
+
+**下一步**：BGM 播放（MidiOutput::Play 真实调用，目前 MainMenu
+MIDI dispatch 仍走 MidiOutput_Play stub），MainMenu sprite 渲染
+（OnCalc/OnDraw 仍 CONTINUE 返回，需抬升菜单状态机）。
+
 
 ## 2026-06-18 typed-C++ 全项目重构（对齐 th06 严格标准）
 

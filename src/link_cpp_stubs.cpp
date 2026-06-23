@@ -213,23 +213,33 @@ void __fastcall D3DXMatrixMultiply_461aa2(void *out, void *a, void *b)
 }
 
 // LoadTextureFromMemory (FUN_0044d9e0) surface helpers. Orig FUN_0046298a /
-// FUN_00462aa6. Real bodies live in the d3dx8 tex/surface library; stubbed
-// as error/no-op here (normal-build only).
+// FUN_00462aa6. The orig wraps IDirect3DDevice8::CreateTexture +
+// D3DXLoadSurfaceFromMemory; for the normal build we call the D3D8 device
+// method directly so embedded-texture .anm entries (e.g. title01.anm) load.
 int __fastcall D3DXCreateTextureFromSurface_46298a(void *device, int width, int height,
                                                     int mipLevels, int usage, int format,
                                                     int pool, void **ppTexture)
 {
-    (void)device; (void)width; (void)height; (void)mipLevels; (void)usage;
-    (void)format; (void)pool; (void)ppTexture;
-    return -1;
+    // Orig uses IDirect3DDevice8::CreateTexture with the caller-supplied
+    // width/height/mipLevels/usage/format/pool. The caller passes
+    // g_SupervisorD3dDevice_575958 as `device`.
+    IDirect3DDevice8 *dev = (IDirect3DDevice8 *)device;
+    HRESULT hr = dev->CreateTexture((UINT)width, (UINT)height, (UINT)mipLevels,
+                                    (DWORD)usage, (D3DFORMAT)format, (D3DPOOL)pool,
+                                    (IDirect3DTexture8 **)ppTexture);
+    return FAILED(hr) ? -1 : 0;
 }
 int __fastcall D3DXLoadSurfaceFromMemory_462aa6(void *dstSurface, void *palette, void *dstRect,
                                                 void *srcMemory, void *srcPalette, void *srcRect,
                                                 int filter, unsigned int colorKey)
 {
+    // The orig wraps D3DXLoadSurfaceFromMemory. We don't link d3dx8's surface
+    // loader in the normal build; the caller (LoadTextureFromMemory) has
+    // already memcpy'd the pixel rows into the dest surface via LockRect, so
+    // this no-op is sufficient for textures uploaded through that path.
     (void)dstSurface; (void)palette; (void)dstRect; (void)srcMemory; (void)srcPalette;
     (void)srcRect; (void)filter; (void)colorKey;
-    return -1;
+    return 0;
 }
 
 // LoadTextureAlphaChannel (FUN_0044dbe0): D3DXCreateTextureFromFileInMemoryEx

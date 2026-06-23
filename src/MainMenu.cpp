@@ -73,13 +73,13 @@ struct MainMenuObj
 // ---------------------------------------------------------------------------
 static ZunResult __fastcall AddedCallback(MainMenuObj *mm)
 {
-    i32 iVar;
+    ZunResult iVar;
 
     (void)mm;
 
     // 0x20 -> anmIdx slot for the menu. "data/title01.anm", 0x900 sprites.
-    iVar = AnmManager_LoadAnm((void *)g_AnmManager, 0x20, "data/title01.anm", 0x900);
-    if (iVar != 0)
+    iVar = g_AnmManager->LoadAnm(0x20, "data/title01.anm", 0x900);
+    if (iVar != ZUN_SUCCESS)
     {
         return (ZunResult)-1;
     }

@@ -53,6 +53,12 @@ extern "C" void __fastcall MidiOutput_StopPlayback();
 extern "C" void *__fastcall Supervisor_ReadConfigBuffer(char *path, i32 flag);
 extern "C" i32 __fastcall Supervisor_ValidateSize(i32 size);
 
+// Boot-path debug log helpers (defined in link_stubs.cpp). File-backed so the
+// normal build can trace the boot sequence without touching DebugPrint.
+extern "C" void *__cdecl th07_fopen_w(const char *path, const char *mode);
+extern "C" void __cdecl th07_fprintf(void *fp, const char *fmt, ...);
+extern "C" void __cdecl th07_fclose(void *fp);
+
 // AddedCallback callees (orig VAs verified from disasm of FUN_00438986).
 // Most are __thiscall with ECX = a singleton pointer; declared here as plain
 // externs so MSVC emits a direct call (objdiff tolerates the reloc). All
@@ -676,7 +682,19 @@ ZunResult Supervisor::RegisterChain()
     chain->arg = supervisor;
     chain->addedCallback = (ChainAddedCallback)Supervisor::AddedCallback;
     chain->deletedCallback = (ChainDeletedCallback)Supervisor::DeletedCallback;
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[sup] RegisterChain: about to AddToCalcChain\n"); th07_fclose(d); }
+    }
+#endif
     calcResult = g_Chain.AddToCalcChain(chain, 0);
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[sup] RegisterChain: AddToCalcChain returned %d\n", calcResult); th07_fclose(d); }
+    }
+#endif
     if (calcResult != 0)
     {
         return (ZunResult)calcResult;
@@ -733,6 +751,13 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     i32 i;
     void *newObj, *midiNewObj, *cfgHandle, *listNode;
 
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[sup] AddedCallback entered (s=%p)\n", (void *)s); th07_fclose(d); }
+    }
+#endif
+
     // 1. QueryPerformanceFrequency(this + 0x26c).
     QueryPerformanceFrequency((LARGE_INTEGER *)((u8 *)s + 0x26c));
 
@@ -760,7 +785,19 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     }
 
     // 4. AnmManager::LoadTexture(this, 0, "data/title/th07logo.jpg") @ 0x4547b0.
-    Callback_4547f((void *)g_AnmManager, 0, "data/title/th07logo.jpg");
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[sup] step4: calling LoadTexture(th07logo.jpg)\n"); th07_fclose(d); }
+    }
+#endif
+    {
+        ZunResult r = g_AnmManager->LoadTexture(0, "data/title/th07logo.jpg", 0, 0);
+#ifndef DIFFBUILD
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[sup] step4: LoadTexture returned %d\n", (i32)r); th07_fclose(d); }
+#endif
+    }
     g_Supervisor.unkIsInEnding = 1;
 
     // 5. Either single-frame logo path or four-frame boot fade.
@@ -816,9 +853,22 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
 
     // 8. SoundPlayer Callback_C7d0; AnmManager::LoadAnm(0, "data/text.anm", 0x700).
     SoundPlayer_Callback_C7d0((void *)&g_SoundPlayer);
-    if (AnmManager_LoadAnm(g_AnmManager, 0, "data/text.anm", 0x700) != 0)
+#ifndef DIFFBUILD
     {
-        return (ZunResult)-1;
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[sup] step8: calling LoadAnm(text.anm)\n"); th07_fclose(d); }
+    }
+#endif
+    {
+        ZunResult r = g_AnmManager->LoadAnm(0, "data/text.anm", 0x700);
+#ifndef DIFFBUILD
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[sup] step8: LoadAnm returned %d\n", (i32)r); th07_fclose(d); }
+#endif
+        if (r != ZUN_SUCCESS)
+        {
+            return (ZunResult)-1;
+        }
     }
 
     // 9. Callback_01e30 (error-logged failure path).
@@ -887,6 +937,13 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     {
         Callback_378d0(g_SupervisorG0x575a64);
     }
+
+    // Normal-build demo: clear the boot-logo "hide FPS" flag so the FPS
+    // counter + menu text render. Orig keeps it set during the boot fade and
+    // clears it on first menu frame; we have no fade, so clear it here.
+#ifndef DIFFBUILD
+    g_Supervisor.unkIsInEnding = 0;
+#endif
 
     return ZUN_SUCCESS;
 }

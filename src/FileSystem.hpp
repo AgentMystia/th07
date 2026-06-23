@@ -5,6 +5,7 @@
 #include "ZunResult.hpp"
 #include "diffbuild.hpp"
 #include "inttypes.hpp"
+#include "pbg4/Pbg4Archive.hpp"
 
 namespace th07
 {
@@ -12,22 +13,27 @@ namespace th07
 // GameErrorContext.cpp; placed at 0x00624210 in the th07 binary.
 class GameErrorContext;
 
-// Opaque handle to the global archive entry table. The full field layout
-// belongs to the Pbg3Archive module; from FileSystem's perspective we only
-// need the two __thiscall lookup helpers declared below. Lives at 0x00626258.
-// Member offsets actually touched by the helpers (in the archive module):
-//   +0x00  entry list head pointer
-//   +0x04  entry count
-//   +0x08  raw file data base pointer
-//   +0x0c  IStream / file reader COM interface
+// ArchiveEntryTable is the global handle FileSystem uses to look up files
+// inside th07.dat. In the original binary it is a small struct at 0x00626258
+// whose +0x00/+0x04/+0x08/+0x0c slots point at the entry list / file data /
+// IStream reader. The full codec lives in the Pbg4 module (FUN_0045fb50 etc.)
+// and the objdiff-matching typed lift of that struct lives there.
+//
+// For the normal build we keep the same public surface -- GetEntrySize /
+// ReadEntry -- but back them with our working Pbg4Archive reader. The global
+// g_ArchiveEntries below is zero-initialised; Supervisor (or anyone else
+// loading a packed resource) must call g_ArchiveEntries.Open("th07.dat")
+// before the first resource read.
 struct ArchiveEntryTable
 {
-    // Returns the decompressed size of the named entry, or 0 if missing.
-    // FUN_0045fab0 in the th07 binary.
+    // Returns the decompressed size of the named entry, or 0 if missing or
+    // if the archive has not been opened. (orig FUN_0045fab0.)
     u32 GetEntrySize(char *entryName);
     // Decompresses the named entry into outBuffer (must be sized via
-    // GetEntrySize). FUN_0045f960 in the th07 binary.
+    // GetEntrySize). (orig FUN_0045f960.) Returns 1 on success, 0 on failure.
     void ReadEntry(char *entryName, void *outBuffer);
+
+    Pbg4Archive archive; // underlying reader (normal build)
 };
 DIFFABLE_EXTERN(ArchiveEntryTable, g_ArchiveEntries)
 
