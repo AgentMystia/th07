@@ -76,6 +76,12 @@ extern "C" void __fastcall Callback_4547f_2arg(void *cfg, void *buf);    // 0x00
 extern "C" void __fastcall Callback_454fc(void *a);              // 0x004454fc
 extern "C" void __fastcall ListNode_Ctor(void *p);               // 0x004362a0 (ECX = new'd buf)
 extern "C" void __fastcall Callback_378d0(void *p);              // 0x004378d0 (ECX = obj2)
+// AnmManager boot-draw helpers called from AddedCallback (orig FUN_00454a10 /
+// FUN_00454aa0). Replaces the previous raw-address casts -- those jumped into
+// unmapped space and crashed the boot at the AddedCallback logo-draw step.
+extern "C" void __fastcall AnmMgr_ReleaseTextureSlot_454a10(void *anm, i32 idx); // 0x00454a10
+extern "C" void __fastcall AnmMgr_BootDrawLogo_454aa0(void *anm, i32 idx,
+                                                       i32 a2, i32 a3, i32 a4, i32 a5); // 0x00454aa0
 
 // Stub structs for thiscall callees (ECX = singleton pointer).
 struct MidiOutput {
@@ -762,7 +768,7 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     {
         if (Supervisor_Callback7() != 0)
         {
-            ((void (*)(AnmManager *, i32))0x00454a10)(g_AnmManager, 0);
+            AnmMgr_ReleaseTextureSlot_454a10((void *)g_AnmManager, 0);
             return (ZunResult)-2;
         }
     }
@@ -771,7 +777,7 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
         for (i = 0; i < 4; i++)
         {
             dev->BeginScene();
-            ((void (*)(AnmManager *, i32, i32, i32, i32))0x00454aa0)(g_AnmManager, 0, 0, 0, 0);
+            AnmMgr_BootDrawLogo_454aa0((void *)g_AnmManager, 0, 0, 0, 0, 0);
             dev->EndScene();
             if (dev->Present(0, 0, 0, 0) < 0)
             {
@@ -779,7 +785,7 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
             }
         }
     }
-    ((void (*)(AnmManager *, i32))0x00454a10)(g_AnmManager, 0);
+    AnmMgr_ReleaseTextureSlot_454a10((void *)g_AnmManager, 0);
 
     // 6. Reset frame counters + stamp startup time.
     *(i32 *)((u8 *)s + 0x168) = 0;

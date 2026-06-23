@@ -176,6 +176,16 @@ extern "C" {
     { (void)out; (void)w; (void)h; (void)zn; (void)zf; }
     // P1.3 WinMain (FUN_00434020) helper: AnmManager ctor (FUN_0044d3e0).
     void __fastcall AnmManager_Ctor_0044d3e0(void *anmMgr) { (void)anmMgr; }
+    // FUN_00454a10 / FUN_00454aa0: AnmManager boot-draw helpers, called from
+    // Supervisor::AddedCallback after the logo texture load. They release/
+    // draw the per-sprite texture + vertex-buffer slots. As no-op stubs they
+    // keep the boot advancing (the logo just won't draw); the real impls
+    // live in the AnmManager module, still to be lifted.
+    void __fastcall AnmMgr_ReleaseTextureSlot_454a10(void *anm, i32 idx)
+    { (void)anm; (void)idx; }
+    void __fastcall AnmMgr_BootDrawLogo_454aa0(void *anm, i32 idx,
+                                               i32 a2, i32 a3, i32 a4, i32 a5)
+    { (void)anm; (void)idx; (void)a2; (void)a3; (void)a4; (void)a5; }
 } // extern "C"
 
 // _Supervisor_LogStr1: extern "C" data slot (zero-init)
