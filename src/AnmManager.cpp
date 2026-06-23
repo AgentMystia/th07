@@ -710,6 +710,100 @@ ZunResult AnmManager::LoadTextureFromMemory(i32 textureIdx, void *headerIn, i32 
         }
     }
 
+#ifndef DIFFBUILD
+    // NORMAL-BUILD PATH: the orig relies on D3DXLoadSurfaceFromSurface to
+    // upload the source pixels into the texture. Under Wine's d3d8, sampling
+    // a D3DFMT_A4R4G4B4 / R5G6B5 texture created via that path produces noise
+    // (the GPU reads garbage even though the level-0 surface contains correct
+    // bytes). To get reliable sampling we instead create an A8R8G8B8 texture
+    // (universally supported + sampled correctly) and decode the source
+    // format ourselves per-pixel into it via a direct LockRect. This is a
+    // normal-build convenience; the objdiff path still uses the orig's
+    // D3DXLoadSurfaceFromSurface route.
+    {
+        IDirect3DDevice8 *dev = (IDirect3DDevice8 *)g_SupervisorD3dDevice_575958;
+        i32 srcFmt = *(i16 *)((u8 *)header + 0x6);
+        u32 w = (u32) * (i16 *)((u8 *)header + 0x8);
+        u32 h = (u32) * (i16 *)((u8 *)header + 0xa);
+        u32 srcBpp = g_TextureFormatBytesPerPixel_495144[srcFmt];
+        u8 *srcPx = (u8 *)header + 0x10;
+
+        HRESULT hr = dev->CreateTexture(w, h, 1, 0, D3DFMT_A8R8G8B8,
+                                        D3DPOOL_MANAGED,
+                                        &this->textures[textureIdx]);
+        if (FAILED(hr) || this->textures[textureIdx] == 0)
+        {
+            return ZUN_ERROR;
+        }
+        IDirect3DSurface8 *lvl = 0;
+        this->textures[textureIdx]->GetSurfaceLevel(0, &lvl);
+        D3DLOCKED_RECT lr;
+        lvl->LockRect(&lr, 0, 0);
+        for (u32 y = 0; y < h; y++)
+        {
+            u8 *srcRow = srcPx + y * w * srcBpp;
+            u8 *dstRow = (u8 *)lr.pBits + y * lr.Pitch;
+            for (u32 x = 0; x < w; x++)
+            {
+                u8 r, g, b, a;
+                if (srcFmt == TEX_FMT_A4R4G4B4)
+                {
+                    u16 px = *(u16 *)(srcRow + x * 2);
+                    a = (u8)(((px >> 12) & 0xf) * 17);
+                    r = (u8)(((px >> 8) & 0xf) * 17);
+                    g = (u8)(((px >> 4) & 0xf) * 17);
+                    b = (u8)((px & 0xf) * 17);
+                }
+                else if (srcFmt == TEX_FMT_R5G6B5)
+                {
+                    u16 px = *(u16 *)(srcRow + x * 2);
+                    a = 0xff;
+                    r = (u8)(((px >> 11) & 0x1f) * 255 / 31);
+                    g = (u8)(((px >> 5) & 0x3f) * 255 / 63);
+                    b = (u8)((px & 0x1f) * 255 / 31);
+                }
+                else if (srcFmt == TEX_FMT_A1R5G5B5)
+                {
+                    u16 px = *(u16 *)(srcRow + x * 2);
+                    a = (u8)(((px >> 15) & 1) * 255);
+                    r = (u8)(((px >> 10) & 0x1f) * 255 / 31);
+                    g = (u8)(((px >> 5) & 0x1f) * 255 / 31);
+                    b = (u8)((px & 0x1f) * 255 / 31);
+                }
+                else if (srcFmt == TEX_FMT_A8R8G8B8)
+                {
+                    u32 px = *(u32 *)(srcRow + x * 4);
+                    a = (u8)((px >> 24) & 0xff);
+                    r = (u8)((px >> 16) & 0xff);
+                    g = (u8)((px >> 8) & 0xff);
+                    b = (u8)(px & 0xff);
+                }
+                else
+                {
+                    // Unknown / R8G8B8 (24-bit) fallback: treat as opaque.
+                    a = 0xff;
+                    r = srcRow[x * srcBpp + 0];
+                    g = srcRow[x * srcBpp + 1];
+                    b = srcRow[x * srcBpp + 2];
+                }
+                // A8R8G8B8 memory layout is BGRA (byte 0=B, 1=G, 2=R, 3=A).
+                dstRow[x * 4 + 0] = b;
+                dstRow[x * 4 + 1] = g;
+                dstRow[x * 4 + 2] = r;
+                dstRow[x * 4 + 3] = a;
+            }
+        }
+        lvl->UnlockRect();
+        lvl->Release();
+        return ZUN_SUCCESS;
+    }
+#else
+    // OBJDIFF PATH: keep the orig's D3DX surface-upload route (the body below
+    // mirrors FUN_0044d9e0 exactly so objdiff stays byte-true).
+    (void)imageSurface; (void)lockedRect; (void)rowIdx; (void)dstRow;
+    (void)srcRow; (void)rowBytes; (void)texSurface;
+#endif
+
     // Create a scratch image surface and lock it for writing.
     ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
         ->CreateImageSurface((UINT) * (i16 *)((u8 *)header + 0x8),
@@ -2392,7 +2486,7 @@ i32 AnmManager::LoadAnmEntry(i32 anmIdx, AnmRawEntry *entry, i32 spriteIdxOffset
     if (entry->version != 2)
     {
         g_GameErrorContext.Log("\203A\203j\203\201\202\314\203o\201[\203W\203\207\203\223\202\252"
-                               "\210\341\202\242\202\334\202\267\015\012");
+                               "\210\342\202\242\202\334\202\267\015\012");
         return -1;
     }
 
@@ -2402,6 +2496,13 @@ i32 AnmManager::LoadAnmEntry(i32 anmIdx, AnmRawEntry *entry, i32 spriteIdxOffset
     if (entry->hasData == 0)
     {
         textureName = (char *)((u8 *)entry + entry->nameOffset);
+#ifndef DIFFBUILD
+        {
+            void *d = th07_fopen_w("boot_debug.log", "a");
+            if (d) { th07_fprintf(d, "[extex] anmIdx=%d external texture '%s' format=%d\n",
+                                  anmIdx, textureName, entry->format); th07_fclose(d); }
+        }
+#endif
         if (textureName[0] == '@')
         {
             this->CreateEmptyTexture((i32)entry->textureIdx, (u32)entry->width, (u32)entry->height,

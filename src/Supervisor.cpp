@@ -826,8 +826,13 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     {
         ZunResult r = g_AnmManager->LoadTexture(0, "data/title/th07logo.jpg", 0, 0);
 #ifndef DIFFBUILD
+        // Normal-build keep-alive: also stash the logo into a high texture
+        // slot (0x107, beyond any anmIdx the .anm chain uses) so the menu
+        // can draw it as a visible background even though the anmIdx-0 slot
+        // gets overwritten by text.anm's empty CreateTexture later.
+        g_AnmManager->LoadTexture(0x107, "data/title/th07logo.jpg", 0, 0);
         void *d = th07_fopen_w("boot_debug.log", "a");
-        if (d) { th07_fprintf(d, "[sup] step4: LoadTexture returned %d\n", (i32)r); th07_fclose(d); }
+        if (d) { th07_fprintf(d, "[sup] step4: LoadTexture returned %d (also stashed at 0x107)\n", (i32)r); th07_fclose(d); }
 #endif
     }
     g_Supervisor.unkIsInEnding = 1;

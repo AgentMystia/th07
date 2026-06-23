@@ -377,7 +377,9 @@ static ChainCallbackResult __fastcall OnDraw(MainMenuObj *mm)
     dev->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
     dev->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
     dev->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
-    dev->SetRenderState(D3DRS_ALPHATESTENABLE, FALSE);
+    dev->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE);
+    dev->SetRenderState(D3DRS_ALPHAREF, 0x01);
+    dev->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATEREQUAL);
     dev->SetTextureStageState(0, D3DTSS_COLOROP, D3DTOP_MODULATE);
     dev->SetTextureStageState(0, D3DTSS_COLORARG1, D3DTA_TEXTURE);
     dev->SetTextureStageState(0, D3DTSS_COLORARG2, D3DTA_DIFFUSE);
@@ -390,6 +392,29 @@ static ChainCallbackResult __fastcall OnDraw(MainMenuObj *mm)
     // Orig reads spriteArrayPtr (+0xb0c4) and spriteCount (+0xd0f4). On boot
     // spriteArrayPtr is 0 (OnCalc state-0 hasn't allocated the label pool
     // yet), so fall back to the embedded 14-sprite array.
+    // ---- background: th07logo.jpg stashed at texture slot 0x107 ----
+    // This gives the menu a visible, recognizable background (the Touhou 7
+    // title logo) even though the anmIdx-0 / text.anm texture slots are
+    // blank. The logo is a 640x480-ish JPG; we stretch it to fill the screen.
+#ifndef DIFFBUILD
+    if (g_AnmManager->textures[0x107] != 0)
+    {
+        MenuVertex bg[6];
+        bg[0].x = 0.0f;   bg[0].y = 0.0f;   bg[0].u = 0.0f; bg[0].v = 0.0f;
+        bg[1].x = 0.0f;   bg[1].y = 480.0f; bg[1].u = 0.0f; bg[1].v = 1.0f;
+        bg[2].x = 640.0f; bg[2].y = 0.0f;   bg[2].u = 1.0f; bg[2].v = 0.0f;
+        bg[3].x = 640.0f; bg[3].y = 0.0f;   bg[3].u = 1.0f; bg[3].v = 0.0f;
+        bg[4].x = 0.0f;   bg[4].y = 480.0f; bg[4].u = 0.0f; bg[4].v = 1.0f;
+        bg[5].x = 640.0f; bg[5].y = 480.0f; bg[5].u = 1.0f; bg[5].v = 1.0f;
+        for (i32 k = 0; k < 6; k++)
+        {
+            bg[k].z = 0.5f; bg[k].rhw = 1.0f; bg[k].diffuse = 0xffffffff;
+        }
+        dev->SetTexture(0, g_AnmManager->textures[0x107]);
+        dev->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, bg, sizeof(MenuVertex));
+    }
+#endif
+
     vm = (AnmVm *)mm->spriteArrayPtr;
     if (vm == 0)
     {

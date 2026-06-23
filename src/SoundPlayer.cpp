@@ -702,9 +702,12 @@ DWORD __stdcall SoundPlayer::BackgroundMusicPlayerThread(LPVOID lpThreadParamete
         case WAIT_OBJECT_0:
             if (g_SoundPlayer.backgroundMusic != NULL)
             {
-                g_SoundPlayer.backgroundMusic->m_bFillNextNotificationWithSilence = 1;
+                // m_bFillNextNotificationWithSilence must be FALSE here so
+                // HandleWaveStreamNotification reads real PCM from the wave
+                // file instead of zeroing the buffer. (Setting it TRUE, as a
+                // previous version did, produces a silent stream even though
+                // the BGM thread keeps firing notifications.)
                 res = g_SoundPlayer.backgroundMusic->HandleWaveStreamNotification(looped);
-                g_SoundPlayer.backgroundMusic->m_bFillNextNotificationWithSilence = 0;
             }
             break;
         case WAIT_OBJECT_0 + 1:
