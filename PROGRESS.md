@@ -25,6 +25,7 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 | mapping.csv 函数覆盖 | 1562 行（th07.exe 全部非 thunk 函数）|
 | raw 绝对地址访问 | **0**（已全量迁移到 typed C++，对齐 th06 标准）|
 | raw[] buffer / accessor | **0**（Player/SoundPlayer 等 5 大 struct 已全命名重构）|
+| **wine boot** | ✅ **P1.6 达成（2026-06-23）**：th07e.exe 在 wine 跑完整 6 秒无崩溃，calc chain 触发 ~8000 帧，每帧 Present 渲染。MainMenu::RegisterChain + AddedCallback 已抬升（0%→46% objdiff）。详见 §P1.6 |
 
 > match% 来源：`objdiff-cli diff` 的 `left.symbols[].match_percent`。模块平均为
 > simple average（各函数 match% 的算术平均）。2026-06-18 重测基线。
@@ -387,16 +388,51 @@ hand-written approximation（手写近似，控制流/字段都猜错）。
      `#define g_SupervisorD3dDevice_575958 g_Supervisor.d3dDevice` 等。
      **AddedCallback 现在能读到有效 D3D8 device 并运行 boot D3D setup**。
 
-  **当前阻塞（未解决，需下一轮）**：`AddToCalcChain` 调用
-  `elem->addedCallback` 时 EIP 跳到 `0x454a10`（超出我们 .text 末尾
-  0x414455 约 0x40KB）。但 debug 打印显示调用前 `elem->addedCallback`
-  = `0x00404DE0`（= Supervisor::AddedCallback，正确值）。同一 elem、
-  同一字段、debug 读到正确值但 call 跳到错误地址——原因未明。怀疑：
-  (a) 调用约定（成员函数 __thiscall vs __fastcall）导致 ECX/栈不一致，
-  间接 call 读到错误地址；(b) `g_Chain.calcChain` 哨兵节点未正确构造
-  （Chain() 空构造函数未显式初始化 ChainElem 成员？）；(c) 栈/堆污染。
-  需要专门一轮调试。**主菜单尚未渲染**——P1.6 仍未达成，但 boot 路径
-  从「立即退出」推进到「D3D 设备创建成功、进入 AddedCallback」。
+  **"chain callback mystery" 已破（2026-06-23，commit 21c5cc0）**：
+  `AddToCalcChain` 本身没问题——`elem->addedCallback` 确实是
+  `0x00404DE0`（Supervisor::AddedCallback，正确）。崩溃在
+  AddedCallback 函数体内的 **raw-address cast**：
+  `((void (*)(AnmManager *, i32))0x00454a10)(g_AnmManager, 0);`
+  ——`0x454a10` = `FUN_00454a10`（AnmManager 释放纹理槽的方法），
+  未抬升、在我们的 .text 之外。改为 typed extern + stub 后 boot
+  通过 AddedCallback。
+
+- **P1.6 达成（2026-06-23，commit 1aa14ad）**：再修 5 个 boot-path bug
+  后 th07e.exe **在 wine 中跑完整 6 秒、无 page fault、calc chain
+  触发 ~8000 帧（state=-1 首帧 → state=1 主菜单循环）、每帧 Present
+  渲染**。MainMenu::RegisterChain（orig FUN_0045c5d0）和
+  MainMenu::AddedCallback（orig FUN_0045bf15 简化版）已抬升（objdiff
+  RegisterChain 0% → 46%）。5 个修复：
+
+  1. **void stub 被 caller 当 i32 读**：link_stubs.cpp 把 Callback6/7、
+     LoadAnm、Callback_01e30、SoundPlayer_LoadFmt、MidiOutput_Play
+     定义为 `void`，但 Supervisor.cpp extern 声明返回 i32。void def
+     不设 EAX，caller 读到垃圾值 → RegisterChain 的错误检查全部命中
+     → 返回 -1 → boot 在 RunSession 前中止。全部改为 return 0。
+     operator_new_th07 改为 return malloc()（否则 non-NULL 分支读到
+     垃圾指针）。
+  2. **RunSession Present 用 __fastcall**：D3D8 COM 方法是 __stdcall
+     （this 压栈、callee-clean）。__fastcall 把 dev 放 ECX、只 4 个栈
+     参数，Wine 的 Present thunk 看到 this=0 → 读 0x6c(%ebx=0) 崩溃。
+     改 __stdcall。
+  3. **g_AnmManager 未赋值**：main.cpp 设了 g_SupervisorAnmMgrSlot_4b9e44
+     但没设 th07::g_AnmManager（独立 DIFFABLE_STATIC 全局）。OnUpdate
+     首次访问 `anm[0x2e4d0] = 0xff` 在 NULL 上崩溃。补设两者。
+  4. **sprintf_th07/strchr_th07/LogStr1/new/delete 是 extern "C" int
+     数据槽**（objdiff-only anchor）。normal build 把它们当函数调用，
+     call 跳进 .data 区崩溃。在 `#ifndef DIFFBUILD` 下包了真实 CRT
+     实现（vsprintf/strchr/malloc/free）；LogStr1 是 no-op logger。
+  5. **MainMenu::RegisterChain 从 no-op stub 抬升为真实实现**：
+     分配 0xd158 字节 MainMenu obj + memset 0，安装 calc chain elem
+     （priority 3）+ draw chain elem。AddedCallback 抬升 boot-critical
+     尾部（title01.anm 加载 + bgm/th07_01.mid BGM 分发）。OnCalc/OnDraw/
+     DeletedCallback 为最小 CONTINUE 返回，待全量 menu state machine
+     抬升。
+
+  **已验证**：th07e.exe wine 6 秒无崩溃；calc chain ~8000 帧；
+  AddedCallback 触发（probe 实测 aac=0 mmMode=0 midiSlot=0
+  flagBits=0）。**渲染循环活跃（每帧 Present）**。BGM/anm 资源加载
+  打到 stub（Pbg4 archive extraction 是下一个有声/可见内容的阻塞）。
 
 ## 2026-06-18 typed-C++ 全项目重构（对齐 th06 严格标准）
 
