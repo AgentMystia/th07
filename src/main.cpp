@@ -76,9 +76,6 @@ extern "C" u8   g_SupervisorIsForeground_575a8a;
 extern "C" char  g_GameErrorContext_624210[0x2008];
 extern "C" void *g_GameErrorContextHead_626210;
 extern "C" void *g_SupervisorAnmMgrSlot_4b9e44;
-extern "C" void *g_SupervisorHInstance_575950;
-extern "C" void *g_SupervisorD3dDevice_575958;
-extern "C" void *g_SupervisorD3D8_575954;
 extern "C" i32  g_SupervisorReplayActive_62f4e0;
 // (Alias of g_SupervisorG0x62f4e0 -- same DAT_0062f4e0; the wav-format-table
 // global doubles as the replay-active flag for the boot loop's flush check.)

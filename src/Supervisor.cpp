@@ -228,13 +228,10 @@ extern "C" u8 g_SupervisorFrameInputFlag_575c0c;
 // g_SupervisorG0x62f4e0 declared earlier in this file (u32). Reuse that name.
 // HINSTANCE mirror of g_Supervisor.hInstance (orig 0x575950), since the boot
 // helpers reach the value via the absolute address.
-extern "C" void *g_SupervisorHInstance_575950;
 // IDirect3D8 iface mirror (orig 0x575954).
-extern "C" void *g_SupervisorD3D8_575954;
 // D3D device pointer slot (orig 0x575958). Reused from the existing
 // link_globals.cpp definition (g_SupervisorD3dDevice_575958); the boot
 // helpers reach it via absolute address with a VTBL macro cast.
-extern "C" void *g_SupervisorD3dDevice_575958;
 extern "C" f64  g_PlayerAbsorbSizeZero;            // rdata double 0.0 at 0x498a90 (also used as QPC threshold / absorb-size threshold)
 extern "C" f64  g_SupervisorFrametime_498bc0;   // rdata double (~0.01666)
 extern "C" f64  g_SupervisorFrametime2_498bc8;  // rdata double (~0.015)

@@ -292,3 +292,17 @@ DIFFABLE_EXTERN(void *, g_Pbg4Archive)        // DAT_00575c1c
 DIFFABLE_EXTERN(char *, g_Pbg4ArchiveName)
 
 }; // namespace th07
+
+// The orig exe references the Supervisor singleton's hInstance (0x575950),
+// d3dIface (0x575954), and d3dDevice (0x575958) fields through their own
+// DAT_ symbols. In the objdiff build the linker places g_Supervisor at
+// 0x575950, so those DAT_ symbols alias the struct fields. In the normal
+// build the linker places g_Supervisor elsewhere, and the three symbols
+// declared in link_globals.cpp ended up as SEPARATE storage -- so writes
+// to g_SupervisorD3dDevice_575958 never reached Supervisor::d3dDevice,
+// causing a null deref in AddedCallback (which reads the struct field).
+// Route all three names to the struct fields via macros so the two
+// representations can never desync.
+#define g_SupervisorHInstance_575950 (::th07::g_Supervisor.hInstance)
+#define g_SupervisorD3D8_575954     (::th07::g_Supervisor.d3dIface)
+#define g_SupervisorD3dDevice_575958 (::th07::g_Supervisor.d3dDevice)

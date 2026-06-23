@@ -83,7 +83,6 @@ extern "C" u32 g_SupervisorCfgOpts_575a9c;
 // D3D device pointer slot (orig 0x575958 = g_Supervisor + 8). Orig reads
 // it as an absolute [DAT_00575958] load; mirroring that avoids the
 // struct-relative [DAT_00575950+8] reloc that objdiff treats as distinct.
-extern "C" void *g_SupervisorD3dDevice_575958;
 extern "C" u8 g_SupervisorCameraStub_1347b00;
 extern "C" void __fastcall AnmManager_FlushVertexBuffer(void *anmMgr);
 extern "C" void __fastcall Supervisor_Setup3DCamera(void *cameraStub);

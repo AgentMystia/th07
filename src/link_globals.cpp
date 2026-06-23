@@ -29,7 +29,6 @@ extern "C" u8 g_SupervisorCameraStub_1347b00 = 0;
 // an absolute address by SetRenderStateForVm to match orig's addressing.
 extern "C" u32 g_SupervisorCfgOpts_575a9c = 0;
 // D3D device pointer slot (orig 0x575958). Set by Supervisor at boot.
-extern "C" void *g_SupervisorD3dDevice_575958 = 0;
 // DrawPrimitiveUP vertex buffer for the software (no-vertex-buffer) path
 // (orig 0x4ba078). 4 * VertexTex1Xyzrwh = 0x60 bytes; initialised at startup.
 extern "C" u8 g_DrawPrimUpVerts_4ba078[0x60] = {0};
@@ -263,8 +262,12 @@ extern "C" u32  g_SupervisorUnkMatrix1_575990[16] = {0};
 extern "C" u32  g_SupervisorUnkMatrix2_5759d0[16] = {0};
 extern "C" void *g_SupervisorHwndMirror_575994 = 0;
 extern "C" void *g_SupervisorAnmMgrSlot_4b9e44 = 0;
-extern "C" void *g_SupervisorHInstance_575950 = 0;
-extern "C" void *g_SupervisorD3D8_575954 = 0;
+// NOTE: g_SupervisorHInstance_575950, g_SupervisorD3D8_575954, and
+// g_SupervisorD3dDevice_575958 are NOT separate globals -- they alias
+// the hInstance/d3dIface/d3dDevice fields of g_Supervisor (see the macros
+// at the bottom of Supervisor.hpp). The orig exe overlaps DAT_00575950/
+// 00575954/00575958 with the Supervisor struct; the macros make both
+// builds agree so writes from InitD3D/Bootstrap reach AddedCallback.
 // g_SupervisorReplayActive_62f4e0 is a separate symbol from the
 // wav-format-table g_SupervisorG0x62f4e0 (also at DAT_0062f4e0). Both alias
 // the same address; the boot loop reads it as a replay-active flag.
