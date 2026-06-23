@@ -63,6 +63,24 @@ extern "C" void *__cdecl th07_fopen_w(const char *path, const char *mode);
 extern "C" void __cdecl th07_fprintf(void *fp, const char *fmt, ...);
 extern "C" void __cdecl th07_fclose(void *fp);
 
+// Frame-dump helpers (normal-build only): unsigned-int-to-ascii for the PPM
+// header and a thin wrapper over CRT fwrite.
+#ifndef DIFFBUILD
+static i32 th07_itou(char *out, u32 v)
+{
+    char buf[16];
+    i32 n = 0;
+    if (v == 0) { out[0] = '0'; return 1; }
+    while (v > 0) { buf[n++] = (char)('0' + (v % 10)); v /= 10; }
+    for (i32 i = 0; i < n; i++) { out[i] = buf[n - 1 - i]; }
+    return n;
+}
+static void __cdecl th07_fwrite(void *fp, const char *data, i32 len)
+{
+    fwrite(data, 1, (size_t)len, (FILE *)fp);
+}
+#endif
+
 // AddedCallback callees (orig VAs verified from disasm of FUN_00438986).
 // Most are __thiscall with ECX = a singleton pointer; declared here as plain
 // externs so MSVC emits a direct call (objdiff tolerates the reloc). All
@@ -231,6 +249,12 @@ extern "C" f64  g_SupervisorTimeLast_135e200;
 extern "C" i32  g_SupervisorFrameCounter_135e1f8;
 extern "C" u32  g_SupervisorPresentParams_575a30[13];
 extern "C" u32  g_SupervisorViewport_575a18[8];
+// The draw-core cull math in AnmManager.cpp reaches the viewport's y/w/h
+// fields through these separate extern "C" i32 symbols (aliasing the
+// +4/+8/+0xc offsets of g_SupervisorViewport_575a18).
+extern "C" i32  g_SupervisorG0x575a1c;
+extern "C" i32  g_SupervisorG0x575a20;
+extern "C" i32  g_SupervisorG0x575a24;
 extern "C" u32  g_SupervisorUnkMatrix1_575990[16];
 extern "C" u32  g_SupervisorUnkMatrix2_5759d0[16];
 extern "C" void *g_SupervisorHwndMirror_575994;
@@ -703,9 +727,13 @@ ZunResult Supervisor::RegisterChain()
     {
         return (ZunResult)calcResult;
     }
-    chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnDraw);
-    chain->arg = supervisor;
-    g_Chain.AddToDrawChain(chain, 0xf);
+    // NOTE: Supervisor::OnDraw (DrawFpsCounter) registration is skipped here.
+    // Under wine d3d8 it deadlocks the draw-chain walk (DrawFpsCounter's
+    // timeGetTime / global accesses interact badly with the stubbed pacing
+    // globals). Re-enable once the pacing/DrawFpsCounter path is fixed.
+    // chain = g_Chain.CreateElem((ChainCallback)Supervisor::OnDraw);
+    // chain->arg = supervisor;
+    // g_Chain.AddToDrawChain(chain, 0xf);
     return ZUN_SUCCESS;
 }
 
@@ -1551,146 +1579,167 @@ extern "C" void __fastcall Supervisor_Teardown(char *buf)
 // Returns: 0 = continue, 1 = exit session, 2 = reboot session.
 extern "C" i32 __fastcall Supervisor_RunSession(th07::Supervisor *s)
 {
-    f64 frameElapsed;
-    f64 timeElapsed;
-    LARGE_INTEGER qpc;
-    DWORD timeNow;
-    i32 frameResult;
-    u32 *viewport;
-    void *dev;
+    // Minimal per-frame driver. The orig FUN_004346e0 has an elaborate
+    // sub-frame / QPC-pacing loop that, with our zero-init pacing globals,
+    // never recomposes a frame (g_SupervisorPerfFreq / QpcLast / frametime
+    // are all stubbed). For the menu-render demo we run a straight one-frame
+    // pipeline each call: calc chain -> BeginScene -> Clear -> draw chain ->
+    // flush -> EndScene -> Present, then return 0 so the WinMain loop keeps
+    // pumping messages + re-entering us.
+    IDirect3DDevice8 *dev;
+    D3DVIEWPORT8 vp;
+    HRESULT hr;
 
-    dev = s->d3dDevice;
+    dev = (IDirect3DDevice8 *)s->d3dDevice;
     if (dev == 0)
     {
         return 0;
     }
 
-    if (s->unk188 != 0)
+    // Per-frame audio/AnmManager ticks (orig RunSession calls these in the
+    // composed-frame path).
+    Supervisor_AnmVmInit_0044f580();
+    g_SupervisorFrameInputFlag_575c0c = 0xff;
+    Supervisor_BgmFrameTick_0043a207();
+    Supervisor_MidiFrameTick_0042fe20();
+    Supervisor_AnmMgrFlush_0044f5c0();
+
+    // Reset the viewport to the full 640x480 client (orig does this before
+    // the calc pass so OnDraw's cull math uses the right region).
+    vp.X = 0;
+    vp.Y = 0;
+    vp.Width = 0x280;
+    vp.Height = 0x1e0;
+    vp.MinZ = 0.0f;
+    vp.MaxZ = 1.0f;
+    dev->SetViewport(&vp);
+    // Mirror the viewport into the legacy f32 array the draw-core cull math
+    // reads (g_SupervisorViewport_575a18 = x,y,w,h). AnmManager.cpp also
+    // reaches +4/+8/+0xc as separate extern "C" i32 symbols
+    // (g_SupervisorG0x575a1c/20/24); write both views so they agree.
+    g_SupervisorViewport_575a18[0] = 0;
+    g_SupervisorViewport_575a18[1] = 0;
+    g_SupervisorViewport_575a18[2] = 0x280;
+    g_SupervisorViewport_575a18[3] = 0x1e0;
+    g_SupervisorG0x575a1c = 0;
+    g_SupervisorG0x575a20 = 0x280;
+    g_SupervisorG0x575a24 = 0x1e0;
+
+    // Run the calc chain (Supervisor::OnUpdate + MainMenu::OnCalc + ...).
+    // RunFrameOnce = Chain::RunCalcChain (FUN_0042fd60).
+    Supervisor_RunFrameOnce_0042fd60();
+    Supervisor_DrainChain_0044c9c0();
+
+    // TestCooperativeLevel before drawing. If the device is lost, bail so the
+    // outer loop can attempt a Reset.
+    hr = dev->TestCooperativeLevel();
+    if (hr != 0)
     {
-        goto mid_loop_check;
+        return 0;
     }
-frame_loop:
-    do
+
+    // BeginScene (required before any DrawPrimitive).
+    dev->BeginScene();
+    // Clear the back buffer to opaque black so the menu draws over a known
+    // background (orig RunSession relies on the chain's Clear; the minimal
+    // pipeline here clears explicitly).
+    dev->Clear(0, 0, D3DCLEAR_TARGET, 0xff000000, 1.0f, 0);
+
+    // Run the draw chain (MainMenu::OnDraw + ...).
+    th07::g_Chain.RunDrawChain();
+    // Flush any pending 2D-batch quads.
+    Supervisor_AnmMgrFlush_0044f5c0();
+
+    // EndScene, then Present to swap the back buffer to the screen.
+    dev->EndScene();
+
+    // First-frame diagnostic: dump the back buffer to a BMP file so we can
+    // verify off-line whether anything actually rendered. We grab the back
+    // buffer surface right before Present and save it via a manual pixel
+    // read-back (D3DXSaveSurfaceToFile's d3dx8tex.h has include-order
+    // conflicts with d3d8.h under MSVC 7.0, so we LockRect + write a raw
+    // PPM instead -- viewable in any image viewer).
+#ifndef DIFFBUILD
+    if (g_SupervisorFrameCounter_135e1f8 == 3)
     {
-        while (1)
+        IDirect3DSurface8 *backBuf = 0;
+        HRESULT gb = dev->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &backBuf);
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (SUCCEEDED(gb) && backBuf != 0)
         {
-            // When enough sub-frames have been ticked, do the actual Present
-            // + chain draw + bgm/midi ticks for the composed frame.
-            if ((i32)(u32)g_SupervisorFrameskipCfg_575a8b <= (i32)s->unk188)
+            D3DSURFACE_DESC desc;
+            D3DLOCKED_RECT lr;
+            if (SUCCEEDED(backBuf->GetDesc(&desc)) &&
+                SUCCEEDED(backBuf->LockRect(&lr, 0, D3DLOCK_READONLY)))
             {
-                // TestCooperativeLevel (vtable +0x88 / 0x22*4).
-                ((HRESULT(__stdcall *)(void *))(VTBL(dev, 0x88)))(dev);
-                Supervisor_AnmVmInit_0044f580();
-                g_SupervisorFrameInputFlag_575c0c = 0xff;
-                Supervisor_BgmFrameTick_0043a207();
-                Supervisor_MidiFrameTick_0042fe20();
-                Supervisor_AnmMgrFlush_0044f5c0();
-                // Present(src, dst, dirty, plug) -- vtable +0xf4 / 0x3d*4.
-                // __stdcall: this + 4 args all pushed on stack (callee clean).
-                ((void (__stdcall *)(void *, void *, void *, void *, void *))(
-                    VTBL(dev, 0xf4)))(dev, 0, 0, 0, 0);
-                // EndScene -- vtable +0x8c / 0x23*4.
-                ((void (__stdcall *)(void *))(VTBL(dev, 0x8c)))(dev);
+                // Write a raw 24-bit PPM (width x height, top-down).
+                void *ppm = th07_fopen_w("frame_dump.ppm", "wb");
+                if (ppm != 0)
+                {
+                    char hdr[64];
+                    // P6 header: "P6\n<w> <h>\n255\n"
+                    i32 hl = 0;
+                    hdr[hl++] = 'P'; hdr[hl++] = '6'; hdr[hl++] = '\n';
+                    hl += th07_itou(&hdr[hl], desc.Width);
+                    hdr[hl++] = ' ';
+                    hl += th07_itou(&hdr[hl], desc.Height);
+                    hdr[hl++] = '\n';
+                    hdr[hl++] = '2'; hdr[hl++] = '5'; hdr[hl++] = '5'; hdr[hl++] = '\n';
+                    th07_fwrite(ppm, hdr, hl);
+                    // Each source row is desc.Width pixels, each 4 bytes
+                    // (X8R8G8B8) in the back buffer. We write RGB (3 bytes).
+                    u8 *src = (u8 *)lr.pBits;
+                    for (u32 y = 0; y < desc.Height; y++)
+                    {
+                        u8 *row = src + y * lr.Pitch;
+                        // Build the RGB row in a scratch buffer then write.
+                        for (u32 x = 0; x < desc.Width; x++)
+                        {
+                            u8 rgb[3];
+                            rgb[0] = row[x * 4 + 2]; // R
+                            rgb[1] = row[x * 4 + 1]; // G
+                            rgb[2] = row[x * 4 + 0]; // B
+                            th07_fwrite(ppm, (char *)rgb, 3);
+                        }
+                    }
+                    th07_fclose(ppm);
+                    if (d) { th07_fprintf(d, "[ses] frame=3 wrote frame_dump.ppm %ux%u\n",
+                                          (u32)desc.Width, (u32)desc.Height); th07_fclose(d); }
+                }
+                backBuf->UnlockRect();
             }
-            Supervisor_AnmMgrFlush_0044f5c0();
-            // Reset the viewport to the full 640x480 client.
-            viewport = &g_SupervisorViewport_575a18[0];
-            viewport[0] = 0;
-            viewport[1] = 0;
-            viewport[2] = 0x280;
-            viewport[3] = 0x1e0;
-            // SetViewport -- vtable +0xa0 / 0x28*4.
-            ((void (__stdcall *)(void *, void *))(VTBL(dev, 0xa0)))(
-                dev, &g_SupervisorViewport_575a18);
+            backBuf->Release();
+        }
+        else if (d)
+        {
+            th07_fprintf(d, "[ses] frame=3 GetBackBuffer FAILED hr=0x%lx\n", (unsigned long)gb);
+            th07_fclose(d);
+        }
+    }
+#endif
 
-            frameResult = Supervisor_RunFrameOnce_0042fd60();
-            Supervisor_DrainChain_0044c9c0();
-            if (frameResult == 0)
-            {
-                return 1;
-            }
-            if (frameResult == -1)
-            {
-                return 2;
-            }
-            *(u8 *)&s->unk188 = (u8)s->unk188 + 1;
-        mid_loop_check:
-            if ((g_SupervisorIsForeground_575a8a != 0 || g_SupervisorWindowedOverride_575abc != 0) &&
-                s->unk188 != 0)
-            {
-                break;
-            }
-        check_exit:
-            if (g_SupervisorIsForeground_575a8a != 0)
-            {
-                return 0;
-            }
-            if (g_SupervisorWindowedOverride_575abc != 0)
-            {
-                return 0;
-            }
-            if ((i32)(u32)g_SupervisorFrameskipCfg_575a8b < (i32)s->unk188)
-            {
-                goto reset_subframe;
-            }
-            Supervisor_PreSessionInit_004345c0();
-        }
+    hr = dev->Present(0, 0, 0, 0);
+    if (hr < 0)
+    {
+        // Device lost on Present -- reset so next frame can recover.
+        dev->Reset((D3DPRESENT_PARAMETERS *)&g_SupervisorPresentParams_575a30[0]);
+    }
 
-        // Frame-rate pacing. Use QPC if available, else timeGetTime.
-        if (*(i32 *)&g_SupervisorPerfFreq_575c34 != 0)
+#ifndef DIFFBUILD
+    // First-frame Present trace so we can confirm the swap actually happened.
+    if (g_SupervisorFrameCounter_135e1f8 < 2)
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d)
         {
-            QueryPerformanceCounter(&qpc);
-            frameElapsed = (f64)(qpc.u.LowPart - g_SupervisorQpcLastLo_135e208) /
-                           (f64)*(i32 *)&g_SupervisorPerfFreq_575c34;
-            if (frameElapsed < g_PlayerAbsorbSizeZero)
-            {
-                g_SupervisorQpcLastLo_135e208 = qpc.u.LowPart;
-                g_SupervisorQpcLastHi_135e20c = qpc.u.HighPart;
-            }
-            if (frameElapsed < g_SupervisorFrametime2_498bc8 &&
-                g_SupervisorLoadResult_575c3c == 0)
-            {
-                goto check_exit;
-            }
-            while (g_SupervisorFrametime2_498bc8 <= frameElapsed)
-            {
-                frameElapsed = frameElapsed - g_SupervisorFrametime2_498bc8;
-                g_SupervisorQpcLastLo_135e208 =
-                    g_SupervisorQpcLastLo_135e208 + *(i32 *)&g_SupervisorPerfFreq_575c34 / 0x3c;
-            }
-            if ((i32)(u32)g_SupervisorFrameskipCfg_575a8b < (i32)s->unk188)
-            {
-                break;
-            }
-            goto frame_loop;
+            th07_fprintf(d, "[ses] frame=%d Present hr=0x%lx\n",
+                         (i32)g_SupervisorFrameCounter_135e1f8, (unsigned long)hr);
+            th07_fclose(d);
         }
-        // timeGetTime fallback path.
-        timeBeginPeriod(1);
-        timeNow = timeGetTime();
-        timeElapsed = (f64)timeNow;
-        if (timeElapsed < g_SupervisorTimeLast_135e200)
-        {
-            g_SupervisorTimeLast_135e200 = timeElapsed;
-        }
-        timeElapsed = g_SupervisorTimeLast_135e200 - timeElapsed;
-        if (timeElapsed < 0)
-        {
-            timeElapsed = -timeElapsed;
-        }
-        timeEndPeriod(1);
-        if (timeElapsed < g_SupervisorFrametime_498bc0 && g_SupervisorLoadResult_575c3c == 0)
-        {
-            goto check_exit;
-        }
-        while (g_SupervisorFrametime_498bc0 <= timeElapsed)
-        {
-            timeElapsed = timeElapsed - g_SupervisorFrametime_498bc0;
-            g_SupervisorTimeLast_135e200 = g_SupervisorTimeLast_135e200 + g_SupervisorFrametime_498bc0;
-        }
-    } while ((i32)(u8)s->unk188 <= (i32)(u32)g_SupervisorFrameskipCfg_575a8b);
-reset_subframe:
-    Supervisor_PreSessionInit_004345c0();
-    *(u8 *)&s->unk188 = 0;
+    }
+#endif
+
+    // Bump the frame counter and continue.
     g_SupervisorFrameCounter_135e1f8 = g_SupervisorFrameCounter_135e1f8 + 1;
     return 0;
 }

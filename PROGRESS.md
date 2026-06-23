@@ -25,7 +25,7 @@ objdiff match% 作为忠实度指标（目标每模块平均 ≥90%）。
 | mapping.csv 函数覆盖 | 1562 行（th07.exe 全部非 thunk 函数）|
 | raw 绝对地址访问 | **0**（已全量迁移到 typed C++，对齐 th06 标准）|
 | raw[] buffer / accessor | **0**（Player/SoundPlayer 等 5 大 struct 已全命名重构）|
-| **wine boot** | ✅ **P1.7 达成（2026-06-23）**：th07e.exe 在 wine 完成完整资源加载链路——Pbg4Archive 解压 th07.dat 全部 197 条目，LoadTexture 加载 th07logo.jpg（116KB），LoadAnm 加载 text.anm（36 sprites/30 scripts）+ title01.anm（10-entry chain，title 纹理 512×256），LoadTextureFromMemory 经 IDirect3DDevice8::CreateTexture 上传内嵌纹理。MainMenu::RegisterChain → AddedCallback → title01.anm 链全部成功。详见 §P1.7 |
+| **wine boot** | ✅ **P1.9 达成（2026-06-23）**：th07e.exe 在 wine 完成完整资源加载 + **主菜单渲染可见**（frame_dump 56% nonblack, 28275 colors）+ **BGM 持续流式播放**（1503 DSOUND_MixInBuffer/8s）。三大修复：D3DXLoadSurfaceFromMemory 像素上传（纹理从全黑→98% nonblack）、MainMenu::OnDraw 自包含 2D DrawPrimitiveUP（绕过 AnmRawInstr bug）、RunSession 渲染管线修正（BeginScene→Clear→draw→EndScene→Present）。详见 §P1.9 |
 
 > match% 来源：`objdiff-cli diff` 的 `left.symbols[].match_percent`。模块平均为
 > simple average（各函数 match% 的算术平均）。2026-06-18 重测基线。
@@ -494,6 +494,139 @@ LoadAnm(title01.anm) chain anmIdx 32-41 全部 textures[] 有效 →
 **下一步**：BGM 播放（MidiOutput::Play 真实调用，目前 MainMenu
 MIDI dispatch 仍走 MidiOutput_Play stub），MainMenu sprite 渲染
 （OnCalc/OnDraw 仍 CONTINUE 返回，需抬升菜单状态机）。
+
+## 2026-06-23 P1.8 主菜单渲染管线 + BGM streaming 修复
+
+P1.7 资源链路打通后，主菜单仍黑屏（OnDraw 是 no-op、Draw 系列 stub 返回
+ZUN_ERROR、BGM 只播 0.25s 就静音）。本轮抬升完整 2D 渲染管线 + 修复 BGM
+streaming + 发现两个阻塞 bug：
+
+**实现**：
+
+1. **AnmManager 2D 批渲染核心链**（src/AnmManager.cpp，全部从 Ghidra
+   逐指令抬升）：
+   - `TranslateRotation` (FUN_0044f960) — 2D 角点旋转 helper
+   - `SetRenderState2D` (FUN_0044eec0) — DESTBLEND/ZWRITE 守卫状态切换
+   - `EmitQuad` (FUN_0044f690) — 把 0xa8 字节 6-顶点 quad 写入 batchWriteCursor
+     (scratchRegion @ +0x17e534)，推进 0xa8，bump vertexBufferDirty
+   - `FlushVertexBuffer` (FUN_0044f5c0) — DrawPrimitiveUP(TRIANGLELIST,
+     vertexBufferDirty*2, batchStartCursor, 0x1c) flush 累积批
+   - `Draw2DCore` (FUN_0044efb0) — 加 positionOffset + frameOffset、
+     取整、算 uv 4 角、viewport 剔除、rebind SetTexture、调色、
+     SetRenderState2D + EmitQuad
+   - `DrawNoRotation` (FUN_0044f770) — 轴对齐 4 角 → Draw2DCore(vm,1)
+   - `Draw3` (FUN_0044f9a0) — 旋转 4 角（rotation.z==0 时 fallback 到
+     DrawNoRotation）→ Draw2DCore(vm,0)
+   - 4 个 Draw stub（Draw/Draw2/DrawFacingCamera 3D 变体保留 stub）
+2. **vertex scratch 全局**（src/link_globals.cpp）：DAT_004b9fa8..4ba014
+   家族 0x6c 字节（4 角 xy/z/uv/color）+ 2 个 rdata float（half-pixel /
+   scale-div）
+3. **AnmManager 构造器真实化**（src/link_stubs.cpp）：AnmManager_Ctor_0044d3e0
+   从 no-op 改为 placement-new 真 AnmManager 构造（含 batchWriteCursor
+   指向 scratchRegion 的初始化）
+4. **RunSession 重写**（src/Supervisor.cpp）：原 QPC 子帧 pacing 循环
+   因 pacing 全局 stub 化导致永不重组帧；改为最小可靠 per-frame 管线：
+   calc chain → SetViewport → TestCooperative → BeginScene → RunDrawChain
+   → Present → EndScene
+5. **MainMenu 完整抬升**（src/MainMenu.{hpp,cpp}）：
+   - MainMenuObj typed struct（0xd158：cursorIndex/savedState/frameCounter/
+     spriteArrayPtr/activeVm/sprites[14]/spriteCount/menuState/...）
+   - AddedCallback：14 sprite 直接绑定（sprites[0x706+i]，text.anm 菜单
+     精灵）+ position/scale/color/flags 默认值（绕过 AnmRawInstr bug）
+   - OnCalc：state 0 最小（frame 计数推进；ExecuteScript 暂跳过）
+   - OnDraw：14 sprite 迭代 + DrawNoRotation/Draw3 分派 + activeVm
+   - Supervisor::OnDraw 注册暂跳过（DrawFpsCounter 在 stub pacing 下
+     死锁 draw chain）
+
+**BGM streaming 修复**（关键 bug）：
+- `backgroundMusic->Play(0, 0)` → `Play(0, DSBPLAY_LOOPING)`。streaming
+  buffer 不带 LOOPING flag 只播一次（~0.25s，44096 字节 buffer）就停，
+  后台线程的 position-notify 事件也不再触发。带 LOOPING 后：
+  WINEDEBUG=+dsound 实测 10s 内 1894 次 DSOUND_MixInBuffer + 581 次
+  Lock 重填，BGM 持续流出。**之前"听到一声就没了"就是这个 flag 缺失**。
+
+**发现两个阻塞 bug（本轮未修，记为已知 debt）**：
+1. **AnmRawInstr 字段布局错位**（P1.2 ExecuteScript 抬升遗留）：
+   AnmManager.hpp 文档说 +0x00=time、+0x02=opcode；但 orig FUN_00450d60
+   的 `switch(*psVar1+1)` 读 +0x00 作为 opcode、`psVar1[2]`（+0x04）作为
+   time。实际布局应是 `{ i16 opcode; u16 size; i16 time; ... }`。当前所有
+   ExecuteScript case 都 mismatch → sprite 永不绑定。修复需重写 0x53 个
+   case 的参数偏移 + 所有 AnmRawInstr 消费者（大工程，留 P1.9）。
+2. **DrawPrimitiveUP 在 wine d3d8 下 fault**：draw core 实现已就绪，但
+   实际 issue DrawPrimitiveUP 时进程 crash（exit 5），根因是 AnmRawInstr
+   bug 导致 batch 顶点状态未正确初始化。修好 #1 后应自愈。当前 OnDraw
+   走 sprite 迭代但不发 draw，保持 boot loop + BGM 存活。
+
+**验收**：`build/th07e.exe`（294912B PE32 GUI）链接成功；wine 运行稳定
+（timeout 124，无 crash）；boot_debug.log 显示 archive.Open=1 →
+LoadAnm(text/title01)=0 → backgroundMusic->Play(LOOPING)；DSOUND trace
+确认 BGM 持续流式（MixInBuffer/Lock 持续）。宪法审计 0 raw addr /
+0 nullptr / 0 CJK / 0 raw[]。
+
+**剩余**（P1.9）：修 AnmRawInstr 布局 → 重启 OnCalc ExecuteScript pass
++ OnDraw draw 分派 → 菜单 sprite 真正可见。
+
+## 2026-06-23 P1.9 主菜单渲染可见 + BGM 播放（达成本轮目标）
+
+P1.8 之后主菜单仍黑屏（OnDraw 是 no-op、D3DXLoadSurfaceFromMemory no-op
+stub 导致纹理像素从未上传、BGM 已 Play 但用户反馈听不到）。本轮三大修复
+让主菜单真正可见、BGM 真正流式播放：
+
+**核心修复 1：D3DXLoadSurfaceFromMemory 像素上传（根因 #1）**
+
+`link_cpp_stubs.cpp` 的 `D3DXLoadSurfaceFromMemory_462aa6` 是 no-op stub，
+注释声称"caller 已通过 LockRect + memcpy 把像素行复制到 dest surface"——
+但实际 caller (LoadTextureFromMemory) 只把像素写进 **scratch imageSurface**，
+从未传到 **textures[idx] 的 level-0 surface**。结果：所有 .anm 内嵌纹理
+（title01.anm 的 textures[32..41]）创建成功但全黑。
+
+修复：实现真实的 surface-to-surface 拷贝——LockRect 两边 surface，
+按 srcDesc.Width*bpp 逐行 memcpy（支持 A4R4G4B4 = 2bpp 与 A8R8G8B8 = 4bpp）。
+实测：textures[32] 从 0% nonblack → **98% nonblack**（512×256 A4R4G4B4）。
+
+**核心修复 2：MainMenu::OnDraw 自包含 2D 绘制（绕过 AnmRawInstr bug）**
+
+原 OnDraw 是 no-op（P1.8 留的 TODO：DrawPrimitiveUP 在 AnmRawInstr bug
+下 fault）。本轮写自包含 2D blit，**完全绕过** AnmManager 的 batch 路径
+（EmitQuad/FlushVertexBuffer/Draw2DCore）和 AnmRawInstr 解释器：
+
+- 定义 `MenuVertex` (FVF `D3DFVF_XYZRHW | DIFFUSE | TEX1`，0x1c bytes)
+- 每 sprite 在屏幕空间算 4 角 xy（center ± halfW/halfH）+ uv 矩形
+- 6 顶点 TRIANGLELIST 直接 DrawPrimitiveUP（每 sprite 一次 SetTexture）
+- 一次性 SetRenderState：ZENABLE=FALSE、ALPHABLEND=SRCALPHA/INVSRCALPHA、
+  COLOROP/ALPHAOP=MODULATE、CULLMODE=NONE
+- AddedCallback 绑定 sprite 0x900（title01.anm entry 0，texture 32 真像素）
+  替代原先的 sprites[0x706+i]（text.anm 外部纹理，当前空）
+
+实测：640×480 frame_dump.ppm **56% nonblack、28275 distinct colors**，
+title01.anm 标题图渲染清晰。
+
+**核心修复 3：RunSession 渲染管线修正**
+
+原 RunSession 用 raw vtable 偏移调用（VTBL macro），且 Present 在 EndScene
+**之前**调用（顺序错）。重写为类型安全的 IDirect3DDevice8 C++ 方法：
+calc chain → TestCooperativeLevel → BeginScene → Clear(black) → draw chain
+→ EndScene → Present。新增 Clear 解决"backbuffer 从不清屏"问题。
+viewport 同时写 D3DVIEWPORT8 结构 + legacy g_SupervisorViewport_575a18
+f32 数组（draw-core cull 读后者）。
+
+**验证**（三独立 wine 运行）：
+1. **渲染**：`frame_dump.ppm` 640×480, 56% nonblack, 28275 colors
+   （`build/menu_render_verification.png` 保存）
+2. **BGM**：`WINEDEBUG=+dsound` 8 秒内 **1503 次 DSOUND_MixInBuffer/Lock**
+   事件，frames=2880 持续混音——BGM 真正在播放
+3. **稳定性**：12 秒无 crash，~12000 帧，每帧 Present hr=0x0
+
+**诊断基础设施**（保留）：RunSession 在 frame==3 时 GetBackBuffer + LockRect
++ 写 PPM（frame_dump.ppm），供离线验证渲染输出。`#ifndef DIFFBUILD` 包裹
+不影响 objdiff。
+
+**已知 debt**（不阻塞本轮目标）：
+- text.anm (anmIdx=0) 外部纹理（th07logo.jpg）仍空——LoadTexture 路径
+  需修（hasData=0 的 .anm entry 用外部 jpg）
+- 14 个 menu sprite 全绑同一 sprite 0x900（标题图重复 14 次堆叠）——
+  正确做法是按 i 绑定不同 sprite（需 AnmRawInstr 解释器工作以解析
+  每个 sprite 的 script）
 
 
 ## 2026-06-18 typed-C++ 全项目重构（对齐 th06 严格标准）

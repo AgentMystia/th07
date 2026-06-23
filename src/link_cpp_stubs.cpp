@@ -9,6 +9,7 @@
 // Normal-build only; does NOT contribute to objdiff.
 
 #include "AnmVm.hpp"
+#include "AnmManager.hpp"
 #include "Chain.hpp"
 #include "GameErrorContext.hpp"
 #include "GameManager.hpp"
@@ -176,12 +177,16 @@ void __fastcall AnmMgr_ExecuteScript_450d60_C(th07::AnmMgrStub *a, void *b)
 }
 
 // AnmManager::SetRenderStateForVm cross-module callees (orig FUN_0044f5c0 /
-// FUN_00408180 / FUN_004082b0). No-op until their owning modules are lifted;
-// the real bodies live in AnmManager (FlushVertexBuffer) and Supervisor
-// (Setup3DCamera / Setup2DCamera). Normal-build only.
+// FUN_00408180 / FUN_004082b0). FlushVertexBuffer is now a real AnmManager
+// method (Draw2DCore batch flush via DrawPrimitiveUP); the cameras remain
+// no-ops. This C-linkage thunk lets DrawInner / SetRenderStateForVm (which
+// reference the orig absolute address) reach the real flush.
 void __fastcall AnmManager_FlushVertexBuffer(void *anmMgr)
 {
-    (void)anmMgr;
+    if (anmMgr != 0)
+    {
+        ((th07::AnmManager *)anmMgr)->FlushVertexBuffer();
+    }
 }
 void __fastcall Supervisor_Setup3DCamera(void *cameraStub)
 {
@@ -234,11 +239,60 @@ int __fastcall D3DXLoadSurfaceFromMemory_462aa6(void *dstSurface, void *palette,
                                                 int filter, unsigned int colorKey)
 {
     // The orig wraps D3DXLoadSurfaceFromMemory. We don't link d3dx8's surface
-    // loader in the normal build; the caller (LoadTextureFromMemory) has
-    // already memcpy'd the pixel rows into the dest surface via LockRect, so
-    // this no-op is sufficient for textures uploaded through that path.
-    (void)dstSurface; (void)palette; (void)dstRect; (void)srcMemory; (void)srcPalette;
-    (void)srcRect; (void)filter; (void)colorKey;
+    // loader in the normal build, so we replicate the load by locking both
+    // surfaces and memcpy-ing the rows. dstSurface is the destination
+    // IDirect3DSurface8* (the texture's level-0 surface); srcMemory is the
+    // source IDirect3DSurface8* (the scratch imageSurface the caller filled).
+    // Both share the same dimensions and format (verified by
+    // LoadTextureFromMemory's CreateImageSurface call), so a straight
+    // row-by-row copy with pitch adjustment is sufficient.
+    (void)palette; (void)dstRect; (void)srcPalette; (void)srcRect;
+    (void)filter; (void)colorKey;
+
+    IDirect3DSurface8 *dst = (IDirect3DSurface8 *)dstSurface;
+    IDirect3DSurface8 *src = (IDirect3DSurface8 *)srcMemory;
+    if (dst == 0 || src == 0)
+    {
+        return 0;
+    }
+
+    D3DSURFACE_DESC srcDesc;
+    D3DLOCKED_RECT srcLR;
+    D3DLOCKED_RECT dstLR;
+    if (FAILED(src->GetDesc(&srcDesc)) ||
+        FAILED(src->LockRect(&srcLR, 0, D3DLOCK_READONLY)) ||
+        FAILED(dst->LockRect(&dstLR, 0, 0)))
+    {
+        if (srcLR.pBits != 0) src->UnlockRect();
+        return 0;
+    }
+
+    // Bytes per pixel for the surface format. We support the two formats the
+    // .anm decoder uses (A4R4G4B4 == 2 bytes, A8R8G8B8 == 4 bytes) plus the
+    // common 16-bit / 32-bit cases by deriving bpp from Format.
+    u32 bpp;
+    switch ((u32)srcDesc.Format)
+    {
+    case 20:  // D3DFMT_A8R8G8B8
+    case 22:  // D3DFMT_X8R8G8B8
+        bpp = 4;
+        break;
+    default:
+        // 21 (R5G6B5), 25 (A1R5G5B5), 26 (A4R4G4B4) and other 16-bit fmts.
+        bpp = 2;
+        break;
+    }
+    u32 rowBytes = srcDesc.Width * bpp;
+
+    for (u32 y = 0; y < srcDesc.Height; y++)
+    {
+        u8 *srcRow = (u8 *)srcLR.pBits + y * srcLR.Pitch;
+        u8 *dstRow = (u8 *)dstLR.pBits + y * dstLR.Pitch;
+        memcpy(dstRow, srcRow, rowBytes);
+    }
+
+    src->UnlockRect();
+    dst->UnlockRect();
     return 0;
 }
 

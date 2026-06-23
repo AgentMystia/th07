@@ -12,13 +12,48 @@
 
 #include "inttypes.hpp"
 
-// AnmManager::SetRenderStateForVm colour-slot dwords (software render path
-// stamps these when GCOS_DONT_USE_VERTEX_BUF is set). Orig addresses
-// 0x4b9fb8..0x4ba0cc. Zero-init here; populated by SetRenderStateForVm.
-extern "C" u32 g_AnmMgrColorSlot_4b9fb8 = 0;
-extern "C" u32 g_AnmMgrColorSlot_4b9fd4 = 0;
-extern "C" u32 g_AnmMgrColorSlot_4b9ff0 = 0;
-extern "C" u32 g_AnmMgrColorSlot_4ba00c = 0;
+// AnmManager 2D-batch vertex scratch (orig 0x4b9fa8..0x4ba014, 0x6c bytes).
+// FUN_0044efb0 (Draw2DCore) lays out 4 sprite-corner vertices here; the colour
+// dwords overlap with the SetRenderStateForVm software-path colour slots.
+// Layout (per Draw2DCore writes, FUN_0044f770/f9a0 corner emit):
+//   +0x00 4b9fa8  v0.posX     +0x04 4b9fac v0.posY     +0x08 4b9fb0 z
+//   +0x0c 4b9fb4 (unused)     +0x10 4b9fb8 v0.color
+//   +0x14 4b9fbc v0.uvX       +0x18 4b9fc0 v0.uvY
+//   +0x1c 4b9fc4 v1.posX      +0x20 4b9fc8 v1.posY     +0x24 4b9fcc v1.color
+//   +0x28 4b9fd0 (unused)     +0x2c 4b9fd4 v1.color-b  (alt color slot)
+//   +0x30 4b9fd8 v1.uvX       +0x34 4b9fdc v?.uvX (src)
+//   +0x38 4b9fe0 v2.posX      +0x3c 4b9fe4 v2.posY     +0x40 4b9fe8 z
+//   +0x44 4b9fec (unused)     +0x48 4b9ff0 v2.color
+//   +0x4c 4b9ff4 v2.uvX       +0x50 4b9ff8 v2.uvY
+//   +0x54 4b9ffc v3.posX      +0x58 4ba000 v3.posY     +0x5c 4ba004 z
+//   +0x60 4ba008 (unused)     +0x64 4ba00c v3.color
+//   +0x68 4ba010 v3.uvX       +0x6c 4ba014 v3.uvY
+// DrawNoRotation/Draw3 only set posX/posY/z (8 + 1 float); uv/color are
+// filled by Draw2DCore. Zero-init; repopulated each draw.
+extern "C" f32 g_AnmVtxScratch_4b9fa8 = 0.0f;  // v0.posX
+extern "C" f32 g_AnmVtxScratch_4b9fac = 0.0f;  // v0.posY
+extern "C" f32 g_AnmVtxScratch_4b9fb0 = 0.0f;  // z
+extern "C" u32 g_AnmMgrColorSlot_4b9fb8 = 0;   // v0.color (also software-path slot)
+extern "C" f32 g_AnmVtxScratch_4b9fbc = 0.0f;  // v0.uvX
+extern "C" f32 g_AnmVtxScratch_4b9fc0 = 0.0f;  // v0.uvY
+extern "C" f32 g_AnmVtxScratch_4b9fc4 = 0.0f;  // v1.posX
+extern "C" f32 g_AnmVtxScratch_4b9fc8 = 0.0f;  // v1.posY
+extern "C" u32 g_AnmVtxScratch_4b9fcc = 0;     // v1.color
+extern "C" u32 g_AnmMgrColorSlot_4b9fd4 = 0;   // v1.color-b (alt color slot)
+extern "C" f32 g_AnmVtxScratch_4b9fd8 = 0.0f;  // v1.uvX
+extern "C" f32 g_AnmVtxScratch_4b9fdc = 0.0f;  // uvX src (mirrors v1.uvX)
+extern "C" f32 g_AnmVtxScratch_4b9fe0 = 0.0f;  // v2.posX
+extern "C" f32 g_AnmVtxScratch_4b9fe4 = 0.0f;  // v2.posY
+extern "C" f32 g_AnmVtxScratch_4b9fe8 = 0.0f;  // z
+extern "C" u32 g_AnmMgrColorSlot_4b9ff0 = 0;   // v2.color (also software-path slot)
+extern "C" f32 g_AnmVtxScratch_4b9ff4 = 0.0f;  // v2.uvX
+extern "C" f32 g_AnmVtxScratch_4b9ff8 = 0.0f;  // v2.uvY
+extern "C" f32 g_AnmVtxScratch_4b9ffc = 0.0f;  // v3.posX
+extern "C" f32 g_AnmVtxScratch_4ba000 = 0.0f;  // v3.posY
+extern "C" f32 g_AnmVtxScratch_4ba004 = 0.0f;  // z
+extern "C" u32 g_AnmMgrColorSlot_4ba00c = 0;   // v3.color (also software-path slot)
+extern "C" f32 g_AnmVtxScratch_4ba010 = 0.0f;  // v3.uvX
+extern "C" f32 g_AnmVtxScratch_4ba014 = 0.0f;  // v3.uvY
 extern "C" u32 g_AnmMgrColorSlot_4ba084 = 0;
 extern "C" u32 g_AnmMgrColorSlot_4ba09c = 0;
 extern "C" u32 g_AnmMgrColorSlot_4ba0b4 = 0;
@@ -217,6 +252,8 @@ extern "C" void *g_AnmManagerFilesObj_P = 0;  // document-only alias (not curren
 // These mirror the const-float DAT_ addresses read absolutely by FUN_00450d60.
 extern "C" const f32 g_AnmMgrC0x498a4c = 0.0f;   // DAT_00498A4C (sentinel)
 extern "C" const f32 g_AnmMgrC0x498a54 = 1.0f;   // DAT_00498A54 (angle modulus)
+extern "C" const f32 g_AnmMgrHalfPix_498a50 = 0.5f;   // DAT_00498A50 (half-pixel offset for no-rotation rounding)
+extern "C" const f32 g_AnmMgrScaleDiv_498a70 = 2.0f;  // DAT_00498A70 (sprite half-extent divisor: width*scale/2)
 extern "C" const f32 g_AnmMgrC0x498b5c = -1.0f;  // DAT_00498B5C (scale flip)
 // Supervisor.framerateMultiplier mirror (orig 0x575ac8); ExecuteScript reads
 // it absolutely. Zero-init matches the boot state until Supervisor sets it.

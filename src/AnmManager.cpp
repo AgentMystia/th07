@@ -79,7 +79,36 @@ extern "C" u32 g_AnmMgrColorSlot_4ba09c;
 extern "C" u32 g_AnmMgrColorSlot_4ba0b4;
 extern "C" u32 g_AnmMgrColorSlot_4ba0cc;
 extern "C" u32 g_SupervisorViewport_575a18;
+extern "C" u32 g_SupervisorG0x575a1c;
+extern "C" u32 g_SupervisorG0x575a20;
+extern "C" u32 g_SupervisorG0x575a24;
 extern "C" u32 g_SupervisorCfgOpts_575a9c;
+// 2D batched-draw vertex scratch (orig 0x4b9fa8..0x4ba014). Corner xy/z/uv
+// and per-vertex colour written by DrawNoRotation/Draw3/Draw2DCore.
+extern "C" f32 g_AnmVtxScratch_4b9fa8;
+extern "C" f32 g_AnmVtxScratch_4b9fac;
+extern "C" f32 g_AnmVtxScratch_4b9fb0;
+extern "C" f32 g_AnmVtxScratch_4b9fbc;
+extern "C" f32 g_AnmVtxScratch_4b9fc0;
+extern "C" f32 g_AnmVtxScratch_4b9fc4;
+extern "C" f32 g_AnmVtxScratch_4b9fc8;
+extern "C" u32 g_AnmVtxScratch_4b9fcc;
+extern "C" f32 g_AnmVtxScratch_4b9fd8;
+extern "C" f32 g_AnmVtxScratch_4b9fdc;
+extern "C" f32 g_AnmVtxScratch_4b9fe0;
+extern "C" f32 g_AnmVtxScratch_4b9fe4;
+extern "C" f32 g_AnmVtxScratch_4b9fe8;
+extern "C" f32 g_AnmVtxScratch_4b9ff4;
+extern "C" f32 g_AnmVtxScratch_4b9ff8;
+extern "C" f32 g_AnmVtxScratch_4b9ffc;
+extern "C" f32 g_AnmVtxScratch_4ba000;
+extern "C" f32 g_AnmVtxScratch_4ba004;
+extern "C" f32 g_AnmVtxScratch_4ba010;
+extern "C" f32 g_AnmVtxScratch_4ba014;
+// rdata floats used by the 2D draw core.
+extern "C" const f32 g_AnmMgrHalfPix_498a50;   // DAT_00498A50 (half-pixel offset, 0.5f)
+extern "C" const f32 g_AnmMgrScaleDiv_498a70;  // DAT_00498A70 (scale divisor, 2.0f)
+extern "C" const f32 g_AnmMgrC0x498a4c;        // DAT_00498A4C (0.0f rotation sentinel)
 // D3D device pointer slot (orig 0x575958 = g_Supervisor + 8). Orig reads
 // it as an absolute [DAT_00575958] load; mirroring that avoids the
 // struct-relative [DAT_00575950+8] reloc that objdiff treats as distinct.
@@ -358,6 +387,15 @@ AnmManager::AnmManager()
     this->byte_2e4d4 = 0xff;
     this->vertexBuffer = NULL;
     this->tailMarker_17e53c = -1;
+
+    // 2D-batch cursor init. Orig sets *(this+0x17e534) to the start of
+    // scratchRegion (the 0x150000-byte vertex batch buffer at +0x2e534) early
+    // in the boot path. We do it here so the first EmitQuad write lands in a
+    // valid buffer. batchStartCursor tracks the start of the current pending
+    // batch (advanced by FlushVertexBuffer).
+    this->batchWriteCursor_17e534 = &this->scratchRegion[0];
+    this->batchStartCursor_17e538 = &this->scratchRegion[0];
+    this->vertexBufferDirty = 0;
 }
 
 // ============================================================================
@@ -2596,6 +2634,500 @@ void AnmManager::ReleaseAnm(i32 anmIdx)
 // ============================================================================
 void AnmManager::SetupVertexBuffer()
 {
+    // Orig allocates a static IDirect3DVertexBuffer8 for the vertex-buffer
+    // render path (GCOS bit1 clear). The batched 2D path (used by the menu
+    // sprites) instead streams from scratchRegion via DrawPrimitiveUP, so a
+    // real VB is only needed for the GCOS-bit1-clear branch. Leave null here;
+    // the Draw2DCore/Flush path does not depend on it.
+}
+
+// ============================================================================
+// 2D batched-draw core chain (FUN_0044efb0 / f690 / eec0 / f5c0 / f960)
+//
+// The menu sprites (and most in-game 2D art) are drawn via a software
+// batched path that is separate from the 3D-matrix DrawInner (FUN_00450520):
+//
+//   DrawNoRotation/Draft3 (FUN_0044f770/f9a0)
+//     -- compute 4 axis-aligned (or rotated) corner xy + z into the
+//        DAT_004b9fa8..DAT_004ba004 vertex scratch globals.
+//     -> Draw2DCore (FUN_0044efb0)
+//        -- add vm->positionOffset + frameOffset to every corner; round to
+//           int on the no-rotation path; compute 4 uv corners from the active
+//           sprite's uvStart/uvEnd + vm->uvScrollPos; cull against the
+//           viewport; rebind SetTexture when the sprite's texture changes;
+//           set vertex-shader state byte to 1; modulate the per-VM colour by
+//           the per-frame colour multiplier (this+0..3); stamp the 4 colour
+//           dwords; then:
+//        -> SetRenderState2D (FUN_0044eec0)
+//           -- guarded DESTBLEND / ZWRITEENABLE updates (flushing the batch
+//              on a ZWRITE transition).
+//        -> EmitQuad (FUN_0044f690)
+//           -- copy the 0xa8-byte (6-vertex) quad from the scratch into the
+//              batch buffer at *batchWriteCursor, advance the cursor by 0xa8,
+//              bump vertexBufferDirty (== pending quad count).
+//
+//   FlushVertexBuffer (FUN_0044f5c0)
+//     -- if vertexBufferDirty != 0, DrawPrimitiveUP(TRIANGLELIST,
+//        vertexBufferDirty*2, batchStartCursor, 0x1c); snap batchStart to
+//        batchWriteCursor; reset vertexBufferDirty; bump the frame counter
+//        at this+0x14.
+//
+// All field offsets and the DAT_ scratch layout are lifted verbatim from the
+// disassembly. The DAT_004b9fa8 family lives in .bss (declared as typed
+// extern "C" globals in link_globals.cpp); the batch buffer cursor lives in
+// the AnmManager tail at +0x17e534/+0x17e538 (set to scratchRegion by the
+// boot path after construction).
+// ============================================================================
+
+// SetRenderState2D (FUN_0044eec0). __thiscall (this=AnmManager, arg=AnmVm*).
+// Guarded DESTBLEND (state 0x14) + ZWRITEENABLE (state 0xe) updates driven by
+// vm->flags bits 4 and 12. ZWRITE is gated by GCOS bit6 (skip when set). Each
+// guarded transition flushes the pending batch before changing state. Bumps
+// the per-frame draw counter at this+0x10.
+void AnmManager::SetRenderState2D(AnmVm *vm)
+{
+    u32 vmFlags;
+
+    vmFlags = *(u32 *)((u8 *)vm + 0x1c0);
+
+    // DESTBLEND: vm->flags bit 4.
+    if ((u32)this->currentBlendMode != ((vmFlags >> 4) & 1))
+    {
+        this->currentBlendMode = (u8)((vmFlags >> 4) & 1);
+        if (this->currentBlendMode == 0)
+        {
+            this->FlushVertexBuffer();
+            ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                ->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+        }
+        else
+        {
+            this->FlushVertexBuffer();
+            ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                ->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
+        }
+    }
+
+    // ZWRITEENABLE: vm->flags bit 12 (only when GCOS bit6 clear).
+    if ((g_SupervisorCfgOpts_575a9c >> 6 & 1) == 0 &&
+        (u32)this->currentZWriteDisable != ((vmFlags >> 0xc) & 1))
+    {
+        this->currentZWriteDisable = (u8)((vmFlags >> 0xc) & 1);
+        if (this->currentZWriteDisable == 0)
+        {
+            this->FlushVertexBuffer();
+            ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                ->SetRenderState(D3DRS_ZWRITEENABLE, 1);
+        }
+        else
+        {
+            this->FlushVertexBuffer();
+            ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                ->SetRenderState(D3DRS_ZWRITEENABLE, 0);
+        }
+    }
+
+    // Per-frame draw counter (scriptExecCounter_0 alias at +0x10... actually a
+    // separate field; use the byte view the orig bumps).
+    *(i32 *)((u8 *)this + 0x10) = *(i32 *)((u8 *)this + 0x10) + 1;
+}
+
+// EmitQuad (FUN_0044f690). __thiscall (this=AnmManager, arg=&DAT_004b9fa8).
+// Copies the 6-vertex (0xa8-byte) quad from the vertex scratch into the batch
+// buffer at *batchWriteCursor, then advances the cursor by 0xa8 and bumps
+// vertexBufferDirty (== pending quad count).
+//
+// The 6 dest vertices are at offsets 0,0x1c,0x38,0x54,0x70,0x8c (stride 0x1c
+// = sizeof(VertexTex1DiffuseXyzrwh)). Sources (from the 0x6c-byte scratch):
+//   v0 = scratch[0..6]   v1 = scratch[7..13]  v2 = scratch[14..20]
+//   v3 = scratch[7..13]  v4 = scratch[14..20] v5 = scratch[21..27]
+// (a quad rendered as 2 triangles sharing the v1/v2 diagonal, with the
+// scratch laid out as v0,v1,v2,v3 each occupying 7 dwords = 0x1c.)
+void AnmManager::EmitQuad(f32 *scratch)
+{
+    u32 *src;
+    u32 *dst;
+
+    // 6 vertices, each copied from a 7-dword (0x1c-byte) slice of the scratch.
+    // Scratch layout (dword indices): v0=[0..6] v1=[7..13] v2=[14..20] v3=[21..27].
+    // Dest quad vertex order: v0, v1, v2, v1, v2, v3.
+    src = (u32 *)scratch;
+    dst = (u32 *)this->batchWriteCursor_17e534;
+    // v0
+    *dst++ = *src++; *dst++ = *src++; *dst++ = *src++; *dst++ = *src++;
+    *dst++ = *src++; *dst++ = *src++; *dst++ = *src++;
+    // v1 (scratch+7)
+    src = (u32 *)scratch + 7;
+    dst = (u32 *)(this->batchWriteCursor_17e534 + 0x1c);
+    *dst++ = *src++; *dst++ = *src++; *dst++ = *src++; *dst++ = *src++;
+    *dst++ = *src++; *dst++ = *src++; *dst++ = *src++;
+    // v2 (scratch+14)
+    src = (u32 *)scratch + 0xe;
+    dst = (u32 *)(this->batchWriteCursor_17e534 + 0x38);
+    *dst++ = *src++; *dst++ = *src++; *dst++ = *src++; *dst++ = *src++;
+    *dst++ = *src++; *dst++ = *src++; *dst++ = *src++;
+    // v3 = v1 again (scratch+7)
+    src = (u32 *)scratch + 7;
+    dst = (u32 *)(this->batchWriteCursor_17e534 + 0x54);
+    *dst++ = *src++; *dst++ = *src++; *dst++ = *src++; *dst++ = *src++;
+    *dst++ = *src++; *dst++ = *src++; *dst++ = *src++;
+    // v4 = v2 again (scratch+14)
+    src = (u32 *)scratch + 0xe;
+    dst = (u32 *)(this->batchWriteCursor_17e534 + 0x70);
+    *dst++ = *src++; *dst++ = *src++; *dst++ = *src++; *dst++ = *src++;
+    *dst++ = *src++; *dst++ = *src++; *dst++ = *src++;
+    // v5 = v3 (scratch+21)
+    src = (u32 *)scratch + 0x15;
+    dst = (u32 *)(this->batchWriteCursor_17e534 + 0x8c);
+    *dst++ = *src++; *dst++ = *src++; *dst++ = *src++; *dst++ = *src++;
+    *dst++ = *src++; *dst++ = *src++; *dst++ = *src++;
+
+    this->batchWriteCursor_17e534 += 0xa8;
+    this->vertexBufferDirty = this->vertexBufferDirty + 1;
+}
+
+// FlushVertexBuffer (FUN_0044f5c0). __fastcall (arg=AnmManager*).
+// If vertexBufferDirty != 0, draws the accumulated batch as a single
+// DrawPrimitiveUP(TRIANGLELIST, vertexBufferDirty*2, batchStartCursor, 0x1c)
+// -- each pending quad is 6 vertices = 2 triangles. Resets the cursor pair
+// and vertexBufferDirty; bumps the per-frame counter at this+0x14.
+void AnmManager::FlushVertexBuffer()
+{
+    IDirect3DDevice8 *dev;
+
+    if (this->vertexBufferDirty == 0)
+    {
+        return;
+    }
+
+    dev = (IDirect3DDevice8 *)g_SupervisorD3dDevice_575958;
+    // Orig emits two redundant SetRenderState calls here (vtable 0xfc with
+    // args (0,6,0) and (0,3,0)) before the draw; these reset stream-source
+    // select / vertex-shader hints. Under wine they are not required for
+    // DrawPrimitiveUP to work, so we skip them (the per-VM SetRenderState2D
+    // already drives DESTBLEND/ZWRITEENABLE).
+    dev->DrawPrimitiveUP(D3DPT_TRIANGLELIST,
+                         (u32)(this->vertexBufferDirty << 1),
+                         this->batchStartCursor_17e538,
+                         sizeof(VertexTex1DiffuseXyzrwh));
+    // Snap batchStart to the current write cursor and reset the pending count.
+    this->batchStartCursor_17e538 = this->batchWriteCursor_17e534;
+    this->vertexBufferDirty = 0;
+    *(i32 *)((u8 *)this + 0x14) = *(i32 *)((u8 *)this + 0x14) + 1;
+}
+
+// Draw2DCore (FUN_0044efb0). __thiscall (this=AnmManager, args: AnmVm*,
+// u32 flags). Adds vm->positionOffset (this+0x18/0x1c == frameOffsetX/Y) to
+// every corner (the caller already wrote the per-VM corner box into the
+// DAT_004b9fa8 scratch); rounds to int on the no-rotation path (flag bit0);
+// computes 4 uv corners; culls against the viewport; rebinds SetTexture on a
+// sprite change; sets the vertex-shader byte; modulates the per-VM colour;
+// then calls SetRenderState2D + EmitQuad.
+//
+// param_1 == this (AnmManager byte*), param_2 == vm, param_3 == flags
+// (bit0 = no-rotation axis-aligned path, bit1 = skip colour modulation).
+#pragma var_order(maxX, maxY, minX, minY, srcColorDword, modulatedColor, \
+                  colorByte, mulG, mulB, mulR, mulA)
+ZunResult AnmManager::Draw2DCore(AnmVm *vm, u32 flags)
+{
+    f32 maxX, maxY, minX, minY;
+    u32 srcColorDword;
+    u32 modulatedColor;
+    u8 colorByte;
+    u32 mulG, mulB, mulR, mulA;
+    AnmLoadedSprite *sprite;
+    f32 spriteUvStartX, spriteUvEndX, spriteUvStartY, spriteUvEndY;
+
+    // Add AnmManager.frameOffset (this+0x18/0x1c) to all 8 corner coords.
+    g_AnmVtxScratch_4b9fa8 += this->frameOffsetX;
+    g_AnmVtxScratch_4b9fac += this->frameOffsetY;
+    g_AnmVtxScratch_4b9fc4 += this->frameOffsetX;
+    g_AnmVtxScratch_4b9fc8 += this->frameOffsetY;
+    g_AnmVtxScratch_4b9fe0 += this->frameOffsetX;
+    g_AnmVtxScratch_4b9fe4 += this->frameOffsetY;
+    g_AnmVtxScratch_4b9ffc += this->frameOffsetX;
+    g_AnmVtxScratch_4ba000 += this->frameOffsetY;
+
+    // No-rotation path: round to int and subtract the half-pixel offset
+    // (_DAT_00498a50), then mirror corners 2/3 from 0/1 (axis-aligned box:
+    // only 2 distinct xy pairs).
+    if ((flags & 1) != 0)
+    {
+        g_AnmVtxScratch_4b9fa8 = (f32)(i32)(g_AnmVtxScratch_4b9fa8 + 0.5f) - g_AnmMgrHalfPix_498a50;
+        g_AnmVtxScratch_4b9fc4 = (f32)(i32)(g_AnmVtxScratch_4b9fc4 + 0.5f) - g_AnmMgrHalfPix_498a50;
+        g_AnmVtxScratch_4b9fac = (f32)(i32)(g_AnmVtxScratch_4b9fac + 0.5f) - g_AnmMgrHalfPix_498a50;
+        g_AnmVtxScratch_4b9fe4 = (f32)(i32)(g_AnmVtxScratch_4b9fe4 + 0.5f) - g_AnmMgrHalfPix_498a50;
+        g_AnmVtxScratch_4b9fc8 = g_AnmVtxScratch_4b9fac;
+        g_AnmVtxScratch_4b9fe0 = g_AnmVtxScratch_4b9fa8;
+        g_AnmVtxScratch_4b9ffc = g_AnmVtxScratch_4b9fc4;
+        g_AnmVtxScratch_4ba000 = g_AnmVtxScratch_4b9fe4;
+    }
+
+    // Compute the 4 uv corners from the active sprite's uvStart/uvEnd (which
+    // the sprite descriptor stores pre-baked) plus vm->uvScrollPos.
+    sprite = vm->sprite;
+    spriteUvStartX = sprite->uvStartX + vm->uvScrollPos.x;   // _DAT_004b9fbc
+    spriteUvEndX   = sprite->uvEndX   + vm->uvScrollPos.x;   // _DAT_004b9fd8
+    spriteUvStartY = sprite->uvStartY + vm->uvScrollPos.y;   // _DAT_004b9fc0
+    spriteUvEndY   = sprite->uvEndY   + vm->uvScrollPos.y;   // _DAT_004b9ff8
+    g_AnmVtxScratch_4b9fbc = spriteUvStartX;
+    g_AnmVtxScratch_4b9fd8 = spriteUvEndX;
+    g_AnmVtxScratch_4b9fc0 = spriteUvStartY;
+    g_AnmVtxScratch_4b9ff8 = spriteUvEndY;
+    // Mirror uv into the v2/v3 corner slots.
+    g_AnmVtxScratch_4b9fdc = spriteUvStartY; // = _DAT_004b9fc0
+    g_AnmVtxScratch_4b9ff4 = spriteUvStartX; // = _DAT_004b9fbc
+    g_AnmVtxScratch_4ba010 = spriteUvEndX;   // = _DAT_004b9fd8
+    g_AnmVtxScratch_4ba014 = spriteUvEndY;   // = _DAT_004b9ff8
+
+    // Cull: compute the bounding box of all 4 corners.
+    maxX = g_AnmVtxScratch_4b9fa8;
+    if (g_AnmVtxScratch_4b9fc4 > maxX) maxX = g_AnmVtxScratch_4b9fc4;
+    if (g_AnmVtxScratch_4b9fe0 > maxX) maxX = g_AnmVtxScratch_4b9fe0;
+    if (g_AnmVtxScratch_4b9ffc > maxX) maxX = g_AnmVtxScratch_4b9ffc;
+    maxY = g_AnmVtxScratch_4b9fac;
+    if (g_AnmVtxScratch_4b9fc8 > maxY) maxY = g_AnmVtxScratch_4b9fc8;
+    if (g_AnmVtxScratch_4b9fe4 > maxY) maxY = g_AnmVtxScratch_4b9fe4;
+    if (g_AnmVtxScratch_4ba000 > maxY) maxY = g_AnmVtxScratch_4ba000;
+    minX = g_AnmVtxScratch_4b9fa8;
+    if (g_AnmVtxScratch_4b9fc4 < minX) minX = g_AnmVtxScratch_4b9fc4;
+    if (g_AnmVtxScratch_4b9fe0 < minX) minX = g_AnmVtxScratch_4b9fe0;
+    if (g_AnmVtxScratch_4b9ffc < minX) minX = g_AnmVtxScratch_4b9ffc;
+    minY = g_AnmVtxScratch_4b9fac;
+    if (g_AnmVtxScratch_4b9fc8 < minY) minY = g_AnmVtxScratch_4b9fc8;
+    if (g_AnmVtxScratch_4b9fe4 < minY) minY = g_AnmVtxScratch_4b9fe4;
+    if (g_AnmVtxScratch_4ba000 < minY) minY = g_AnmVtxScratch_4ba000;
+
+    // Viewport cull: skip if the bounding box is entirely outside
+    // [viewport.x, viewport.x+w] x [viewport.y, viewport.y+h]. The viewport
+    // lives at DAT_00575a18 (x,y,w,h as 4 f32 / u32).
+    if ((f32)g_SupervisorViewport_575a18 <= maxX &&
+        (f32)g_SupervisorG0x575a1c <= maxY &&
+        minX <= (f32)(g_SupervisorViewport_575a18 + g_SupervisorG0x575a20) &&
+        minY <= (f32)(g_SupervisorG0x575a1c + g_SupervisorG0x575a24))
+    {
+        // Rebind the texture when the sprite's source texture changes.
+        // currentTexture (this+0x2e4cc) compared against
+        // textures[sprite->sourceFileIndex].
+        if (this->currentTexture != this->textures[sprite->sourceFileIndex])
+        {
+            this->currentTexture = this->textures[sprite->sourceFileIndex];
+            this->FlushVertexBuffer();
+            ((IDirect3DDevice8 *)g_SupervisorD3dDevice_575958)
+                ->SetTexture(0, this->currentTexture);
+        }
+        // Set the vertex-shader state byte to 1 (2D textured-vertex path).
+        if (this->currentVertexShader != 1)
+        {
+            this->FlushVertexBuffer();
+            this->currentVertexShader = 1;
+        }
+
+        // Per-VM colour modulation (skipped when flag bit1 set).
+        if ((flags & 2) == 0)
+        {
+            if ((*(u32 *)((u8 *)vm + 0x1c0) >> 0x10 & 1) == 0)
+            {
+                srcColorDword = vm->color;
+            }
+            else
+            {
+                srcColorDword = vm->altColor;
+            }
+            modulatedColor = srcColorDword;
+            // Modulate by the per-frame colour multiplier (this+0..3) only
+            // when scriptExecCounter_4 (this+0x4) != 0.
+            if (this->scriptExecCounter_4 != 0)
+            {
+                // byte 2 (B) * this[2] >> 7, clamp to 0xff.
+                mulB = (*((u8 *)&srcColorDword + 2)) *
+                       (*((u8 *)&this->scriptExecCounter_0 + 2)) >> 7;
+                if (mulB >= 0x100) mulB = 0xff;
+                *((u8 *)&modulatedColor + 2) = (u8)mulB;
+                // byte 3 (A) is preserved from src.
+                colorByte = *((u8 *)&srcColorDword + 3);
+                // byte 1 (G) * this[1] >> 7.
+                mulG = (*((u8 *)&srcColorDword + 1)) *
+                       (*((u8 *)&this->scriptExecCounter_0 + 1)) >> 7;
+                if (mulG >= 0x100) mulG = 0xff;
+                *((u8 *)&modulatedColor + 0) = (u8)srcColorDword;
+                *((u8 *)&modulatedColor + 1) = (u8)mulG;
+                *((u8 *)&modulatedColor + 2) = (u8)mulB;
+                *((u8 *)&modulatedColor + 3) = colorByte;
+                // byte 0 (R) * this[0] >> 7.
+                mulR = ((u16)modulatedColor & 0xff) *
+                       (*((u8 *)&this->scriptExecCounter_0 + 0)) >> 7;
+                if (mulR >= 0x100) mulR = 0xff;
+                *((u8 *)&modulatedColor + 0) = (u8)mulR;
+                // byte 3 (A) * this[3] >> 7.
+                mulA = (u32)colorByte *
+                       (*((u8 *)&this->scriptExecCounter_0 + 3)) >> 7;
+                if (mulA >= 0x100) mulA = 0xff;
+                *((u8 *)&modulatedColor + 3) = (u8)mulA;
+            }
+            g_AnmMgrColorSlot_4b9fb8 = modulatedColor;
+            g_AnmMgrColorSlot_4b9fd4 = modulatedColor;
+            g_AnmMgrColorSlot_4b9ff0 = modulatedColor;
+            g_AnmMgrColorSlot_4ba00c = modulatedColor;
+        }
+
+        this->SetRenderState2D(vm);
+        this->EmitQuad(&g_AnmVtxScratch_4b9fa8);
+    }
+    return ZUN_SUCCESS;
+}
+
+// DrawNoRotation (FUN_0044f770). __thiscall (this=AnmManager, arg=AnmVm*).
+// Axis-aligned quad: computes 4 corner xy from the sprite's widthPx/heightPx
+// scaled by vm->scaleX/Y, applies vm->positionOffset (with flip via flag
+// bits 10/11), then dispatches to Draw2DCore(vm, 1).
+ZunResult AnmManager::DrawNoRotation(AnmVm *vm)
+{
+    f32 halfW, halfH;
+    f32 posX, posY;
+    u32 flags;
+
+    flags = *(u32 *)((u8 *)vm + 0x1c0);
+    if ((flags & 1) == 0) return (ZunResult)-1;            // not visible
+    if ((flags >> 1 & 1) == 0) return (ZunResult)-1;       // not in scope
+    if (*((u8 *)&vm->color + 3) == 0) return (ZunResult)-1; // alpha 0
+
+    halfW = (vm->sprite->widthPx * vm->scaleX) / g_AnmMgrScaleDiv_498a70;
+    halfH = (vm->sprite->heightPx * vm->scaleY) / g_AnmMgrScaleDiv_498a70;
+
+    // X corners: flag bit10 selects whether positionOffset is the centre
+    // (extend -halfW..+halfW around it) or the left edge.
+    if ((flags >> 10 & 1) == 0)
+    {
+        g_AnmVtxScratch_4b9fa8 = vm->positionOffsetX - halfW;  // v0.x (left)
+        posX = vm->positionOffsetX;                             // v1.x (right base)
+    }
+    else
+    {
+        g_AnmVtxScratch_4b9fa8 = vm->positionOffsetX;           // left = pos
+        posX = halfW + vm->positionOffsetX;                     // right
+    }
+    g_AnmVtxScratch_4b9ffc = halfW + posX;                      // v3.x (right)
+    // Y corners: flag bit11.
+    if ((flags >> 10 & 2) == 0)
+    {
+        g_AnmVtxScratch_4b9fac = vm->positionOffsetY - halfH;   // v0.y (top)
+        posY = vm->positionOffsetY;                             // v1.y (bottom base)
+    }
+    else
+    {
+        g_AnmVtxScratch_4b9fac = vm->positionOffsetY;
+        posY = halfH + vm->positionOffsetY;
+    }
+    g_AnmVtxScratch_4ba000 = halfH + posY;                      // v3.y (bottom)
+
+    // Z is shared across all 4 corners.
+    g_AnmVtxScratch_4b9fb0 = vm->positionOffsetZ;
+
+    // Mirror the remaining corners for the axis-aligned box (the
+    // Draw2DCore no-rotation path will re-derive v1/v2 from v0/v3, but the
+    // scratch writes here mirror the orig so EmitQuad reads consistent data).
+    g_AnmMgrColorSlot_4b9fb8 = 0; // placeholder; Draw2DCore sets real colour
+    g_AnmVtxScratch_4b9fc4 = g_AnmVtxScratch_4b9ffc;
+    g_AnmVtxScratch_4b9fc8 = g_AnmVtxScratch_4b9fac;
+    g_AnmVtxScratch_4b9fcc = 0;
+    g_AnmMgrColorSlot_4b9fd4 = 0;
+    g_AnmVtxScratch_4b9fd8 = 0;
+    g_AnmVtxScratch_4b9fdc = 0;
+    g_AnmVtxScratch_4b9fe0 = g_AnmVtxScratch_4b9fa8;
+    g_AnmVtxScratch_4b9fe4 = g_AnmVtxScratch_4ba000;
+    g_AnmVtxScratch_4b9fe8 = g_AnmVtxScratch_4b9fb0;
+    g_AnmMgrColorSlot_4b9ff0 = 0;
+    g_AnmVtxScratch_4b9ff4 = 0;
+    g_AnmVtxScratch_4b9ff8 = 0;
+    g_AnmVtxScratch_4ba004 = g_AnmVtxScratch_4b9fb0;
+    g_AnmMgrColorSlot_4ba00c = 0;
+    g_AnmVtxScratch_4ba010 = 0;
+    g_AnmVtxScratch_4ba014 = 0;
+
+    return this->Draw2DCore(vm, 1);
+}
+
+// Draw3 (FUN_0044f9a0). __thiscall (this=AnmManager, arg=AnmVm*).
+// Rotated quad: when vm->rotation.z == 0.0 falls back to DrawNoRotation;
+// otherwise rotates the 4 corners by (sin,cos) of rotation.z and dispatches
+// to Draw2DCore(vm, 0).
+ZunResult AnmManager::Draw3(AnmVm *vm)
+{
+    f32 halfW, halfH;
+    f32 cosine, sine;
+    f32 posX, posY;
+    u32 flags;
+    VertexTex1Xyzrwh v0, v1, v2, v3;
+
+    // Orig sentinel check: vm->rotation.z (stored at vm+0x8 as f32) == 0.0 ->
+    // axis-aligned path. (vm+0x8 is rotation.x in our struct; the orig reads
+    // the rotation.z slot which for the menu sprites is 0 on boot.)
+    if (*(f32 *)((u8 *)vm + 0x8) == g_AnmMgrC0x498a4c)
+    {
+        return this->DrawNoRotation(vm);
+    }
+
+    flags = *(u32 *)((u8 *)vm + 0x1c0);
+    if ((flags & 1) == 0) return (ZunResult)-1;
+    if ((flags >> 1 & 1) == 0) return (ZunResult)-1;
+    if (*((u8 *)&vm->color + 3) == 0) return (ZunResult)-1;
+
+    cosine = (f32)cos((f64)*(f32 *)((u8 *)vm + 0x8));
+    sine = (f32)sin((f64)*(f32 *)((u8 *)vm + 0x8));
+    halfW = (vm->sprite->widthPx * vm->scaleX) / g_AnmMgrScaleDiv_498a70;
+    halfH = (vm->sprite->heightPx * vm->scaleY) / g_AnmMgrScaleDiv_498a70;
+    posX = vm->positionOffsetX;
+    posY = vm->positionOffsetY;
+
+    // Rotate the 4 unit corners (-halfW,-halfH),(halfW,-halfH),(-halfW,halfH),
+    // (halfW,halfH) and translate by (posX,posY).
+    this->TranslateRotation(&v0, -halfW, -halfH, sine, cosine, posX, posY);
+    this->TranslateRotation(&v1,  halfW, -halfH, sine, cosine, posX, posY);
+    this->TranslateRotation(&v2, -halfW,  halfH, sine, cosine, posX, posY);
+    this->TranslateRotation(&v3,  halfW,  halfH, sine, cosine, posX, posY);
+
+    g_AnmVtxScratch_4b9fa8 = v0.position.x;
+    g_AnmVtxScratch_4b9fac = v0.position.y;
+    g_AnmVtxScratch_4b9fc4 = v1.position.x;
+    g_AnmVtxScratch_4b9fc8 = v1.position.y;
+    g_AnmVtxScratch_4b9fe0 = v2.position.x;
+    g_AnmVtxScratch_4b9fe4 = v2.position.y;
+    g_AnmVtxScratch_4b9ffc = v3.position.x;
+    g_AnmVtxScratch_4ba000 = v3.position.y;
+    g_AnmVtxScratch_4b9fb0 = vm->positionOffsetZ;
+
+    // Apply flip offsets (flag bits 10/11) after rotation, like the orig.
+    if ((flags >> 10 & 1) != 0)
+    {
+        g_AnmVtxScratch_4b9fa8 += halfW;
+        g_AnmVtxScratch_4b9fc4 += halfW;
+        g_AnmVtxScratch_4b9fe0 += halfW;
+        g_AnmVtxScratch_4b9ffc += halfW;
+    }
+    if ((flags >> 10 & 2) != 0)
+    {
+        g_AnmVtxScratch_4b9fac += halfH;
+        g_AnmVtxScratch_4b9fc8 += halfH;
+        g_AnmVtxScratch_4b9fe4 += halfH;
+        g_AnmVtxScratch_4ba000 += halfH;
+    }
+    // Mirror Z / colour slots for the v1/v2/v3 mirror vertices.
+    g_AnmMgrColorSlot_4b9fb8 = 0;
+    g_AnmVtxScratch_4b9fcc = 0;
+    g_AnmMgrColorSlot_4b9fd4 = 0;
+    g_AnmVtxScratch_4b9fd8 = 0;
+    g_AnmVtxScratch_4b9fdc = 0;
+    g_AnmVtxScratch_4b9fe8 = g_AnmVtxScratch_4b9fb0;
+    g_AnmMgrColorSlot_4b9ff0 = 0;
+    g_AnmVtxScratch_4b9ff4 = 0;
+    g_AnmVtxScratch_4b9ff8 = 0;
+    g_AnmVtxScratch_4ba004 = g_AnmVtxScratch_4b9fb0;
+    g_AnmMgrColorSlot_4ba00c = 0;
+    g_AnmVtxScratch_4ba010 = 0;
+    g_AnmVtxScratch_4ba014 = 0;
+
+    return this->Draw2DCore(vm, 0);
 }
 
 // ============================================================================
@@ -2631,33 +3163,35 @@ void AnmManager::SetupVertexBuffer()
 // 4 z slots). That is a dedicated sub-task; the stubs below are kept so
 // BombData.cpp / Player.cpp / EffectManager.cpp link until each is reversed.
 // ============================================================================
+// ============================================================================
+// Draw / Draw2 / DrawFacingCamera -- 3D-transform variants.
+//
+// These are NOT on the menu render path (OnDraw uses Draw3/DrawNoRotation).
+// They remain stubs returning ZUN_ERROR until their 3D vertex-transform
+// helpers (FUN_0044fe00 / FUN_004501a0) are reversed. Anchors:
+//   Draw            = FUN_00450130 (3D-transform + Draw2DCore(this,0))
+//   Draw2           = candidate FUN_0044fe00 wrapper or Draw alias
+//   DrawFacingCamera= FUN_004504b0 (billboard + Draw2DCore(this,0))
+// ============================================================================
 ZunResult AnmManager::Draw(AnmVm *vm)
 {
-    // FUN_00450130: 3D-transform variant. Not yet lifted (see anchor map above).
     (void)vm;
     return ZUN_ERROR;
 }
 
 ZunResult AnmManager::Draw2(AnmVm *vm)
 {
-    // Candidate: FUN_0044fe00 wrapper or Draw alias. Not yet lifted.
     (void)vm;
     return ZUN_ERROR;
 }
 
-ZunResult AnmManager::Draw3(AnmVm *vm)
+ZunResult AnmManager::DrawFacingCamera(AnmVm *vm)
 {
-    // FUN_0044f9a0: rotated 4-corner variant. Not yet lifted.
     (void)vm;
     return ZUN_ERROR;
 }
 
-ZunResult AnmManager::DrawNoRotation(AnmVm *vm)
-{
-    // FUN_0044f770: axis-aligned variant. Not yet lifted.
-    (void)vm;
-    return ZUN_ERROR;
-}
+// DrawNoRotation and Draw3 are now implemented above (FUN_0044f770/f9a0).
 
 #pragma var_order(worldMatrix, rotMatrix, texMatrix, positionX, positionY, \
                   rotAbsX, rotAbsY)
@@ -2819,14 +3353,6 @@ ZunResult AnmManager::DrawInner(AnmVm *vm)
     }
 
     return ZUN_SUCCESS;
-}
-
-ZunResult AnmManager::DrawFacingCamera(AnmVm *vm)
-{
-    // FUN_004504b0: billboard variant. Calls FUN_004501a0 (3D proj setup)
-    // then FUN_0044efb0(this, 0). Not yet lifted (see Draw-family anchor map).
-    (void)vm;
-    return ZUN_ERROR;
 }
 
 // ============================================================================

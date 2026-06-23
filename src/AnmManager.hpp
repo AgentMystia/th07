@@ -296,6 +296,14 @@ struct AnmManager
     ZunResult DrawFacingCamera(AnmVm *vm);
     void TranslateRotation(VertexTex1Xyzrwh *out, f32 x, f32 y, f32 sine, f32 cosine,
                            f32 xOffset, f32 yOffset);
+    // 2D batched-draw core chain (FUN_0044efb0/f690/eec0). The batch
+    // accumulates quads into scratchRegion via batchWriteCursor; the actual
+    // D3D DrawPrimitiveUP is issued by FlushVertexBuffer when the batch fills
+    // or the render state changes.
+    ZunResult Draw2DCore(AnmVm *vm, u32 flags);   // FUN_0044efb0
+    void EmitQuad(f32 *scratch);                  // FUN_0044f690
+    void SetRenderState2D(AnmVm *vm);             // FUN_0044eec0
+    void FlushVertexBuffer();                     // FUN_0044f5c0
 
     // --- Text ---
     void DrawTextToSprite(u32 spriteDstIndex, i32 xPos, i32 yPos, i32 spriteWidth, i32 spriteHeight,
@@ -430,7 +438,9 @@ struct AnmManager
     RenderVertexInfo vertexBufferContents[4]; // +0x2e4e0 .. +0x2e530
 
     // +0x2e530 vertexBufferDirty flag (i32, read+cleared by DrawInner /
-    // FUN_0044f5c0).
+    // FUN_0044f5c0). For the 2D batch path (FUN_0044f690) it counts how many
+    // quads are pending in the batch; FlushVertexBuffer draws PrimitiveCount*2
+    // triangles then resets it to 0.
     i32 vertexBufferDirty;
 
     // +0x2e534..0x17e534 scratch / precomputed-vertex region (0x150000 bytes).
@@ -440,10 +450,15 @@ struct AnmManager
     // we reserve it as raw bytes so sizeof stays locked.
     u8 scratchRegion[0x17e534 - 0x2e534];
 
-    // +0x17e534..0x17e560 tail state. The constructor writes -1 to the dword
-    // at +0x17e53c (param_1[0x5f94f] in FUN_0044d3e0).
-    u8 tail_17e534[0x17e53c - 0x17e534];
-    i32 tailMarker_17e53c; // +0x17e53c (initialised to -1)
+    // +0x17e534 batchWriteCursor (VertexTex1DiffuseXyzrwh*). Points at the
+    // next free quad slot in scratchRegion; each EmitQuad (FUN_0044f690)
+    // writes a 0xa8-byte (6-vertex) quad here and advances by 0xa8.
+    u8 *batchWriteCursor_17e534; // +0x17e534
+    // +0x17e538 batchStartCursor (VertexTex1DiffuseXyzrwh*). Start of the
+    // current batch; FlushVertexBuffer draws from here to batchWriteCursor.
+    u8 *batchStartCursor_17e538; // +0x17e538
+    // +0x17e53c tail marker (initialised to -1 by the ctor, param_1[0x5f94f]).
+    i32 tailMarker_17e53c; // +0x17e53c
     u8 tail_17e540[0x17e560 - 0x17e540];
 };
 ZUN_ASSERT_SIZE(AnmManager, 0x17e560);

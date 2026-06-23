@@ -11,9 +11,11 @@
 // objdiff.json / config/ghidra_ns_to_obj.csv).
 
 #include "inttypes.hpp"
+#include "AnmManager.hpp"
 #include "ZunResult.hpp"
 
 #include <windows.h>
+#include <new> // placement new for AnmManager_Ctor_0044d3e0
 
 #include "Chain.hpp"
 #include "AsciiManager.hpp"
@@ -185,7 +187,19 @@ extern "C" {
     void __fastcall D3DXMatrixPerspectiveLH_00461dd8(void *out, f32 w, f32 h, f32 zn, f32 zf)
     { (void)out; (void)w; (void)h; (void)zn; (void)zf; }
     // P1.3 WinMain (FUN_00434020) helper: AnmManager ctor (FUN_0044d3e0).
-    void __fastcall AnmManager_Ctor_0044d3e0(void *anmMgr) { (void)anmMgr; }
+    // The orig zeros the whole struct then primes the per-slot fields. We
+    // delegate to the real AnmManager::AnmManager() (which matches the orig
+    // field writes + our P1.8 additions: 2D-batch cursor init) so the
+    // batched-draw path has a valid scratch pointer from boot.
+    void __fastcall AnmManager_Ctor_0044d3e0(void *anmMgr)
+    {
+        // Placement-construct: the buffer was allocated by operator_new and
+        // is raw memory; call the real ctor in place.
+        if (anmMgr != 0)
+        {
+            new (anmMgr) th07::AnmManager();
+        }
+    }
     // FUN_00454a10 / FUN_00454aa0: AnmManager boot-draw helpers, called from
     // Supervisor::AddedCallback after the logo texture load. They release/
     // draw the per-sprite texture + vertex-buffer slots. As no-op stubs they
