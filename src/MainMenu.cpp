@@ -19,8 +19,15 @@
 #include "AnmManager.hpp"
 #include "Chain.hpp"
 #include "MidiOutput.hpp"
+#include "SoundPlayer.hpp"
+#include "Supervisor.hpp"
 #include "diffbuild.hpp"
 #include "inttypes.hpp"
+
+// Boot-path debug log helpers (defined in link_stubs.cpp).
+extern "C" void *__cdecl th07_fopen_w(const char *path, const char *mode);
+extern "C" void __cdecl th07_fprintf(void *fp, const char *fmt, ...);
+extern "C" void __cdecl th07_fclose(void *fp);
 
 #include <windows.h>
 
@@ -77,9 +84,21 @@ static ZunResult __fastcall AddedCallback(MainMenuObj *mm)
     ZunResult iVar;
 
     (void)mm;
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[menu] AddedCallback entered, LoadAnm(title01.anm)\n"); th07_fclose(d); }
+    }
+#endif
 
     // 0x20 -> anmIdx slot for the menu. "data/title01.anm", 0x900 sprites.
     iVar = g_AnmManager->LoadAnm(0x20, "data/title01.anm", 0x900);
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[menu] LoadAnm returned %d\n", (i32)iVar); th07_fclose(d); }
+    }
+#endif
     if (iVar != ZUN_SUCCESS)
     {
         return (ZunResult)-1;
@@ -110,7 +129,69 @@ static ZunResult __fastcall AddedCallback(MainMenuObj *mm)
             }
             else if (g_SupervisorMusicMode_575a87 == 1)
             {
+#ifndef DIFFBUILD
+                // WAV mode: start streaming th07_01.wav. thbgm.dat is a ZWAV
+                // container (not a single RIFF file), so we cannot use
+                // LoadBgmPath (which opens the file as a CWaveFile). Instead:
+                //   1. PreLoadBgm(0, name) reads the wav chunk from thbgm.dat
+                //      into wavData[0] and fills wavFmtEntry[0].
+                //   2. CreateStreamingFromMemory creates the CStreamingSound
+                //      from that buffer (this is what the orig
+                //      ProcessSoundQueues stage 2 does internally).
+                //   3. backgroundMusic->Play starts playback.
+                g_SoundPlayer.PreLoadBgm(0, "bgm/th07_01.wav");
+                {
+                    void *d = th07_fopen_w("boot_debug.log", "a");
+                    if (d) { th07_fprintf(d, "[menu] PreLoadBgm done, wavData[0]=%p wavFmtEntry[0]=%p\n",
+                                          g_SoundPlayer.wavData[0], (void *)g_SoundPlayer.wavFmtEntry[0]); th07_fclose(d); }
+                }
+                if (g_SoundPlayer.wavData[0] != 0 && g_SoundPlayer.wavFmtEntry[0] != 0 &&
+                    g_SoundPlayer.manager != 0)
+                {
+                    // The WAVEFORMATEX lives at WaveFormat + 0x20:
+                    //   +0x20 wFormatTag (u16) + nChannels (u16)
+                    //   +0x24 nSamplesPerSec (u32)
+                    //   +0x28 nAvgBytesPerSec (u32)
+                    //   +0x2c nBlockAlign (u16) + wBitsPerSample (u16)
+                    // notifySize = (nAvgBytesPerSec / 4) rounded down to a
+                    // multiple of nBlockAlign (matching the orig
+                    // BackgroundMusicPlayerThread's fill quantum).
+                    u8 *wfx = (u8 *)g_SoundPlayer.wavFmtEntry[0] + 0x20;
+                    u16 blockAlign = *(u16 *)(wfx + 0x0c);
+                    u16 bitsPerSample = *(u16 *)(wfx + 0x0e);
+                    u32 avgBytesPerSec = *(u32 *)(wfx + 0x08);
+                    u32 notifySize = avgBytesPerSec >> 4;
+                    notifySize -= (notifySize % (blockAlign > 0 ? blockAlign : 1));
+                    (void)bitsPerSample;
+                    HANDLE ev = CreateEventA(NULL, FALSE, FALSE, NULL);
+                    g_SoundPlayer.backgroundMusicUpdateEvent = ev;
+                    g_SoundPlayer.backgroundMusicThreadHandle = CreateThread(
+                        NULL, 0, SoundPlayer::BackgroundMusicPlayerThread,
+                        g_Supervisor.hwndGameWindow, 0, &g_SoundPlayer.backgroundMusicThreadId);
+                    HRESULT hr = g_SoundPlayer.manager->CreateStreamingFromMemory(
+                        &g_SoundPlayer.backgroundMusic,
+                        (BYTE *)g_SoundPlayer.wavData[0],
+                        g_SoundPlayer.dataSize[0],
+                        DSBCAPS_GETCURRENTPOSITION2 | DSBCAPS_CTRLPOSITIONNOTIFY,
+                        GUID_NULL, 4, notifySize, 0x10, ev,
+                        g_SoundPlayer.wavFmtEntry[0]);
+                    {
+                        void *d = th07_fopen_w("boot_debug.log", "a");
+                        if (d) { th07_fprintf(d, "[menu] CreateStreamingFromMemory hr=0x%lx bgMusic=%p notifySize=%u\n",
+                                              (unsigned long)hr, (void *)g_SoundPlayer.backgroundMusic, notifySize); th07_fclose(d); }
+                    }
+                    if (SUCCEEDED(hr) && g_SoundPlayer.backgroundMusic != 0)
+                    {
+                        g_SoundPlayer.backgroundMusic->Play(0, 0);
+                        {
+                            void *d = th07_fopen_w("boot_debug.log", "a");
+                            if (d) { th07_fprintf(d, "[menu] backgroundMusic->Play called\n"); th07_fclose(d); }
+                        }
+                    }
+                }
+#else
                 SoundPlayer_PlayWaveVariant(1, (void *)0, "bgm/th07_01.wav");
+#endif
             }
         }
     }

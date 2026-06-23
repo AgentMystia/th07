@@ -857,20 +857,34 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     }
     if (*(void **)((u8 *)s + 0x17c) != 0)
     {
+        // Boot BGM. Orig FUN_00436650 dispatches on musicMode:
+        //   MIDI: MidiOutput::LoadFile + Play (bgm/init.mid)
+        //   WAV : SoundQueueAdd(1, 0x1e, "bgm/init.wav") -- but init.wav isn't
+        //         in thbgm.dat, so WAV mode is silent at boot and only starts
+        //         real BGM when the menu loads th07_01.wav.
 #ifndef DIFFBUILD
-        // Orig MidiOutput_Play (FUN_00436650) does StopPlayback + LoadFile +
-        // Play. The stub returns 0 without playing; call the real methods so
-        // bgm/init.mid actually plays at boot.
-        MidiOutput *midi = (MidiOutput *)*(void **)((u8 *)s + 0x17c);
-        midi->LoadFile("bgm/init.mid");
-        midi->Play();
+        if (MUSIC_MODE == MUSIC_MIDI)
+        {
+            MidiOutput *midi = (MidiOutput *)*(void **)((u8 *)s + 0x17c);
+            midi->LoadFile("bgm/init.mid");
+            midi->Play();
+        }
+        else
+        {
+            MidiOutput_Play(*(void **)((u8 *)s + 0x17c), 0x1e, "bgm/init.mid");
+        }
 #else
         MidiOutput_Play(*(void **)((u8 *)s + 0x17c), 0x1e, "bgm/init.mid");
 #endif
     }
 
-    // 8. SoundPlayer Callback_C7d0; AnmManager::LoadAnm(0, "data/text.anm", 0x700).
+    // 8. SoundPlayer Callback_C7d0 (FUN_0044c7d0): initialize DirectSound.
+    // AnmManager::LoadAnm(0, "data/text.anm", 0x700).
+#ifndef DIFFBUILD
+    g_SoundPlayer.InitializeDSound((HWND)g_SupervisorWindow_575c20);
+#else
     SoundPlayer_Callback_C7d0((void *)&g_SoundPlayer);
+#endif
 #ifndef DIFFBUILD
     {
         void *d = th07_fopen_w("boot_debug.log", "a");
@@ -899,33 +913,46 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     // 10. AnmManager::Callback_D630; Callback_3225b; SoundPlayer::LoadFmt.
     AnmManager_Callback_D630(g_AnmManager);
     Callback_3225b();
-    if (SoundPlayer_LoadFmt((void *)&g_SoundPlayer, "bgm/thbgm.fmt") != 0)
+#ifndef DIFFBUILD
     {
-        g_GameErrorContext.Log("%s", "error : BGM \202\314\217\211\212\372\211\273\202\311\216\270\224s\202\265\202\334\202\265\202\275\015\012");
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[sup] step10: LoadBgmFmtFile('bgm/thbgm.fmt')\n"); th07_fclose(d); }
+    }
+#endif
+    if (g_SoundPlayer.LoadBgmFmtFile("bgm/thbgm.fmt") != ZUN_SUCCESS)
+    {
+#ifndef DIFFBUILD
+        { void *d = th07_fopen_w("boot_debug.log", "a"); if (d) { th07_fprintf(d, "[sup] step10: LoadBgmFmtFile FAILED\n"); th07_fclose(d); } }
+#endif
+        g_GameErrorContext.Log("%s", "error : BGM \202\314\217\211\212\372\211\272\202\311\216\270\224s\202\265\202\334\202\265\202\275\015\012");
         return (ZunResult)-1;
     }
-
-    // 11. thbgm descriptor table install (depends on alt-mode + opts bit 0xd).
-    if (g_SupervisorG0x4bdaa0 == 0)
+#ifndef DIFFBUILD
     {
-        if ((g_Supervisor.cfg.opts >> 0xd & 1) == 0)
-        {
-            SoundPlayer_Callback_C020((void *)&g_SoundPlayer, "thbgm.dat");
-        }
-        else
-        {
-            memcpy((void *)g_SupervisorG0x4bd994 /* orig 0x4bd994 */, (void *)"thbgm.dat", 10);
-        }
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[sup] step10: LoadBgmFmtFile OK, step11 LoadBgmPath('thbgm.dat')\n"); th07_fclose(d); }
     }
-    else
+#endif
+
+    // 11. thbgm descriptor table install. Orig step-11 just stashes the
+    // thbgm.dat path into g_SoundPlayer.thbgmDatPath (strcpy) so later BGM
+    // playback (SoundPlayer::PreLoadStreamingBGM / SoundQueueAdd) can open it.
+    // It is NOT LoadBgmPath (which creates the streaming sound and needs
+    // wavFmtEntry[0] populated first -- that happens per-track on demand).
     {
-        if ((g_Supervisor.cfg.opts >> 0xd & 1) == 0)
+        char *dst = (char *)&g_SoundPlayer.thbgmDatPath[0];
+        if (g_SupervisorG0x4bdaa0 == 0)
         {
-            SoundPlayer_Callback_C020((void *)&g_SoundPlayer, "th07.dat");
+            // Normal: thbgm.dat.
+            i32 i = 0;
+            const char *src = "thbgm.dat";
+            do { dst[i] = src[i]; } while (src[i++] != 0);
         }
         else
         {
-            memcpy((void *)g_SupervisorG0x4bd994 /* orig 0x4bd994 */, (void *)"th07.dat", 9);
+            i32 i = 0;
+            const char *src = "th07.dat";
+            do { dst[i] = src[i]; } while (src[i++] != 0);
         }
     }
 

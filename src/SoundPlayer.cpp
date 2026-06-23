@@ -12,6 +12,11 @@
 #include "utils.hpp"
 #include "zwave.hpp"
 
+// Boot-path debug log helpers (defined in link_stubs.cpp).
+extern "C" void *__cdecl th07_fopen_w(const char *path, const char *mode);
+extern "C" void __cdecl th07_fprintf(void *fp, const char *fmt, ...);
+extern "C" void __cdecl th07_fclose(void *fp);
+
 namespace th07
 {
 i32 FloatSecondsToFrames(f32 s) { return (i32)(s * 60.0f); }
@@ -64,6 +69,12 @@ SoundPlayer::SoundPlayer()
 #pragma var_order(bufDesc, audioBuffer2Start, audioBuffer2Len, audioBuffer1Len, audioBuffer1Start, wavFormat)
 ZunResult SoundPlayer::InitializeDSound(HWND gameWindow)
 {
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[snd] InitializeDSound(hwnd=%p)\n", (void *)gameWindow); th07_fclose(d); }
+    }
+#endif
     DSBUFFERDESC bufDesc;
     tWAVEFORMATEX wavFormat;
     LPVOID audioBuffer1Start;
@@ -326,13 +337,27 @@ ZunResult SoundPlayer::LoadBgmPath(char *path)
     HANDLE event;
     HRESULT res;
 
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[bgm] LoadBgmPath('%s') manager=%p dsoundHdl=%p wavFmtEntry[0]=%p\n",
+                              path, (void *)this->manager, (void *)this->dsoundHdl,
+                              this->wavFmtEntry[0] ? (void *)1 : (void *)0); th07_fclose(d); }
+    }
+#endif
     strcpy(this->thbgmDatPath, path);
     if (this->manager == NULL)
     {
+#ifndef DIFFBUILD
+        { void *d = th07_fopen_w("boot_debug.log", "a"); if (d) { th07_fprintf(d, "[bgm] LoadBgmPath: manager NULL, bail\n"); th07_fclose(d); } }
+#endif
         return ZUN_ERROR;
     }
     if (this->dsoundHdl == NULL)
     {
+#ifndef DIFFBUILD
+        { void *d = th07_fopen_w("boot_debug.log", "a"); if (d) { th07_fprintf(d, "[bgm] LoadBgmPath: dsoundHdl NULL, bail\n"); th07_fclose(d); } }
+#endif
         return ZUN_ERROR;
     }
     utils::DebugPrint2("Streming BGM Start\r\n");
@@ -352,6 +377,12 @@ ZunResult SoundPlayer::LoadBgmPath(char *path)
                                            DSBCAPS_GETCURRENTPOSITION2 | DSBCAPS_CTRLPOSITIONNOTIFY, GUID_NULL, 4,
                                            notifySize, 0x10, this->backgroundMusicUpdateEvent,
                                            this->wavFmtEntry[0]);
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[bgm] CreateStreaming res=0x%lx bgMusic=%p\n", (unsigned long)res, (void *)this->backgroundMusic); th07_fclose(d); }
+    }
+#endif
     if (FAILED(res))
     {
         // "error : BGM file not found %s" (Shift-JIS)

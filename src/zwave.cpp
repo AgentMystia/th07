@@ -12,6 +12,11 @@
 #include <stdlib.h>
 #include <windows.h>
 
+// Boot-path debug log helpers (defined in link_stubs.cpp).
+extern "C" void *__cdecl th07_fopen_w(const char *path, const char *mode);
+extern "C" void __cdecl th07_fprintf(void *fp, const char *fmt, ...);
+extern "C" void __cdecl th07_fclose(void *fp);
+
 namespace th07
 {
 
@@ -178,9 +183,17 @@ HRESULT CSoundManager::CreateStreamingFromMemory(CStreamingSound **ppStreamingSo
     dsbd.dwBufferBytes = dwDSBufferSize;
     dsbd.guid3DAlgorithm = guid3DAlgorithm;
     dsbd.lpwfxFormat = (WAVEFORMATEX *)((BYTE *)pWaveFile->m_pwfx + 0x20);
+#ifndef DIFFBUILD
+    { void *d = th07_fopen_w("boot_debug.log", "a"); if (d) { th07_fprintf(d, "[zwav-mem] m_pwfx=%p lpwfxFormat=%p bufBytes=%lu ulDataSize=%lu\n", (void *)pWaveFile->m_pwfx, (void *)dsbd.lpwfxFormat, dsbd.dwBufferBytes, ulDataSize); th07_fclose(d); } }
+#endif
 
     if (FAILED(hr = m_pDS->CreateSoundBuffer(&dsbd, &pDSBuffer, NULL)))
+    {
+#ifndef DIFFBUILD
+        { void *d = th07_fopen_w("boot_debug.log", "a"); if (d) { th07_fprintf(d, "[zwav-mem] CreateSoundBuffer FAILED hr=0x%lx\n", (unsigned long)hr); th07_fclose(d); } }
+#endif
         return E_FAIL;
+    }
 
     if (FAILED(hr = pDSBuffer->QueryInterface(IID_IDirectSoundNotify, (VOID **)&pDSNotify)))
         return E_FAIL;

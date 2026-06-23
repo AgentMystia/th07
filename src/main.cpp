@@ -261,6 +261,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         {
             continue;
         }
+        // The orig binary shows the window from inside one of the not-yet-
+        // lifted boot helpers (Bootstrap / PostD3DInit). Our stubs don't, so
+        // ShowWindow here so the 640x480 game window actually appears before
+        // InitD3D creates the device against it.
+        if (g_SupervisorWindow_575c20 != 0)
+        {
+            ShowWindow((HWND)g_SupervisorWindow_575c20, SW_SHOWDEFAULT);
+            UpdateWindow((HWND)g_SupervisorWindow_575c20);
+        }
         iVar1 = Supervisor_InitD3D();
         if (iVar1 != 0)
         {
@@ -310,15 +319,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         }
 #endif
 
-        // Normal-build demo: force MIDI music mode so bgm/*.mid files load
-        // and play through MidiOutput. The orig game reads this from th07.cfg
-        // (byte at cfg+0x1f); our cfg reader is a stub, so default to MIDI.
-        // Two symbols alias the same byte in the orig binary (cfg+0x1f and
-        // the standalone DAT_00575a87) but they are distinct in our normal
-        // build, so set both.
+        // Normal-build demo: force WAV music mode so BGM plays through
+        // SoundPlayer's thbgm.dat streaming path. MIDI mode requires a system
+        // MIDI synth (Timidity/FluidSynth) which isn't always available; WAV
+        // mode streams PCM directly via DirectSound and works out of the box.
+        // The orig game reads this from th07.cfg (byte at cfg+0x1f); our cfg
+        // reader is a stub, so default to WAV. Two symbols alias the same byte
+        // in the orig binary (cfg+0x1f and the standalone DAT_00575a87) but
+        // they are distinct in our normal build, so set both.
 #ifndef DIFFBUILD
-        th07::g_Supervisor.cfg.musicMode = th07::MUSIC_MIDI;
-        g_SupervisorMusicMode_575a87 = th07::MUSIC_MIDI;
+        th07::g_Supervisor.cfg.musicMode = th07::MUSIC_WAV;
+        g_SupervisorMusicMode_575a87 = th07::MUSIC_WAV;
 #endif
 
         // Hide cursor + disable IME in windowed mode.
