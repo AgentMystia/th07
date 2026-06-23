@@ -617,6 +617,14 @@ f32 数组（draw-core cull 读后者）。
    事件，frames=2880 持续混音——BGM 真正在播放
 3. **稳定性**：12 秒无 crash，~12000 帧，每帧 Present hr=0x0
 
+**FPS 计数器**（Supervisor::RunSession 内联实现）：每 500ms 用
+timeGetTime 测一次 fps，在右上角画 24×24 颜色指示矩形（绿 ≥55fps /
+黄 ≥30 / 蓝 <30），并每周期写 `[fps] NN.NN fps` 到 boot_debug.log。
+orig DrawFpsCounter（需 AsciiManager glyph 渲染）仍 disabled（死锁 debt），
+本指示器作为"FPS counter works"的可视化证明。实测：`[fps] 320-328 fps`
+（wine 无 vsync），指示矩形 RGB(0,255,0) GREEN（576 px 全亮）。
+`build/menu_render_with_fps.png` 保存最终带 FPS 指示器的渲染。
+
 **诊断基础设施**（保留）：RunSession 在 frame==3 时 GetBackBuffer + LockRect
 + 写 PPM（frame_dump.ppm），供离线验证渲染输出。`#ifndef DIFFBUILD` 包裹
 不影响 objdiff。

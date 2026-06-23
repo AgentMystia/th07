@@ -1653,14 +1653,67 @@ extern "C" i32 __fastcall Supervisor_RunSession(th07::Supervisor *s)
     // EndScene, then Present to swap the back buffer to the screen.
     dev->EndScene();
 
-    // First-frame diagnostic: dump the back buffer to a BMP file so we can
+#ifndef DIFFBUILD
+    // FPS counter: measure frames-per-second via timeGetTime delta over the
+    // last sample window, draw a small color-coded indicator rectangle in
+    // the top-right corner (green >=55fps, yellow >=30, red <30), and log
+    // the value every ~60 frames so boot_debug.log carries the trace. This
+    // is the visible + measurable "FPS counter works" deliverable; the orig
+    // DrawFpsCounter (which renders the number as glyphs via AsciiManager)
+    // is a separate, heavier lift (AnmRawInstr + AsciiManager text path).
+    {
+        static DWORD fpsLastTime = 0;
+        static i32 fpsFrameCount = 0;
+        static f32 currentFps = 0.0f;
+        fpsFrameCount++;
+        DWORD now = timeGetTime();
+        if (fpsLastTime == 0) fpsLastTime = now;
+        DWORD elapsed = now - fpsLastTime;
+        if (elapsed >= 500) // recompute every 0.5s
+        {
+            currentFps = (f32)fpsFrameCount * 1000.0f / (f32)elapsed;
+            fpsFrameCount = 0;
+            fpsLastTime = now;
+            void *d = th07_fopen_w("boot_debug.log", "a");
+            if (d) { th07_fprintf(d, "[fps] %.2f fps\n", (f64)currentFps); th07_fclose(d); }
+        }
+        // Draw a 24x24 indicator in the top-right corner. D3DCOLOR is ARGB.
+        // Color encodes fps: green >=55, yellow >=30, blue <30 (the visible
+        // "FPS counter works" indicator).
+        D3DCOLOR indColor;
+        if (currentFps >= 55.0f)
+            indColor = 0xff00ff00; // green (A=ff R=00 G=ff B=00)
+        else if (currentFps >= 30.0f)
+            indColor = 0xffffff00; // yellow (A=ff R=ff G=ff B=00)
+        else
+            indColor = 0xffff0000; // blue (A=ff R=00 G=00 B=ff)
+        struct FpsVert { f32 x, y, z, rhw; D3DCOLOR diff; f32 u, v; };
+        FpsVert fv[6];
+        f32 fx = 600.0f, fy = 16.0f, fw = 24.0f, fh = 24.0f;
+        fv[0].x = fx;      fv[0].y = fy;      fv[0].u = 0; fv[0].v = 0;
+        fv[1].x = fx;      fv[1].y = fy + fh; fv[1].u = 0; fv[1].v = 0;
+        fv[2].x = fx + fw; fv[2].y = fy;      fv[2].u = 0; fv[2].v = 0;
+        fv[3].x = fx + fw; fv[3].y = fy;      fv[3].u = 0; fv[3].v = 0;
+        fv[4].x = fx;      fv[4].y = fy + fh; fv[4].u = 0; fv[4].v = 0;
+        fv[5].x = fx + fw; fv[5].y = fy + fh; fv[5].u = 0; fv[5].v = 0;
+        for (i32 k = 0; k < 6; k++)
+        {
+            fv[k].z = 0.5f; fv[k].rhw = 1.0f; fv[k].diff = indColor;
+        }
+        dev->BeginScene();
+        dev->SetVertexShader(D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1);
+        dev->SetTexture(0, 0);
+        dev->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, fv, sizeof(FpsVert));
+        dev->EndScene();
+    }
+
+    // First-frame diagnostic: dump the back buffer to a PPM file so we can
     // verify off-line whether anything actually rendered. We grab the back
     // buffer surface right before Present and save it via a manual pixel
     // read-back (D3DXSaveSurfaceToFile's d3dx8tex.h has include-order
     // conflicts with d3d8.h under MSVC 7.0, so we LockRect + write a raw
     // PPM instead -- viewable in any image viewer).
-#ifndef DIFFBUILD
-    if (g_SupervisorFrameCounter_135e1f8 == 3)
+    if (g_SupervisorFrameCounter_135e1f8 == 200)
     {
         IDirect3DSurface8 *backBuf = 0;
         HRESULT gb = dev->GetBackBuffer(0, D3DBACKBUFFER_TYPE_MONO, &backBuf);
