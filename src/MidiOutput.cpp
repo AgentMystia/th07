@@ -13,6 +13,11 @@
 #include "utils.hpp"
 #include "ZunMemory.hpp"
 
+// Boot-path debug log helpers (defined in link_stubs.cpp).
+extern "C" void *__cdecl th07_fopen_w(const char *path, const char *mode);
+extern "C" void __cdecl th07_fprintf(void *fp, const char *fmt, ...);
+extern "C" void __cdecl th07_fclose(void *fp);
+
 namespace th07
 {
 // Helper union used by MidiDevice::SendShortMsg to pack a (status, d1, d2)
@@ -350,14 +355,34 @@ ZunResult MidiOutput::ParseFile(i32 fileIdx)
 
 ZunResult MidiOutput::LoadFile(char *midiPath)
 {
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[midi] LoadFile('%s') musicMode=%u tracks=%p\n",
+                              midiPath, g_Supervisor.cfg.musicMode, (void *)this->tracks); th07_fclose(d); }
+    }
+#endif
     if (this->ReadFileData(0x1f, midiPath) != ZUN_SUCCESS)
     {
+#ifndef DIFFBUILD
+        {
+            void *d = th07_fopen_w("boot_debug.log", "a");
+            if (d) { th07_fprintf(d, "[midi] ReadFileData FAILED\n"); th07_fclose(d); }
+        }
+#endif
         return ZUN_ERROR;
     }
 
     this->ParseFile(0x1f);
     this->ReleaseFileData(0x1f);
 
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[midi] LoadFile OK numTracks=%u divisions=%u tracks=%p\n",
+                              this->numTracks, this->divisions, (void *)this->tracks); th07_fclose(d); }
+    }
+#endif
     return ZUN_SUCCESS;
 }
 
@@ -384,6 +409,12 @@ void MidiOutput::LoadTracks()
 
 ZunResult MidiOutput::Play()
 {
+#ifndef DIFFBUILD
+    {
+        void *d = th07_fopen_w("boot_debug.log", "a");
+        if (d) { th07_fprintf(d, "[midi] Play() tracks=%p\n", (void *)this->tracks); th07_fclose(d); }
+    }
+#endif
     if (this->tracks == NULL)
     {
         return ZUN_ERROR;

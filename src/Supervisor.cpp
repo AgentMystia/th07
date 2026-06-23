@@ -4,6 +4,7 @@
 
 #include "Supervisor.hpp"
 #include "AsciiManager.hpp"
+#include "MidiOutput.hpp"
 #include "SoundPlayer.hpp"
 #include "AnmManager.hpp"
 #include "Chain.hpp"
@@ -22,6 +23,9 @@
 #include <dinput.h>
 #include <stdio.h>
 #include <string.h>
+#ifndef DIFFBUILD
+#include <new> // placement new for MidiOutput construction
+#endif
 
 // Stubs for modules that aren't yet reverse-engineered. Their headers now
 // exist (src/MainMenu.hpp etc.) and provide RegisterChain signatures; the
@@ -837,7 +841,12 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
         newObj = operator_new_th07(0x300);
         if (newObj != 0)
         {
-            MidiOutput_Ctor(newObj);
+            // Orig calls MidiOutput::MidiOutput (FUN_00436450) on the new'd
+            // buffer. The MidiOutput_Ctor stub is a no-op; placement-new the
+            // real ctor so the embedded MidiDevice + timer are initialised.
+#ifndef DIFFBUILD
+            new (newObj) MidiOutput();
+#endif
             midiNewObj = newObj;
         }
         else
@@ -848,7 +857,16 @@ ZunResult __fastcall Supervisor::AddedCallback(Supervisor *s)
     }
     if (*(void **)((u8 *)s + 0x17c) != 0)
     {
+#ifndef DIFFBUILD
+        // Orig MidiOutput_Play (FUN_00436650) does StopPlayback + LoadFile +
+        // Play. The stub returns 0 without playing; call the real methods so
+        // bgm/init.mid actually plays at boot.
+        MidiOutput *midi = (MidiOutput *)*(void **)((u8 *)s + 0x17c);
+        midi->LoadFile("bgm/init.mid");
+        midi->Play();
+#else
         MidiOutput_Play(*(void **)((u8 *)s + 0x17c), 0x1e, "bgm/init.mid");
+#endif
     }
 
     // 8. SoundPlayer Callback_C7d0; AnmManager::LoadAnm(0, "data/text.anm", 0x700).

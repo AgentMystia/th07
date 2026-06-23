@@ -70,6 +70,10 @@ extern "C" void __fastcall Supervisor_Teardown(char *errBuf);
 extern "C" void *__cdecl th07_fopen_w(const char *path, const char *mode);
 extern "C" void __cdecl th07_fprintf(void *fp, const char *fmt, ...);
 extern "C" void __cdecl th07_fclose(void *fp);
+// Standalone alias of cfg.musicMode (DAT_00575a87). Set alongside
+// g_Supervisor.cfg.musicMode so both MidiOutput::ReadFileData (which reads
+// cfg.musicMode) and MainMenu's BGM dispatcher (which reads this byte) agree.
+extern "C" u8 g_SupervisorMusicMode_575a87;
 
 // Standalone boot globals (defined in link_globals.cpp; declared here so
 // WinMain can reach them with typed C++).
@@ -304,6 +308,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
                 th07_fclose(dbg);
             }
         }
+#endif
+
+        // Normal-build demo: force MIDI music mode so bgm/*.mid files load
+        // and play through MidiOutput. The orig game reads this from th07.cfg
+        // (byte at cfg+0x1f); our cfg reader is a stub, so default to MIDI.
+        // Two symbols alias the same byte in the orig binary (cfg+0x1f and
+        // the standalone DAT_00575a87) but they are distinct in our normal
+        // build, so set both.
+#ifndef DIFFBUILD
+        th07::g_Supervisor.cfg.musicMode = th07::MUSIC_MIDI;
+        g_SupervisorMusicMode_575a87 = th07::MUSIC_MIDI;
 #endif
 
         // Hide cursor + disable IME in windowed mode.

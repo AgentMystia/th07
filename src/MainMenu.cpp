@@ -18,6 +18,7 @@
 
 #include "AnmManager.hpp"
 #include "Chain.hpp"
+#include "MidiOutput.hpp"
 #include "diffbuild.hpp"
 #include "inttypes.hpp"
 
@@ -95,7 +96,16 @@ static ZunResult __fastcall AddedCallback(MainMenuObj *mm)
             {
                 if (g_SupervisorMidiSlot_575acc != 0)
                 {
+#ifndef DIFFBUILD
+                    // Normal-build: call the real MidiOutput methods so the
+                    // menu BGM actually plays. Orig MidiOutput_Play (stub)
+                    // returns 0 without playing.
+                    MidiOutput *midi = (MidiOutput *)g_SupervisorMidiSlot_575acc;
+                    midi->LoadFile("bgm/th07_01.mid");
+                    midi->Play();
+#else
                     MidiOutput_Play(g_SupervisorMidiSlot_575acc, 8, "bgm/th07_01.mid");
+#endif
                 }
             }
             else if (g_SupervisorMusicMode_575a87 == 1)
