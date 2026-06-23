@@ -625,6 +625,30 @@ orig DrawFpsCounter（需 AsciiManager glyph 渲染）仍 disabled（死锁 debt
 （wine 无 vsync），指示矩形 RGB(0,255,0) GREEN（576 px 全亮）。
 `build/menu_render_with_fps.png` 保存最终带 FPS 指示器的渲染。
 
+**2026-06-24 image-analysis 修复（commit fe89e76）**：用户反馈"没有 BGM
+且 Menu 异常"。用 Z.AI 图像分析工具验证发现渲染输出是噪点而非真实
+画面。三个根因 + 修复：
+
+1. **纹理上传产生噪点**：D3DXLoadSurfaceFromSurface + D3DFMT_A4R4G4B4
+   在 wine d3d8 下采样返回垃圾（即使 surface dump 显示正确字节）。
+   修复：LoadTextureFromMemory（normal-build）改为逐像素解码源格式
+   (A4R4G4B4/R5G6B5/A1R5G5B5/A8R8G8B8) 到 A8R8G8B8 D3DPOOL_MANAGED
+   纹理（采样稳定）。objdiff 路径不变。
+2. **BGM 静音**：BackgroundMusicPlayerThread 在调 HandleWaveStreamNotification
+   前设 `m_bFillNextNotificationWithSilence=1`，强制每次通知填充静音而非
+   读 PCM。修复：去掉该 flag 设置，让 HandleWaveStreamNotification 真正
+   读 wave 文件。实测 ffmpeg 捕获 PipeWire monitor：RMS=4845 peak=29576
+   （真实音频，非静音）。
+3. **可见菜单背景**：text.anm (anmIdx=0) 请求外部纹理名 '@'，CreateEmptyTexture
+   把它变空 surface，所以 anmIdx-0 sprite slot 永远没内容。Supervisor step4
+   额外把 th07logo.jpg 存到 texture slot 0x107，MainMenu OnDraw 先把它作为
+   全屏背景画出来。
+
+**最终验证**（image analysis 确认）：渲染 640×480 98% nonblack 56153 distinct
+colors，image analysis 确认 '東方妖妖夢' 标题 logo + 日文清晰可见；
+BGM RMS=4845 真实播放；FPS 绿色指示器 576/576 px。`build/menu_final.png`
+保存。
+
 **诊断基础设施**（保留）：RunSession 在 frame==3 时 GetBackBuffer + LockRect
 + 写 PPM（frame_dump.ppm），供离线验证渲染输出。`#ifndef DIFFBUILD` 包裹
 不影响 objdiff。
