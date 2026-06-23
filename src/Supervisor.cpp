@@ -1603,7 +1603,11 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
     i32 fallbackTried;
     char localMsgBuf[0x2000];
     f32 refreshRate;
-    i32 local_20;
+    // local_20 is the present-params Windowed field (orig local_20 lives at
+    // [ebp-0x20] = the 12th dword of the 13-dword present-params struct,
+    // i.e. localPP.fields[11]). Previously declared as a separate local,
+    // which meant CreateDevice always saw Windowed=0 (fullscreen) and tried
+    // to allocate huge surfaces -> Wine OOM. Now write directly to fields[11].
     u32 local_10;
     D3DXVECTOR3 eye;
     D3DXVECTOR3 at;
@@ -1624,22 +1628,22 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
         if ((g_SupervisorCfgOpts_575a9c >> 2 & 1) == 1)
         {
             // Force 16-bit color mode.
-            localPP.fields[2] = 0x17; // D3DFMT_R5G6B5
+            localPP.BackBufferFormat = 0x17; // D3DFMT_R5G6B5
             g_SupervisorColorMode_575a86 = 1;
         }
         else if ((i8)g_SupervisorColorMode_575a86 == -1)
         {
-            localPP.fields[2] = 0x16; // D3DFMT_A8R8G8B8
+            localPP.BackBufferFormat = 0x16; // D3DFMT_A8R8G8B8
             g_SupervisorColorMode_575a86 = 0;
             Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "\217\211\211\361\213N\223\256\201A\211\346\226\312\202\360 32Bits \202\305\217\211\212\372\211\273\202\265\202\334\202\265\202\275\r\n");
         }
         else if (g_SupervisorColorMode_575a86 == 0)
         {
-            localPP.fields[2] = 0x16;
+            localPP.BackBufferFormat = 0x16;
         }
         else
         {
-            localPP.fields[2] = 0x17;
+            localPP.BackBufferFormat = 0x17;
         }
         if (g_SupervisorLoadResult_575c3c != 0)
         {
@@ -1648,34 +1652,35 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
         if (g_SupervisorWindowedOverride_575abc == 0)
         {
             // Default windowed present params.
-            localPP.fields[8] = 0x3c; // PresentationInterval = D3DPRESENT_INTERVAL_DEFAULT (60Hz)
-            local_20 = 1;            // windowed
+            localPP.FullScreen_PresentationInterval = 0x3c; // D3DPRESENT_INTERVAL_DEFAULT (60Hz)
+            localPP.Windowed = 1;
             Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "\203\212\203t\203\214\203b\203V\203\205\203\214\201[\203g\202\36060Hz\202\311\225\317\215X\202\360\216\212\202\335\202\334\202\267\r\n");
-            localPP.fields[6] = (g_SupervisorUnkFlag_575a8c == 0) ? 2 : 4; // SwapEffect
+            localPP.SwapEffect = (g_SupervisorUnkFlag_575a8c == 0) ? 2 : 4;
         }
         else
         {
             // Windowed override (user requested).
-            localPP.fields[8] = 0;   // Default interval
-            localPP.fields[6] = 3;   // D3DSWAPEFFECT_COPY_VSYNC
-            local_20 = (i32)0x80000000; // fullscreen-style windowed flag
+            localPP.FullScreen_PresentationInterval = 0;   // Default interval
+            localPP.SwapEffect = 3;   // D3DSWAPEFFECT_COPY_VSYNC
+            localPP.Windowed = 0x80000000; // windowed-override marker (non-zero = windowed)
             Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "VSync\224\361\223\257\212\372\211\302\224\\\202\251\202\307\202\244\202\251\202\360\216\212\202\335\202\334\202\267\r\n");
         }
     }
     else
     {
         // Fullscreen: reuse the format from the display mode query.
-        localPP.fields[2] = local_10;
-        localPP.fields[6] = 3;
-        localPP.fields[4] = 1; // FullScreen_PresentationInterval
+        localPP.BackBufferFormat = local_10;
+        localPP.SwapEffect = 3;
+        localPP.MultiSampleType = 1; // orig: local_3c=1 in fullscreen path
     }
 
     // Common present params: 640x480 backbuffer, depth/stencil, one backbuffer.
-    localPP.fields[0] = 0x280;        // BackBufferWidth
-    localPP.fields[1] = 0x1e0;        // BackBufferHeight
-    localPP.fields[3] = 1;            // BackBufferCount
-    localPP.fields[5] = 0x50;         // EnableAutoDepthStencil + depth format
-    localPP.fields[7] = 1;            // AutoDepthStencil enable
+    localPP.BackBufferWidth = 0x280;
+    localPP.BackBufferHeight = 0x1e0;
+    localPP.BackBufferCount = 1;
+    localPP.AutoDepthStencilFormat = 0x50; // D3DFMT_D24S8
+    localPP.EnableAutoDepthStencil = 1;
+    localPP.Flags = 1;            // orig local_24=1
     g_SupervisorFrameFlags_575adc = g_SupervisorFrameFlags_575adc | 2;
     g_SupervisorHasHwVertexProc_575ac4 = 1;
 
@@ -1719,7 +1724,7 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
             // Copy the local present-params into the persistent
             // g_SupervisorPresentParams_575a30 buffer.
             dst = &g_SupervisorPresentParams_575a30[0];
-            srcP = &localPP.fields[0];
+            srcP = (u32 *)&localPP;
             for (iVar1 = 0xd; iVar1 != 0; iVar1--)
             {
                 *dst = *srcP;
@@ -1772,7 +1777,7 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
                 // CheckDeviceFormat -- vtable +0x28.
                 iVar1 = ((i32(__stdcall *)(void *, i32, i32, i32, i32, i32, i32))(
                     VTBL(g_SupervisorD3D8_575954, 0x28)))(g_SupervisorD3D8_575954, 0, 1,
-                    localPP.fields[2], 0, 3, 0x15);
+                    localPP.BackBufferFormat, 0, 3, 0x15);
                 if (iVar1 == 0)
                 {
                     g_SupervisorFrameFlags_575adc = g_SupervisorFrameFlags_575adc | 4;
@@ -1805,14 +1810,14 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
         {
             // First failure: downgrade to windowed and retry.
             Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "\203\212\203t\203\214\203b\203V\203\205\203\214\201[\203g\202\252\225\317\215X\202\305\202\253\202\334\202\271\202\361\r\n");
-            localPP.fields[8] = 0;
+            localPP.FullScreen_PresentationInterval = 0;
             g_SupervisorHasHwVertexProc_575ac4 = 0;
             fallbackTried = 1;
         }
         else
         {
             // Already tried the fallback: hard fail.
-            if (local_20 != (i32)0x80000000)
+            if (localPP.Windowed != 0x80000000)
             {
                 Supervisor_GameErrorFatal_00431730(&g_GameErrorContext_624210, "Direct3D \202\314\217\211\212\372\211\273\202\311\216\270\224s\201A\202\261\202\352\202\315\203Q\201[\203\200\202\315\217o\227\210\202\334\202\271\202\361\r\n");
                 if (g_SupervisorD3D8_575954 != 0)
@@ -1825,8 +1830,8 @@ extern "C" i32 __fastcall Supervisor_InitD3D()
             }
             Supervisor_GameErrorLog_004315f0(&g_GameErrorContext_624210, "\224\361\223\257\212\372\215X\220V\202\340\215s\202\246\202\334\202\271\202\361\201B\210\352\224\324\211\230\202\242\203\202\201[\203h\202\311\225\317\215X\202\265\202\334\202\267\r\n");
             Supervisor_GameErrorFatal_00431730(&g_GameErrorContext_624210, "*** \203\212\203t\203\214\203b\203V\203\205\203\214\201[\203g\202\36060Hz\202\311\225\317\215X\202\267\202\351\202\261\202\306\202\360\220\204\217\247\202\265\202\334\202\267 ***\r\n");
-            local_20 = 1;
-            localPP.fields[6] = 3;
+            localPP.Windowed = 1;
+            localPP.SwapEffect = 3;
         }
     } while (1);
 }

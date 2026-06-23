@@ -50,10 +50,28 @@ struct D3DVIEWPORT8_FAKE
     f32 MaxZ;
 };
 
+// Direct3D 8 D3DPRESENT_PARAMETERS layout (13 DWORDs). The DX8 field order
+// is: BackBuffer*, MultiSample, SwapEffect, hDeviceWindow, Windowed,
+// EnableAutoDepthStencil, AutoDepthStencilFormat, Flags, RefreshRate,
+// PresentationInterval. Orig InitD3D indexes by byte offset from the struct
+// base, which maps to these fields; using names instead of a raw array
+// prevents the off-by-one indexing bug that made Wine's wined3d treat a
+// windowed device as fullscreen and exhaust the 32-bit address space.
 struct D3DPRESENT_PARAMETERS_FAKE
 {
-    u32 fields[13];
-
+    u32 BackBufferWidth;                  // field 0
+    u32 BackBufferHeight;                 // field 1
+    u32 BackBufferFormat;                 // field 2
+    u32 BackBufferCount;                  // field 3
+    u32 MultiSampleType;                  // field 4
+    u32 SwapEffect;                       // field 5
+    u32 hDeviceWindow;                    // field 6
+    u32 Windowed;                         // field 7
+    u32 EnableAutoDepthStencil;           // field 8
+    u32 AutoDepthStencilFormat;           // field 9
+    u32 Flags;                            // field 10
+    u32 FullScreen_RefreshRateInHz;       // field 11
+    u32 FullScreen_PresentationInterval;  // field 12
 };
 
 struct DIDEVCAPS_FAKE
